@@ -12,13 +12,21 @@ import { AVISO_PORTAL, assinatura as linhasAssinatura, guardarDestinatariosObra,
 import { copiarTexto, lerAlocacoes, linkOutlook, type AlocacaoResumo } from '../../lib/admin';
 import {
   CHAVES_CONFERENCIA, abrirArquivoMedicao, arquivosAtuais, avaliarItem, baixarArquivoMedicao, baixarMedicao, competenciaPadrao,
-  concluirConferencia, conferirColaborador, lerMedicao, lerMedicoes, lerTiposMedicao, mesCurto, mesPorExtenso, nomeArquivoMedicao,
+  concluirConferencia, conferirColaborador, lerMedicao, lerMedicoes, lerTiposMedicao, lerTodasMedicoes, mesCurto, mesPorExtenso, nomeArquivoMedicao,
   combinarPrazo, registrarCobranca, rotuloConferencia, rotuloSituacaoColaborador, rotuloStatusItem, rotuloStatusMedicao, seloItem, seloMedicao,
   type ChaveConferencia, type DetalheMedicao, type ItemMedicao, type LinhaColaborador, type Marcacao, type Medicao,
   type SituacaoColaborador, type TipoMedicao,
 } from '../../lib/medicao';
 
 const CHAVE_DESTINO = 'portal-terceiros:retencao:';
+// Filtro "Todos os meses": medições do portal desde março de 2026.
+const TODOS = 'todos';
+const INICIO_PAINEL = '2026-03-01';
+
+async function lerDoPainel(competencia: string): Promise<Medicao[]> {
+  if (competencia !== TODOS) return lerMedicoes({ competencia });
+  return (await lerTodasMedicoes()).filter((m) => m.competencia >= INICIO_PAINEL);
+}
 
 function lerDestino(obraId: string): string {
   try {
@@ -76,7 +84,7 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
   useEffect(() => {
     setMedicoes(null);
     setSelecao(new Set());
-    lerMedicoes({ competencia })
+    lerDoPainel(competencia)
       .then(setMedicoes)
       .catch((e) => setErro(mensagemDeErro(e)));
   }, [competencia]);
@@ -89,7 +97,7 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
 
   // Empresa com colaborador liberado na obra e sem medição no mês (nem no controle anterior, sem obra).
   const naoIniciadas = useMemo<NaoIniciada[]>(() => {
-    if (!medicoes || !alocacoes) return [];
+    if (!medicoes || !alocacoes || competencia === TODOS) return [];
     const comMedicao = new Set(medicoes.map((m) => `${m.empresa_id}|${m.obra_id ?? ''}`));
     const semObra = new Set(medicoes.filter((m) => !m.obra_id).map((m) => m.empresa_id));
     const pares = new Map<string, NaoIniciada>();
@@ -102,7 +110,7 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
       pares.set(chave, p);
     }
     return [...pares.values()].sort((x, y) => x.empresa.localeCompare(y.empresa, 'pt-BR'));
-  }, [medicoes, alocacoes]);
+  }, [medicoes, alocacoes, competencia]);
 
   const contagem = useMemo(() => {
     const l = medicoes ?? [];
@@ -128,7 +136,14 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
         return filtro === 'todas';
       })
       .filter((m) => !t || m.empresa.toLowerCase().includes(t) || (m.obra ?? '').toLowerCase().includes(t))
-      .sort((a, b) => ordemPainel(a) - ordemPainel(b) || a.empresa.localeCompare(b.empresa, 'pt-BR'));
+      // Fila do mais antigo para o mais novo, como na integração: mês trabalhado e, dentro dele, a ordem de envio.
+      .sort(
+        (a, b) =>
+          ordemPainel(a) - ordemPainel(b) ||
+          a.competencia.localeCompare(b.competencia) ||
+          (a.enviada_em ?? a.primeiro_envio_em ?? '9999').localeCompare(b.enviada_em ?? b.primeiro_envio_em ?? '9999') ||
+          a.empresa.localeCompare(b.empresa, 'pt-BR'),
+      );
   }, [medicoes, filtro, busca]);
 
   const naoIniciadasVisiveis = naoIniciadas.filter((n) => {
@@ -155,8 +170,9 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
       setErro('As empresas selecionadas não têm e-mail de cobrança cadastrado.');
       return;
     }
-    const mes = mesPorExtenso(competencia);
-    const prazo = data(lista[0].prazo);
+    const meses = [...new Set(lista.map((m) => m.competencia))].sort();
+    const mes = meses.map((c) => mesPorExtenso(c)).join(', ');
+    const prazo = meses.length === 1 ? data(lista[0].prazo) : 'o dia 25 do mês seguinte a cada mês trabalhado';
     const assunto = `Medição de ${mes}: documentos pendentes`;
     const corpo = [
       'Olá,',
@@ -178,7 +194,7 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
       await registrarCobranca(lista.map((m) => m.id));
       setOk(`Cobrança aberta no Outlook para ${lista.length} ${lista.length === 1 ? 'empresa' : 'empresas'}. A data da cobrança ficou registrada.`);
       setSelecao(new Set());
-      setMedicoes(await lerMedicoes({ competencia }));
+      setMedicoes(await lerDoPainel(competencia));
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
     }
@@ -191,7 +207,7 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
       titulo="Medição mensal"
       apoio="Conferência dos documentos do F.48 que os fornecedores enviam todo mês, por obra. Entrega até o dia 25 do mês seguinte ao trabalhado."
       acoes={
-        <button type="button" className="botao botao-secundario" onClick={() => setRetencao(true)} disabled={carregando}>
+        <button type="button" className="botao botao-secundario" onClick={() => setRetencao(true)} disabled={carregando || competencia === TODOS}>
           Aviso de retenção
         </button>
       }
@@ -204,6 +220,7 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
         <label className="campo">
           <span>Mês trabalhado</span>
           <select value={competencia} onChange={(e) => aoMudarMes(e.target.value)}>
+            <option value={TODOS}>Todos os meses</option>
             {mesesDoPainel().map((c) => (
               <option key={c} value={c}>{mesPorExtenso(c)}</option>
             ))}
@@ -236,7 +253,9 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
             ))}
           </div>
           <p className="dica">
-            Prazo de {mesPorExtenso(competencia)}: {data(prazoDe(competencia))}. Entregues no prazo: {contagem.no_prazo} de {contagem.todas}.
+            {competencia === TODOS
+              ? `Todos os meses desde ${mesPorExtenso(INICIO_PAINEL)}, do mais antigo para o mais novo. Entregues no prazo: ${contagem.no_prazo} de ${contagem.todas}.`
+              : `Prazo de ${mesPorExtenso(competencia)}: ${data(prazoDe(competencia))}. Entregues no prazo: ${contagem.no_prazo} de ${contagem.todas}.`}
           </p>
 
           {filtro !== 'nao_iniciadas' && (
@@ -263,6 +282,7 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
                       <th scope="col"><span className="sr">Marcar</span></th>
                       <th scope="col">Empresa</th>
                       <th scope="col">Obra</th>
+                      {competencia === TODOS && <th scope="col">Mês</th>}
                       <th scope="col">Situação</th>
                       <th scope="col">Entrega</th>
                       <th scope="col">O que falta</th>
@@ -273,7 +293,7 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
                   <tbody>
                     {visiveis.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="vazio-linha">Nenhuma medição neste filtro.</td>
+                        <td colSpan={competencia === TODOS ? 9 : 8} className="vazio-linha">Nenhuma medição neste filtro.</td>
                       </tr>
                     )}
                     {visiveis.map((m) => (
@@ -288,6 +308,7 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
                           <small className="sub">{formatarCnpj(m.cnpj)}{m.email_cobranca ? '' : ', sem e-mail'}</small>
                         </th>
                         <td>{m.obra ?? <span className="sub">Sem obra (planilha)</span>}</td>
+                        {competencia === TODOS && <td>{mesCurto(m.competencia)}</td>}
                         <td>
                           <span className={`selo ${seloMedicao[m.status]}`}>{rotuloStatusMedicao[m.status]}</span>
                           {m.retida && <small className="sub texto-erro">retida</small>}
@@ -359,6 +380,21 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
       />
     </Pagina>
   );
+}
+
+// E-mail de OK da competência para o fornecedor (abre no Outlook).
+function linkAprovacao(m: Medicao): string {
+  const mes = mesPorExtenso(m.competencia);
+  const corpo = [
+    'Olá,',
+    '',
+    `A mensal trabalhista de ${mes}${m.obra ? ` da obra ${m.obra}` : ''} foi conferida e aprovada pela Emais. Não há pendências nesta competência.`,
+    '',
+    `Os próximos envios continuam pelo Portal de Terceiros: ${enderecoDoSite}medicao`,
+    '',
+    'Atenciosamente,',
+  ].join('\n');
+  return linkOutlook(m.email_cobranca ?? '', `Mensal trabalhista aprovada · ${m.obra ? `${m.obra} · ` : ''}${mes}`, corpo);
 }
 
 function prazoDe(competencia: string): string {
@@ -844,7 +880,7 @@ function DetalheAdmin({ id, aoVoltar }: { id: string; aoVoltar: () => void }) {
                 executar('concluir', async () => {
                   const novo = await concluirConferencia(m.id);
                   if (novo === 'pendente_fornecedor') setCobranca(true);
-                  setOk(novo === 'aprovada' ? 'Medição aprovada.' : 'Conferência concluída. A medição voltou para o fornecedor com as pendências.');
+                  setOk(novo === 'aprovada' ? 'Medição aprovada. Use "Avisar o fornecedor da aprovação" para mandar o OK da competência.' : 'Conferência concluída. A medição voltou para o fornecedor com as pendências.');
                 })
               }
             >
@@ -854,6 +890,11 @@ function DetalheAdmin({ id, aoVoltar }: { id: string; aoVoltar: () => void }) {
               <button type="button" className="botao botao-secundario" onClick={() => setCobranca(true)}>
                 Cobrar o fornecedor
               </button>
+            )}
+            {m.status === 'aprovada' && (
+              <a className="botao botao-secundario" href={linkAprovacao(m)}>
+                Avisar o fornecedor da aprovação
+              </a>
             )}
           </div>
         </section>

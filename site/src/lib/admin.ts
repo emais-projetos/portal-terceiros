@@ -338,6 +338,8 @@ export type AlocacaoResumo = {
   devolvidos: number;
   em_analise: number;
   a_vencer: number;
+  bloqueado: boolean;
+  bloqueio_motivo: string | null;
 };
 
 export async function lerAlocacoes(): Promise<AlocacaoResumo[]> {
@@ -347,7 +349,7 @@ export async function lerAlocacoes(): Promise<AlocacaoResumo[]> {
       .select(
         'alocacao_id, status, obra_id, obra, colaborador_id, colaborador, funcao, empresa_id, empresa, inicio_conferencia, ' +
           'aprovado_admin_em, validado_tst_em, data_integracao, vencimento_integracao, impeditivos_pendentes, pendentes_adm, ' +
-          'pendentes_sst, devolvidos, em_analise, a_vencer',
+          'pendentes_sst, devolvidos, em_analise, a_vencer, bloqueado, bloqueio_motivo',
       )
       .order('alocacao_id')
       .range(inicio, fim) as unknown as PromiseLike<{ data: AlocacaoResumo[] | null; error: unknown }>,
@@ -371,12 +373,17 @@ export type Colaborador = {
   data_admissao: string | null;
   data_nascimento: string | null;
   funcoes: { nome: string } | null;
+  empresa_id: string;
+  data_desligamento: string | null;
+  bloqueado: boolean;
+  bloqueio_motivo: string | null;
+  bloqueado_em: string | null;
 };
 
 export async function lerColaborador(id: string): Promise<Colaborador> {
   const { data, error } = await supabase
     .from('colaboradores')
-    .select('id, nome, cpf, funcao_texto, situacao, pendencia_cadastro, funcao_id, data_admissao, data_nascimento, funcoes(nome)')
+    .select('id, nome, cpf, funcao_texto, situacao, pendencia_cadastro, funcao_id, data_admissao, data_nascimento, funcoes(nome), empresa_id, data_desligamento, bloqueado, bloqueio_motivo, bloqueado_em')
     .eq('id', id)
     .single();
   if (error) throw error;
@@ -571,4 +578,90 @@ export async function lerDevolucaoTst(alocacaoId: string): Promise<{ motivo: str
   if (error) throw error;
   const e = data?.[0];
   return e ? { motivo: String((e.detalhe as { motivo?: string })?.motivo ?? ''), em: e.criado_em as string } : null;
+}
+
+// ---------------------------------------------------------------- Ajustes de 06/11/2026
+
+// Último envio (aprovado ou em análise) de um documento do colaborador, com os arquivos ainda guardados.
+// O TST só enxerga os anexos das NRs.
+export async function lerAnexos(colaboradorId: string, tipo: string): Promise<{ caminho: string; nome_original: string }[]> {
+  const { data, error } = await supabase
+    .from('documentos')
+    .select('id, status, enviado_em, arquivos(caminho, nome_original, apagado_em)')
+    .eq('colaborador_id', colaboradorId)
+    .eq('tipo_codigo', tipo)
+    .in('status', ['aprovado', 'em_analise'])
+    .order('enviado_em', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  type Linha = { arquivos: { caminho: string; nome_original: string; apagado_em: string | null }[] };
+  const doc = (data ?? [])[0] as unknown as Linha | undefined;
+  return (doc?.arquivos ?? []).filter((a) => !a.apagado_em).map((a) => ({ caminho: a.caminho, nome_original: a.nome_original }));
+}
+
+export type ObraCadastro = { id: string; nome: string; ativa: boolean };
+
+export async function lerObrasCadastro(): Promise<ObraCadastro[]> {
+  const { data, error } = await supabase.from('obras').select('id, nome, ativa').order('nome');
+  if (error) throw error;
+  return (data ?? []) as ObraCadastro[];
+}
+
+export async function criarObra(nome: string): Promise<string> {
+  const { data, error } = await supabase.from('obras').insert({ nome: nome.trim().toUpperCase() }).select('id').single();
+  if (error) {
+    if ((error as { code?: string }).code === '23505') throw new Error('Já existe uma obra com este nome.');
+    throw error;
+  }
+  return data.id as string;
+}
+
+export async function renomearObra(id: string, nome: string) {
+  const { error } = await supabase.from('obras').update({ nome: nome.trim().toUpperCase() }).eq('id', id);
+  if (error) {
+    if ((error as { code?: string }).code === '23505') throw new Error('Já existe uma obra com este nome.');
+    throw error;
+  }
+}
+
+// Administrativo aloca em outra obra; se a empresa ainda não atua na obra, passa a atuar.
+export async function alocarComoAdmin(colaboradorId: string, empresaId: string, obraId: string) {
+  const { data: eo, error: e1 } = await supabase.from('empresas_obras').select('id, ativo').eq('empresa_id', empresaId).eq('obra_id', obraId).maybeSingle();
+  if (e1) throw e1;
+  if (!eo) {
+    const { error } = await supabase.from('empresas_obras').insert({ empresa_id: empresaId, obra_id: obraId });
+    if (error) throw error;
+  } else if (!eo.ativo) {
+    const { error } = await supabase.from('empresas_obras').update({ ativo: true }).eq('id', eo.id);
+    if (error) throw error;
+  }
+  const { error } = await supabase.from('alocacoes').insert({ colaborador_id: colaboradorId, obra_id: obraId });
+  if (error) {
+    if ((error as { code?: string }).code === '23505') throw new Error('O colaborador já está nesta obra.');
+    throw error;
+  }
+}
+
+export async function lerEmailEmpresa(empresaId: string): Promise<string> {
+  const { data, error } = await supabase.from('empresas').select('email_contato, email_acesso').eq('id', empresaId).maybeSingle();
+  if (error) throw error;
+  return ((data?.email_contato as string | null) ?? (data?.email_acesso as string | null) ?? '').trim();
+}
+
+// E-mails das empresas (contato ou acesso), para pré-preencher avisos.
+export async function lerEmailsEmpresas(): Promise<Map<string, string>> {
+  const { data, error } = await supabase.from('empresas').select('id, email_contato, email_acesso').limit(5000);
+  if (error) throw error;
+  return new Map((data ?? []).map((e) => [e.id as string, ((e.email_contato as string | null) ?? (e.email_acesso as string | null) ?? '').trim()]));
+}
+
+// E-mails dos TSTs ativos de uma obra.
+export async function lerEmailsTst(obraId: string): Promise<string[]> {
+  const { data, error } = await supabase.from('tst_obras').select('usuarios(email, perfil, ativo)').eq('obra_id', obraId);
+  if (error) throw error;
+  type Linha = { usuarios: { email: string; perfil: string; ativo: boolean } | null };
+  return ((data ?? []) as unknown as Linha[])
+    .map((l) => l.usuarios)
+    .filter((u): u is { email: string; perfil: string; ativo: boolean } => !!u && u.perfil === 'tst' && u.ativo)
+    .map((u) => u.email);
 }

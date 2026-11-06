@@ -4,7 +4,7 @@ import { Carregando } from '../../componentes/Carregando';
 import { mensagemDeErro } from '../../lib/supabase';
 import { data } from '../../lib/formato';
 import {
-  copiarTexto, gerarAviso, lerAlocacoes, lerAvisos, linkOutlook, marcarAvisoEnviado,
+  copiarTexto, gerarAviso, lerAlocacoes, lerAvisos, lerEmailsEmpresas, lerEmailsTst, linkOutlook, marcarAvisoEnviado,
   type AlocacaoResumo, type AvisoLiberacao,
 } from '../../lib/admin';
 
@@ -29,6 +29,9 @@ function guardarDestino(obraId: string, valor: string) {
 export function Liberacao() {
   const [alocacoes, setAlocacoes] = useState<AlocacaoResumo[] | null>(null);
   const [obra, setObra] = useState('');
+  const [fornecedor, setFornecedor] = useState('');
+  const [emailsEmpresas, setEmailsEmpresas] = useState<Map<string, string>>(new Map());
+  const [emailsTst, setEmailsTst] = useState<string[]>([]);
   const [avisos, setAvisos] = useState<AvisoLiberacao[]>([]);
   const [selecao, setSelecao] = useState<Set<string>>(new Set());
   const [para, setPara] = useState('');
@@ -42,6 +45,7 @@ export function Liberacao() {
     lerAlocacoes()
       .then(setAlocacoes)
       .catch((e) => setErro(mensagemDeErro(e)));
+    lerEmailsEmpresas().then(setEmailsEmpresas).catch(() => undefined);
   }, []);
 
   const obras = useMemo(() => {
@@ -58,15 +62,28 @@ export function Liberacao() {
     setSelecao(new Set());
     setAviso(null);
     setOk(null);
+    setFornecedor('');
+    setEmailsTst([]);
     if (!obra) {
       setAvisos([]);
       return;
     }
-    setPara(lerDestino(obra));
+    lerEmailsTst(obra).then(setEmailsTst).catch(() => undefined);
     lerAvisos(obra)
       .then(setAvisos)
       .catch((e) => setErro(mensagemDeErro(e)));
   }, [obra]);
+
+  // Para: o e-mail cadastrado do fornecedor, os TSTs da obra e os destinatários extras lembrados neste navegador.
+  useEffect(() => {
+    if (!obra || !fornecedor) return;
+    setSelecao(new Set());
+    setAviso(null);
+    const lista = [emailsEmpresas.get(fornecedor) ?? '', ...emailsTst, ...lerDestino(obra).split(/[;,\s]+/)]
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => e.includes('@'));
+    setPara([...new Set(lista)].join('; '));
+  }, [obra, fornecedor, emailsEmpresas, emailsTst]);
 
   const avisados = useMemo(() => {
     const s = new Map<string, string>();
@@ -74,13 +91,27 @@ export function Liberacao() {
     return s;
   }, [avisos]);
 
+  // Fornecedores da obra com liberados (quantos ainda sem aviso).
+  const fornecedores = useMemo(() => {
+    const m = new Map<string, { nome: string; semAviso: number; total: number }>();
+    (alocacoes ?? [])
+      .filter((a) => a.obra_id === obra && a.status === 'liberado')
+      .forEach((a) => {
+        const f = m.get(a.empresa_id) ?? { nome: a.empresa, semAviso: 0, total: 0 };
+        f.total += 1;
+        if (!avisados.has(a.alocacao_id)) f.semAviso += 1;
+        m.set(a.empresa_id, f);
+      });
+    return [...m.entries()].sort(([, a], [, b]) => b.semAviso - a.semAviso || a.nome.localeCompare(b.nome, 'pt-BR'));
+  }, [alocacoes, obra, avisados]);
+
   const liberados = useMemo(
     () =>
       (alocacoes ?? [])
-        .filter((a) => a.obra_id === obra && a.status === 'liberado')
+        .filter((a) => a.obra_id === obra && a.status === 'liberado' && a.empresa_id === fornecedor)
         .filter((a) => mostrarAvisados || !avisados.has(a.alocacao_id))
         .sort((a, b) => (b.validado_tst_em ?? '').localeCompare(a.validado_tst_em ?? '') || a.colaborador.localeCompare(b.colaborador, 'pt-BR')),
-    [alocacoes, obra, avisados, mostrarAvisados],
+    [alocacoes, obra, fornecedor, avisados, mostrarAvisados],
   );
 
   function alternar(id: string) {
@@ -96,7 +127,9 @@ export function Liberacao() {
     setErro(null);
     setGerando(true);
     try {
-      guardarDestino(obra, para.trim());
+      // Lembra só os destinatários extras (os do fornecedor e do TST vêm do cadastro).
+      const cadastrados = new Set([emailsEmpresas.get(fornecedor) ?? '', ...emailsTst].map((e) => e.trim().toLowerCase()));
+      guardarDestino(obra, para.split(/[;,\s]+/).map((e) => e.trim().toLowerCase()).filter((e) => e.includes('@') && !cadastrados.has(e)).join('; '));
       const novo = await gerarAviso(obra, [...selecao], para.trim());
       setAviso(novo);
       setAvisos(await lerAvisos(obra));
@@ -124,7 +157,7 @@ export function Liberacao() {
   return (
     <Pagina
       titulo="Aviso de liberação"
-      apoio="Monte o e-mail para a obra com os colaboradores liberados. O texto sai pronto para enviar pelo Outlook."
+      apoio="Escolha a obra e o fornecedor: o e-mail sai com os liberados dele, já endereçado ao fornecedor e ao TST da obra, pronto para o Outlook."
     >
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
@@ -141,10 +174,25 @@ export function Liberacao() {
               ))}
             </select>
           </label>
+          {obra && (
+            <label className="campo">
+              <span>Fornecedor</span>
+              <select value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}>
+                <option value="">Escolha o fornecedor</option>
+                {fornecedores.map(([id, f]) => (
+                  <option key={id} value={id}>
+                    {f.nome} ({f.semAviso ? `${f.semAviso} sem aviso` : `${f.total} já avisados`})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
       )}
 
-      {obra && (
+      {obra && !fornecedor && fornecedores.length === 0 && <p className="vazio">Nenhum colaborador liberado nesta obra.</p>}
+
+      {obra && fornecedor && (
         <div className="duas-colunas">
           <section>
             <div className="barra-lista">
@@ -201,7 +249,9 @@ export function Liberacao() {
                   value={para}
                   onChange={(e) => setPara(e.target.value)}
                 />
-                <small className="dica">Separe os e-mails com ponto e vírgula. O portal lembra os destinatários de cada obra neste navegador.</small>
+                <small className="dica">
+                  Já vem com o e-mail cadastrado do fornecedor{emailsTst.length ? ' e do TST da obra' : ' (a obra não tem TST cadastrado)'}. Separe com ponto e vírgula; os extras ficam lembrados neste navegador.
+                </small>
               </label>
               <button type="button" className="botao" disabled={selecao.size === 0 || gerando} onClick={gerar}>
                 {gerando ? 'Gerando' : `Gerar aviso com ${selecao.size} ${selecao.size === 1 ? 'colaborador' : 'colaboradores'}`}

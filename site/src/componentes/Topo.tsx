@@ -70,7 +70,7 @@ export function Topo() {
           <NavLink to="/pendencias">O que falta</NavLink>
           <NavLink to="/meus-colaboradores">Colaboradores</NavLink>
           <NavLink to="/documentos-empresa">Documentos da empresa</NavLink>
-          <NavLink to="/medicao">Medição</NavLink>
+          <NavLink to="/medicao">Mensal trabalhista</NavLink>
         </nav>
       )}
       {ehAdmin && (

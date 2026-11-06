@@ -90,14 +90,19 @@ export type MeuColaborador = {
   pendencia_cadastro: string | null;
   data_admissao: string | null;
   data_nascimento: string | null;
+  funcao_id: string | null;
   funcoes: { nome: string } | null;
+  data_desligamento: string | null;
+  rescisao_exigida: boolean;
+  bloqueado: boolean;
+  bloqueio_motivo: string | null;
 };
 
 export async function lerMeusColaboradores(): Promise<MeuColaborador[]> {
   return lerTudo<MeuColaborador>((inicio, fim) =>
     supabase
       .from('colaboradores')
-      .select('id, empresa_id, nome, cpf, funcao_texto, situacao, pendencia_cadastro, data_admissao, data_nascimento, funcoes(nome)')
+      .select('id, empresa_id, nome, cpf, funcao_id, funcao_texto, situacao, pendencia_cadastro, data_admissao, data_nascimento, data_desligamento, rescisao_exigida, bloqueado, bloqueio_motivo, funcoes(nome)')
       .order('nome')
       .range(inicio, fim) as unknown as PromiseLike<{ data: MeuColaborador[] | null; error: unknown }>,
   );
@@ -145,9 +150,77 @@ export async function alocarEmObra(colaboradorId: string, obraId: string) {
   }
 }
 
-export async function informarDesligamento(colaboradorId: string, situacao: 'demitido' | 'desistente') {
-  const { error } = await supabase.from('colaboradores').update({ situacao }).eq('id', colaboradorId);
+// Demissão deixa os rescisórios pendentes; desistência (não chegou a trabalhar) não pede rescisórios.
+export async function desligarColaborador(colaboradorId: string, dataDesligamento: string, desistente: boolean) {
+  const { error } = await supabase.rpc('desligar_colaborador', { p_colaborador: colaboradorId, p_data: dataDesligamento, p_desistente: desistente });
   if (error) throw error;
+}
+
+// Nome, CPF, empresa e função: o fornecedor corrige até o cadastro ser enviado para análise.
+export async function corrigirColaborador(dados: { id: string; empresa_id: string; nome: string; cpf: string; funcao_id: string | null; funcao_texto: string | null }) {
+  const { error } = await supabase.rpc('corrigir_colaborador', {
+    p_colaborador: dados.id,
+    p_empresa: dados.empresa_id,
+    p_nome: dados.nome,
+    p_cpf: dados.cpf,
+    p_funcao_id: dados.funcao_id,
+    p_funcao_texto: dados.funcao_texto,
+  });
+  if (error) {
+    if ((error as { code?: string }).code === '23505') throw new Error('Este CPF já está cadastrado nesta empresa.');
+    throw error;
+  }
+}
+
+// NR a mais ou "Outro documento" (com a descrição) no cadastro do colaborador.
+export async function incluirDocumentoColaborador(colaboradorId: string, tipo: string, descricao: string) {
+  const { error } = await supabase.rpc('incluir_documento_colaborador', { p_colaborador: colaboradorId, p_tipo: tipo, p_descricao: descricao });
+  if (error) throw error;
+}
+
+export type DocumentoIncluido = { colaborador_id: string; tipo_codigo: string; exige: boolean; motivo: string | null };
+
+export async function lerDocumentosIncluidos(): Promise<DocumentoIncluido[]> {
+  const { data, error } = await supabase.from('colaboradores_documentos_extras').select('colaborador_id, tipo_codigo, exige, motivo').limit(5000);
+  if (error) throw error;
+  return (data ?? []) as DocumentoIncluido[];
+}
+
+// NRs e "Outro documento" que podem ser incluídos no colaborador.
+export async function lerTiposIncluiveis(): Promise<{ codigo: string; nome: string }[]> {
+  const { data, error } = await supabase.from('tipos_documento').select('codigo, nome, ordem').eq('ativo', true).eq('depende_da_funcao', true).order('ordem');
+  if (error) throw error;
+  return (data ?? []).map((t) => ({ codigo: t.codigo as string, nome: t.nome as string }));
+}
+
+export type Bloqueio = { id: number; colaborador_id: string; acao: 'bloqueio' | 'desbloqueio'; motivo: string; feito_por_nome: string | null; feito_em: string };
+
+export async function lerBloqueios(colaboradorId: string): Promise<Bloqueio[]> {
+  const { data, error } = await supabase
+    .from('colaboradores_bloqueios')
+    .select('id, colaborador_id, acao, motivo, feito_por_nome, feito_em')
+    .eq('colaborador_id', colaboradorId)
+    .order('feito_em', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as Bloqueio[];
+}
+
+export async function bloquearColaborador(colaboradorId: string, bloquear: boolean, motivo: string) {
+  const { error } = await supabase.rpc('bloquear_colaborador', { p_colaborador: colaboradorId, p_bloquear: bloquear, p_motivo: motivo });
+  if (error) throw error;
+}
+
+// Subcontratada: entra no mesmo login do fornecedor, com o contrato entre as partes obrigatório.
+export async function cadastrarSubcontratada(dados: { principal: string; cnpj: string; razao_social: string; email: string; obras: string[] }): Promise<string> {
+  const { data, error } = await supabase.rpc('cadastrar_subcontratada', {
+    p_principal: dados.principal,
+    p_cnpj: dados.cnpj,
+    p_razao_social: dados.razao_social,
+    p_email: dados.email,
+    p_obras: dados.obras,
+  });
+  if (error) throw error;
+  return data as string;
 }
 
 export async function enviarParaAnalise(alocacaoId: string) {
@@ -183,6 +256,19 @@ export async function lerMinhasPendencias(): Promise<PendenciaFornecedor[]> {
       .order('tipo_codigo')
       .range(inicio, fim) as unknown as PromiseLike<{ data: PendenciaFornecedor[] | null; error: unknown }>,
   );
+}
+
+// Rescisórios dos colaboradores demitidos pelo portal (mesmo formato das pendências, sem obra).
+export type PendenciaRescisao = Omit<PendenciaFornecedor, 'alocacao_id' | 'obra_id'> & { colaborador: string; data_desligamento: string | null };
+
+export async function lerRescisao(): Promise<PendenciaRescisao[]> {
+  const { data, error } = await supabase
+    .from('v_rescisao')
+    .select('colaborador_id, empresa_id, colaborador, data_desligamento, tipo_codigo, documento, grupo, area, impeditivo, vencimento, dias_para_vencer, status_envio_aberto, motivo_devolucao, situacao')
+    .order('colaborador')
+    .limit(5000);
+  if (error) throw error;
+  return (data ?? []) as PendenciaRescisao[];
 }
 
 export function precisaAcao(situacao: SituacaoPendencia): boolean {

@@ -9,6 +9,7 @@ type Props = {
 };
 
 // Janela sobre a tela, com o <dialog> nativo do navegador (Esc fecha, o foco fica dentro).
+// Clicar fora não fecha: num formulário, isso apagava o que já tinha sido digitado.
 export function Dialogo({ aberto, titulo, aoFechar, children, largura = 'normal' }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   // Quando quem fecha é o próprio código (aberto virou false), não avisamos aoFechar de novo.
@@ -34,9 +35,6 @@ export function Dialogo({ aberto, titulo, aoFechar, children, largura = 'normal'
           return;
         }
         aoFechar();
-      }}
-      onClick={(e) => {
-        if (e.target === ref.current) aoFechar();
       }}
       aria-labelledby="dialogo-titulo"
     >

@@ -23,6 +23,8 @@ export type ColaboradorObra = {
   data_integracao: string | null;
   vencimento_integracao: string | null;
   liberado_em: string | null;
+  bloqueado?: boolean;
+  bloqueio_motivo?: string | null;
   pendencias: PendenciaDoc[];
   a_vencer: { documento: string; grupo?: 'empresa' | 'colaborador' | 'obra'; vencimento: string }[];
 };

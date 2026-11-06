@@ -9,12 +9,17 @@ import {
   cpfValido, data, erroDatasColaborador, formatarCpf, hojeIso, ordemSituacao, rotuloSituacao, rotuloStatus, soDigitos,
 } from '../../lib/formato';
 import {
-  aprovarAlocacao, devolverAlocacaoTst, excecoesNovas, lerAlocacoes, lerBaseTreinamentos, lerColaborador, lerDevolucaoTst, lerExcecoes,
-  lerIdsComPendenciaCadastro, lerPendencias, registrarIntegracao, salvarCadastro, salvarTreinamentos, validarAlocacao,
-  type AlocacaoResumo, type BaseTreinamentos, type Colaborador, type Excecao, type Pendencia,
+  abrirArquivo, alocarComoAdmin, aprovarAlocacao, devolverAlocacaoTst, excecoesNovas, lerAlocacoes, lerAnexos, lerBaseTreinamentos, lerColaborador,
+  lerDevolucaoTst, lerEmailEmpresa, lerExcecoes, lerIdsComPendenciaCadastro, lerObrasCadastro, lerPendencias, linkOutlook, registrarIntegracao,
+  salvarCadastro, salvarTreinamentos, validarAlocacao,
+  type AlocacaoResumo, type BaseTreinamentos, type Colaborador, type Excecao, type ObraCadastro, type Pendencia,
 } from '../../lib/admin';
+import { bloquearColaborador, lerBloqueios, type Bloqueio } from '../../lib/fornecedor';
+import { enderecoDoSite } from '../../lib/supabase';
 
-const nomeNr = (codigo: string) => codigo.replace(/^nr(\d+)$/i, 'NR-$1');
+const nomeNr = (codigo: string) => (codigo === 'outro_documento' ? 'Outro documento' : codigo.replace(/^nr(\d+)$/i, 'NR-$1'));
+// NRs e "Outro documento": o TST pode ver o anexo.
+const ehNr = (codigo: string) => /^nr\d+$/.test(codigo) || codigo === 'outro_documento';
 
 type Filtro = 'abertos' | 'fornecedor' | 'analise' | 'tst' | 'liberados' | 'liberados_pendencia' | 'cadastro' | 'encerrados';
 
@@ -167,6 +172,7 @@ export function Colaboradores() {
                   <td>{a.obra}</td>
                   <td>
                     <span className={`selo selo-${a.status}`}>{rotuloStatus[a.status]}</span>
+                    {a.bloqueado && <span className="selo selo-bloqueado">Bloqueado</span>}
                     {cadastro.has(a.colaborador_id) && <small className="sub texto-alerta">cadastro a corrigir</small>}
                   </td>
                   <td>
@@ -208,7 +214,7 @@ export function Colaboradores() {
   );
 }
 
-function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boolean; alocacao: AlocacaoResumo | null; aoFechar: () => void; aoMudar: () => Promise<void> }) {
+export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boolean; alocacao: AlocacaoResumo | null; aoFechar: () => void; aoMudar: () => Promise<void> }) {
   const [colab, setColab] = useState<Colaborador | null>(null);
   const [pend, setPend] = useState<Pendencia[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -220,6 +226,12 @@ function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boolean; a
   const [motivo, setMotivo] = useState('');
   const [devolucaoTst, setDevolucaoTst] = useState<{ motivo: string; em: string } | null>(null);
   const [excecoes, setExcecoes] = useState<Excecao[]>([]);
+  const [bloqueios, setBloqueios] = useState<Bloqueio[]>([]);
+  const [bloqueando, setBloqueando] = useState(false);
+  const [motivoBloqueio, setMotivoBloqueio] = useState('');
+  const [obras, setObras] = useState<ObraCadastro[]>([]);
+  const [novaObra, setNovaObra] = useState('');
+  const [alocadas, setAlocadas] = useState<Set<string>>(new Set());
 
   const id = alocacao?.alocacao_id;
   const colabId = alocacao?.colaborador_id;
@@ -235,8 +247,19 @@ function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boolean; a
     setMotivo('');
     setDevolucaoTst(null);
     setExcecoes([]);
+    setBloqueios([]);
+    setBloqueando(false);
+    setMotivoBloqueio('');
+    setNovaObra('');
     if (!id || !colabId) return;
     lerExcecoes(colabId).then(setExcecoes).catch(() => undefined);
+    lerBloqueios(colabId).then(setBloqueios).catch(() => undefined);
+    if (ehAdmin) {
+      lerObrasCadastro().then((o) => setObras(o.filter((x) => x.ativa))).catch(() => undefined);
+      lerAlocacoes()
+        .then((l) => setAlocadas(new Set(l.filter((a) => a.colaborador_id === colabId && a.status !== 'encerrado').map((a) => a.obra_id))))
+        .catch(() => undefined);
+    }
     if (ehAdmin) lerDevolucaoTst(id).then(setDevolucaoTst).catch(() => undefined);
     Promise.all([lerColaborador(colabId), lerPendencias(id)])
       .then(([c, p]) => {
@@ -257,6 +280,7 @@ function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boolean; a
       if (colabId) {
         setColab(await lerColaborador(colabId));
         setExcecoes(await lerExcecoes(colabId));
+        setBloqueios(await lerBloqueios(colabId));
       }
       if (id) setPend(await lerPendencias(id));
     } catch (e) {
@@ -269,6 +293,47 @@ function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boolean; a
   if (!alocacao) return <Dialogo aberto={false} titulo="" aoFechar={aoFechar}>{null}</Dialogo>;
 
   const travas = (pend ?? []).filter((p) => p.impeditivo && ['nao_enviado', 'em_analise', 'devolvido', 'vencido'].includes(p.situacao));
+  const bloqueado = colab?.bloqueado ?? alocacao.bloqueado;
+
+  async function verAnexo(tipo: string) {
+    setErro(null);
+    try {
+      const anexos = await lerAnexos(alocacao!.colaborador_id, tipo);
+      if (anexos.length === 0) {
+        setErro('Não há arquivo guardado para este documento (ainda não enviado ou já apagado do portal).');
+        return;
+      }
+      for (const a of anexos) await abrirArquivo(a.caminho);
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    }
+  }
+
+  // E-mail ao fornecedor sobre este colaborador, com o que falta.
+  async function emailFornecedor() {
+    setErro(null);
+    try {
+      const para = await lerEmailEmpresa(alocacao!.empresa_id);
+      const faltam = (pend ?? []).filter((p) => p.impeditivo && ['nao_enviado', 'devolvido', 'vencido'].includes(p.situacao));
+      const corpo = [
+        'Olá,',
+        '',
+        `Sobre o colaborador ${alocacao!.colaborador} (obra ${alocacao!.obra}):`,
+        '',
+        ...(faltam.length
+          ? ['Falta regularizar no Portal de Terceiros:', ...faltam.map((p) => `- ${p.documento}: ${rotuloSituacao[p.situacao].toLowerCase()}${p.situacao === 'devolvido' && p.motivo_devolucao ? ` (${p.motivo_devolucao})` : ''}`)]
+          : ['']),
+        '',
+        `Envie os documentos pelo portal: ${enderecoDoSite}meus-colaboradores`,
+        '',
+        'Atenciosamente,',
+      ].join('\n');
+      window.location.href = linkOutlook(para, `Colaborador ${alocacao!.colaborador} · ${alocacao!.obra}`, corpo);
+      if (!para) setOk('O e-mail abriu sem destinatário: a empresa não tem e-mail cadastrado.');
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    }
+  }
 
   return (
     <Dialogo aberto titulo={alocacao.colaborador} aoFechar={aoFechar} largura="larga">
@@ -284,6 +349,11 @@ function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boolean; a
           <div><dt>Integração</dt><dd>{alocacao.data_integracao ? data(alocacao.data_integracao) : 'Não registrada'}</dd></div>
         </dl>
 
+        {bloqueado && (
+          <p className="aviso aviso-erro">
+            <strong>Colaborador bloqueado{colab?.bloqueado_em ? ` desde ${data(colab.bloqueado_em)}` : ''}.</strong> {colab?.bloqueio_motivo ?? alocacao.bloqueio_motivo}
+          </p>
+        )}
         {ehAdmin && alocacao.status === 'em_analise' && devolucaoTst && (
           <p className="aviso aviso-alerta">
             <strong>Devolvido pelo TST em {data(devolucaoTst.em)}.</strong> {devolucaoTst.motivo}
@@ -384,7 +454,88 @@ function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boolean; a
           {colab && !editando && (
             <button type="button" className="botao botao-secundario" onClick={() => setEditando(true)}>Editar cadastro</button>
           )}
+          <button type="button" className="botao botao-secundario" disabled={!pend} onClick={emailFornecedor}>E-mail ao fornecedor</button>
         </div>
+        )}
+
+        {ehAdmin && colab?.situacao === 'ativo' && obras.some((o) => !alocadas.has(o.id)) && (
+          <form
+            className="em-linha"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const o = obras.find((x) => x.id === novaObra);
+              if (o) {
+                agir(async () => {
+                  await alocarComoAdmin(alocacao.colaborador_id, alocacao.empresa_id, o.id);
+                  setAlocadas((s) => new Set([...s, o.id]));
+                  setNovaObra('');
+                }, `${alocacao.colaborador} incluído na obra ${o.nome}. A alocação começa em cadastro.`);
+              }
+            }}
+          >
+            <label className="campo campo-compacto">
+              <span>Alocar em outra obra</span>
+              <select value={novaObra} onChange={(e) => setNovaObra(e.target.value)}>
+                <option value="">Escolha a obra</option>
+                {obras.filter((o) => !alocadas.has(o.id)).map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+              </select>
+            </label>
+            <button className="botao botao-secundario" type="submit" disabled={!novaObra || ocupado}>Alocar</button>
+          </form>
+        )}
+
+        {colab?.situacao === 'ativo' && (
+          <div className="caixa">
+            {!bloqueando ? (
+              <div className="barra-lista">
+                <span className="caixa-texto">
+                  {bloqueado ? 'Colaborador bloqueado: não é aprovado nem liberado em nenhuma obra.' : 'Bloqueio impede o colaborador em todas as obras, com motivo registrado.'}
+                </span>
+                <button type="button" className={bloqueado ? 'botao botao-secundario botao-pequeno' : 'botao botao-discreto botao-pequeno'} onClick={() => setBloqueando(true)}>
+                  {bloqueado ? 'Desbloquear' : 'Bloquear colaborador'}
+                </button>
+              </div>
+            ) : (
+              <form
+                className="formulario formulario-largo"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (motivoBloqueio.trim().length >= 5) {
+                    agir(async () => {
+                      await bloquearColaborador(alocacao.colaborador_id, !bloqueado, motivoBloqueio.trim());
+                      setBloqueando(false);
+                      setMotivoBloqueio('');
+                    }, bloqueado ? `${alocacao.colaborador} desbloqueado.` : `${alocacao.colaborador} bloqueado. O fornecedor vê o motivo no cadastro.`);
+                  }
+                }}
+              >
+                <label className="campo">
+                  <span>{bloqueado ? 'Motivo do desbloqueio' : 'Motivo do bloqueio'}</span>
+                  <textarea
+                    rows={2}
+                    value={motivoBloqueio}
+                    onChange={(e) => setMotivoBloqueio(e.target.value)}
+                    placeholder={bloqueado ? 'Ex.: reciclagem da NR-35 apresentada' : 'Ex.: flagrado sem cinto de segurança em altura em 05/11'}
+                  />
+                  <small className="dica">Fica no histórico do colaborador. O fornecedor vê o motivo.</small>
+                </label>
+                <div className="linha-botoes">
+                  <button className="botao" type="submit" disabled={motivoBloqueio.trim().length < 5 || ocupado}>{bloqueado ? 'Desbloquear' : 'Bloquear'}</button>
+                  <button className="botao botao-discreto" type="button" onClick={() => setBloqueando(false)}>Cancelar</button>
+                </div>
+              </form>
+            )}
+            {bloqueios.length > 0 && (
+              <ul className="historico-bloqueio">
+                {bloqueios.map((b) => (
+                  <li key={b.id}>
+                    <strong>{b.acao === 'bloqueio' ? 'Bloqueado' : 'Desbloqueado'}</strong> em {data(b.feito_em)}
+                    {b.feito_por_nome ? ` por ${b.feito_por_nome}` : ''}: {b.motivo}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
         {ehAdmin && alocacao.status === 'em_analise' && travas.length > 0 && (
           <p className="dica">Para aprovar, todos os documentos impeditivos precisam estar aprovados e em dia. Faltam {travas.length}.</p>
@@ -415,6 +566,7 @@ function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boolean; a
                 <th scope="col">Documento</th>
                 <th scope="col">Situação</th>
                 <th scope="col">Vence em</th>
+                <th scope="col"><span className="sr">Anexo</span></th>
               </tr>
             </thead>
             <tbody>
@@ -430,6 +582,11 @@ function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boolean; a
                     {p.status_envio_aberto === 'em_analise' && p.situacao !== 'em_analise' && <small className="sub">renovação em análise</small>}
                   </td>
                   <td>{p.vencimento ? data(p.vencimento) : <span className="sub">{p.situacao === 'dispensado' ? 'Dispensado' : p.situacao === 'nao_enviado' ? '' : 'Não vence'}</span>}</td>
+                  <td className="acoes">
+                    {(ehAdmin || ehNr(p.tipo_codigo)) && p.grupo === 'colaborador' && !['nao_enviado', 'dispensado'].includes(p.situacao) && (
+                      <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => verAnexo(p.tipo_codigo)}>Ver anexo</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

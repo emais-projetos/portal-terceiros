@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useSessao } from '../lib/sessao';
 import { lerAlocacoesAbertas, resumirPorObra, type ResumoObra } from '../lib/consultas';
@@ -8,6 +8,8 @@ import { Farol, LegendaFarois, LinhaFarol, ResumoFarois, SeloFrente } from '../c
 import { mensagemDeErro } from '../lib/supabase';
 import { Topo } from '../componentes/Topo';
 import { Carregando } from '../componentes/Carregando';
+import { Dialogo } from '../componentes/Dialogo';
+import { criarObra, lerObrasCadastro, renomearObra, type ObraCadastro } from '../lib/admin';
 import { PainelObra } from './PainelObra';
 import { MinhasObras } from './fornecedor/MinhasObras';
 
@@ -37,6 +39,8 @@ function InicioPadrao() {
   const [obras, setObras] = useState<Obra[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aberta, setAberta] = useState<string | null>(null);
+  const [gestao, setGestao] = useState(false);
+  const [versao, setVersao] = useState(0);
 
   useEffect(() => {
     let cancelado = false;
@@ -67,7 +71,7 @@ function InicioPadrao() {
     return () => {
       cancelado = true;
     };
-  }, []);
+  }, [versao]);
 
   const empresas = useMemo(() => (obras ?? []).flatMap((o) => o.farois), [obras]);
 
@@ -75,8 +79,11 @@ function InicioPadrao() {
     <div className="pagina">
       <Topo />
       <main className="conteudo">
-        <section className="cabecalho">
-          <h1>Situação das obras</h1>
+        <section className="cabecalho cabecalho-com-acao">
+          <div className="barra-lista">
+            <h1>Situação das obras</h1>
+            <button type="button" className="botao botao-secundario" onClick={() => setGestao(true)}>Criar ou renomear obra</button>
+          </div>
           <p className="apoio">Cada obra com os faróis de documentos, integração e medição das empresas que trabalham nela. Os números do topo contam as empresas em cada obra. Clique na obra para ver as empresas.</p>
         </section>
 
@@ -135,6 +142,7 @@ function InicioPadrao() {
             <p className="dica">Bloqueios primeiro, depois pendências, depois as obras em dia. O farol da obra é o pior entre as empresas dela.</p>
           </>
         )}
+        <GestaoObras aberto={gestao} aoFechar={() => setGestao(false)} aoMudar={() => setVersao((v) => v + 1)} />
       </main>
     </div>
   );
@@ -157,4 +165,111 @@ function mancheteDaObra(o: Obra): string {
   if (c.amarelo) partes.push(`${plural(c.amarelo, 'empresa', 'empresas')} com pendência`);
   if (c.verde) partes.push(`${plural(c.verde, 'empresa', 'empresas')} em dia`);
   return partes.length ? partes.join(', ') : 'Nenhuma empresa na obra';
+}
+
+// Cadastro de obras: criar uma nova e corrigir o nome das existentes.
+function GestaoObras({ aberto, aoFechar, aoMudar }: { aberto: boolean; aoFechar: () => void; aoMudar: () => void }) {
+  const [obras, setObras] = useState<ObraCadastro[] | null>(null);
+  const [nova, setNova] = useState('');
+  const [editando, setEditando] = useState<string | null>(null);
+  const [nome, setNome] = useState('');
+  const [erro, setErro] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+
+  async function carregar() {
+    try {
+      setObras(await lerObrasCadastro());
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    }
+  }
+
+  useEffect(() => {
+    if (!aberto) return;
+    setErro(null);
+    setOk(null);
+    setNova('');
+    setEditando(null);
+    carregar();
+  }, [aberto]);
+
+  async function agir(acao: () => Promise<void>, sucesso: string) {
+    setErro(null);
+    setOk(null);
+    setOcupado(true);
+    try {
+      await acao();
+      setOk(sucesso);
+      await carregar();
+      aoMudar();
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  function criar(e: FormEvent) {
+    e.preventDefault();
+    const n = nova.trim();
+    if (n.length < 3) return;
+    agir(async () => {
+      await criarObra(n);
+      setNova('');
+    }, `Obra ${n.toUpperCase()} criada. Para os fornecedores usarem, aloque os colaboradores nela (Colaboradores, "Alocar em outra obra").`);
+  }
+
+  return (
+    <Dialogo aberto={aberto} titulo="Obras" aoFechar={aoFechar} largura="larga">
+      <div className="detalhe">
+        {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
+        {ok && <p className="aviso aviso-ok" role="status">{ok}</p>}
+        <form className="em-linha" onSubmit={criar}>
+          <label className="campo">
+            <span>Nova obra</span>
+            <input value={nova} onChange={(e) => setNova(e.target.value)} placeholder="Ex.: ECIVITAS JUNDIAÍ" />
+          </label>
+          <button className="botao" type="submit" disabled={nova.trim().length < 3 || ocupado}>Criar obra</button>
+        </form>
+
+        <h3 className="detalhe-subtitulo">Obras cadastradas</h3>
+        {!obras && <Carregando />}
+        {obras && (
+          <ul className="lista-simples">
+            {obras.map((o) => (
+              <li key={o.id}>
+                {editando === o.id ? (
+                  <form
+                    className="em-linha"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (nome.trim().length >= 3) agir(async () => { await renomearObra(o.id, nome); setEditando(null); }, `Obra renomeada para ${nome.trim().toUpperCase()}.`);
+                    }}
+                  >
+                    <label className="campo campo-compacto">
+                      <span className="sr">Novo nome</span>
+                      <input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus />
+                    </label>
+                    <button className="botao botao-pequeno" type="submit" disabled={nome.trim().length < 3 || ocupado}>Salvar</button>
+                    <button className="botao botao-discreto botao-pequeno" type="button" onClick={() => setEditando(null)}>Cancelar</button>
+                  </form>
+                ) : (
+                  <>
+                    <span>
+                      <strong>{o.nome}</strong>
+                      {!o.ativa && <small className="sub">inativa</small>}
+                    </span>
+                    <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => { setEditando(o.id); setNome(o.nome); }}>
+                      Renomear
+                    </button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Dialogo>
+  );
 }

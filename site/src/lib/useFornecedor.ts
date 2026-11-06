@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { mensagemDeErro } from './supabase';
 import { lerAlocacoes, type AlocacaoResumo } from './admin';
 import {
-  lerMeusColaboradores, lerMinhasEmpresasComObras, lerMinhasPendencias, lerTipos,
-  type MeuColaborador, type MinhaEmpresa, type PendenciaFornecedor, type TipoDocumento,
+  lerDocumentosIncluidos, lerMeusColaboradores, lerMinhasEmpresasComObras, lerMinhasPendencias, lerRescisao, lerTipos,
+  type DocumentoIncluido, type MeuColaborador, type MinhaEmpresa, type PendenciaFornecedor, type PendenciaRescisao, type TipoDocumento,
 } from './fornecedor';
 
 export type DadosFornecedor = {
@@ -12,6 +12,8 @@ export type DadosFornecedor = {
   colaboradores: MeuColaborador[];
   alocacoes: AlocacaoResumo[];
   pendencias: PendenciaFornecedor[];
+  rescisao: PendenciaRescisao[];
+  incluidos: DocumentoIncluido[];
 };
 
 // Carrega tudo o que as telas do fornecedor usam. As regras do banco já limitam às empresas do acesso.
@@ -21,14 +23,16 @@ export function useFornecedor() {
 
   const recarregar = useCallback(async () => {
     try {
-      const [empresas, tipos, colaboradores, alocacoes, pendencias] = await Promise.all([
+      const [empresas, tipos, colaboradores, alocacoes, pendencias, rescisao, incluidos] = await Promise.all([
         lerMinhasEmpresasComObras(),
         lerTipos(),
         lerMeusColaboradores(),
         lerAlocacoes(),
         lerMinhasPendencias(),
+        lerRescisao(),
+        lerDocumentosIncluidos(),
       ]);
-      setDados({ empresas, tipos, colaboradores, alocacoes, pendencias });
+      setDados({ empresas, tipos, colaboradores, alocacoes, pendencias, rescisao, incluidos });
       setErro(null);
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
@@ -66,6 +70,13 @@ export function podeEnviarParaAnalise(a: AlocacaoResumo): boolean {
 }
 
 // Um documento de colaborador aparece uma vez, mesmo que o colaborador esteja em mais de uma obra.
+// Nome do documento com a descrição de "Outro documento" (ex.: "Outro documento: treinamento de escavadeira").
+export function nomeDoDocumento(p: { tipo_codigo: string; documento: string; colaborador_id: string }, incluidos: DocumentoIncluido[]): string {
+  if (p.tipo_codigo !== 'outro_documento') return p.documento;
+  const x = incluidos.find((i) => i.colaborador_id === p.colaborador_id && i.tipo_codigo === p.tipo_codigo);
+  return x?.motivo ? `${p.documento}: ${x.motivo}` : p.documento;
+}
+
 export function documentosDoColaborador(colaboradorId: string, pendencias: PendenciaFornecedor[]): PendenciaFornecedor[] {
   const porTipo = new Map<string, PendenciaFornecedor>();
   for (const p of pendencias) {

@@ -38,6 +38,8 @@ Portal do Grupo Emais para os fornecedores das obras cadastrarem colaboradores e
 | `20261021_017_treinamentos_por_colaborador.sql` | Exceção da NR por colaborador: o administrativo torna uma NR obrigatória ou não obrigatória fora da regra da função, com motivo registrado no histórico |
 | `20261021_018_colaborador_datas.sql` | Data de admissão (registro) e data de nascimento no cadastro do colaborador, com conferência das datas |
 | `20261022_019_painel_farois.sql` | Painel com faróis também para o fornecedor (só as próprias empresas) e pendências com o grupo do documento (empresa ou colaborador) |
+| `20261023_020_aceite_lgpd_medicao.sql` | Aceite de LGPD também no envio dos arquivos da medição, com data e hora gravadas |
+| `20261106_021_ajustes_cadastro.sql` | Idade mínima de 18 anos, correção do cadastro pelo fornecedor até o envio, "Outro documento" e NR dispensável com justificativa, demissão com rescisórios, bloqueio com histórico, subcontratada pelo fornecedor, contrato entre as partes obrigatório, "PGR" e anexo das NRs para o TST |
 
 Os arquivos usados para carregar as planilhas `CONTROLE_DE_INTEGRAÇÃO` e de medição mensal não estão neste repositório, porque têm CPFs. O repositório é público: nenhum dado pessoal, senha ou chave secreta entra aqui.
 
@@ -160,7 +162,19 @@ O banco recusa o envio sem o aceite e guarda a data e hora de cada um (`aceite_l
 
 ## Cadastro do colaborador
 
-Nome, CPF, função, data de admissão (registro) e data de nascimento. As duas datas foram carregadas das colunas DATA DE REGISTRO e DATA DE NASCIMENTO da planilha `CONTROLE_DE_INTEGRAÇÃO` (a carga fica fora do repositório, porque tem dados pessoais). No cadastro de um colaborador novo o fornecedor é obrigado a informar as duas; nos antigos sem data, o detalhe do colaborador pede para completar. O administrativo também corrige em **Editar cadastro**. O banco recusa nascimento com menos de 14 anos, admissão antes do nascimento ou mais de 90 dias à frente. O Painel da obra (engenharia) não mostra essas datas.
+Nome, CPF, função, data de admissão (registro) e data de nascimento. As duas datas foram carregadas das colunas DATA DE REGISTRO e DATA DE NASCIMENTO da planilha `CONTROLE_DE_INTEGRAÇÃO` (a carga fica fora do repositório, porque tem dados pessoais). No cadastro de um colaborador novo o fornecedor é obrigado a informar as duas; nos antigos sem data, o detalhe do colaborador pede para completar. O administrativo também corrige em **Editar cadastro**. O banco recusa colaborador menor de 18 anos, admissão antes do nascimento ou mais de 90 dias à frente. O Painel da obra (engenharia) não mostra essas datas.
+
+- **Função:** o fornecedor escolhe da lista ou usa "+ Nova função"; a função nova entra como texto e a Emais confere quais NRs ela exige.
+- **Correção pelo fornecedor:** nome, CPF, empresa e função, em **Corrigir cadastro**, até alguma obra do colaborador ser enviada para análise. Depois disso, só o administrativo corrige (Editar cadastro, em Colaboradores ou pela Análise).
+- **Outro documento:** o fornecedor inclui no colaborador uma NR que a função não pede ou um "Outro documento" com a descrição (ex.: treinamento de máquina). O documento passa a ser exigido.
+- **Dispensa de NR:** a NR pedida pela função pode ser dispensada pelo fornecedor com justificativa; a dispensa vai para a análise da Emais, que vê a justificativa na Análise de documentos.
+- **Demissão:** "Demitir ou informar desligamento" pede a data. Demitido encerra as obras e deixa pendentes no cadastro o TRCT assinado, a guia e o comprovante do FGTS rescisório, o ASO demissional e o comprovante de pagamento das verbas rescisórias (também em "O que falta"). Desistência antes de começar não pede rescisórios.
+- **Bloqueio:** administrativo e TST bloqueiam e desbloqueiam no detalhe do colaborador, sempre com motivo; o histórico fica no cadastro. O bloqueado não é aprovado nem liberado em nenhuma obra, aparece em vermelho nos faróis e o fornecedor vê o motivo.
+- **Fechar o cadastro:** clicar fora da janela não fecha mais (perdia o que foi digitado). Ao fechar um cadastro ainda não enviado, o portal avisa que ele só vai para análise com "Enviar para análise".
+
+## Subcontratada
+
+Em **Documentos da empresa**, o fornecedor usa **Inserir subcontratada** (CNPJ, razão social, e-mail e obras). A subcontratada fica no mesmo login, com os documentos de empresa e os colaboradores dela. O **contrato de serviço entre as partes** é obrigatório para liberar os colaboradores de subcontratada.
 
 ## Treinamentos (NR) por colaborador
 

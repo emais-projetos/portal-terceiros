@@ -106,14 +106,20 @@ export function EnvioDocumento({ pedido, aoFechar, aoEnviar }: { pedido: PedidoD
         {t.pode_dispensar && (
           <label className="opcao">
             <input type="checkbox" checked={dispensado} onChange={(e) => setDispensado(e.target.checked)} />
-            <span>Não se aplica {pedido.colaborador ? 'a este colaborador' : 'a esta empresa'}</span>
+            <span>{/^nr\d+$/.test(t.codigo) ? 'Dispensar: o serviço deste colaborador não exige esta NR' : `Não se aplica ${pedido.colaborador ? 'a este colaborador' : 'a esta empresa'}`}</span>
           </label>
         )}
 
         {dispensado ? (
           <label className="campo">
-            <span>Por que não se aplica</span>
-            <textarea rows={2} value={motivoDispensa} onChange={(e) => setMotivoDispensa(e.target.value)} placeholder="Ex.: sócio da empresa, sem registro em carteira" />
+            <span>{/^nr\d+$/.test(t.codigo) ? 'Justificativa da dispensa' : 'Por que não se aplica'}</span>
+            <textarea
+              rows={2}
+              value={motivoDispensa}
+              onChange={(e) => setMotivoDispensa(e.target.value)}
+              placeholder={/^nr\d+$/.test(t.codigo) ? 'Ex.: o colaborador não trabalha em altura nesta obra' : 'Ex.: sócio da empresa, sem registro em carteira'}
+            />
+            <small className="dica">A Emais confere a justificativa antes de aceitar a dispensa.</small>
           </label>
         ) : (
           <>
@@ -178,7 +184,7 @@ export function EnvioDocumento({ pedido, aoFechar, aoEnviar }: { pedido: PedidoD
         <TermoLgpd
           marcado={aceite}
           aoMudar={setAceite}
-          observacao={t.codigo === 'aso' ? 'O ASO contém dado de saúde e fica restrito ao administrativo da Emais.' : undefined}
+          observacao={t.codigo === 'aso' || t.codigo === 'aso_demissional' ? 'O ASO contém dado de saúde e fica restrito ao administrativo da Emais.' : undefined}
         />
 
         {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}

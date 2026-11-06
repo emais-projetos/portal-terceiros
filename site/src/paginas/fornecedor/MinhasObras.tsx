@@ -67,11 +67,11 @@ export function MinhasObras() {
           <div>
             <Farol cor="vermelho" grande />
             <span>
-              <strong>Pagamento retido {obrasRetidas === 1 ? 'em 1 obra' : `em ${obrasRetidas} obras`}</strong>
+              <strong>Regularize a mensal trabalhista {obrasRetidas === 1 ? 'em 1 obra' : `em ${obrasRetidas} obras`}</strong>
               {meses.length === 1
                 ? `A medição de ${mesPorExtenso(meses[0])} não foi aprovada no prazo.`
                 : `As medições de ${listaMeses(meses, true)} não foram aprovadas no prazo.`}{' '}
-              O pagamento fica retido até os documentos serem corrigidos aqui no portal. Não envie documentos por e-mail.
+              A falta da regularização poderá ocasionar o bloqueio do pagamento. Corrija os documentos aqui no portal; não envie documentos por e-mail.
             </span>
           </div>
           {primeiraRetida && (
@@ -95,7 +95,7 @@ export function MinhasObras() {
                   geral={l.geral}
                   titulo={l.obra}
                   subtitulo={variasEmpresas ? l.empresa : undefined}
-                  manchete={l.manchete}
+                  manchete={l.manchete.replace(/pagamento retido/i, 'Mensal trabalhista a regularizar')}
                   doc={l.doc.cor}
                   int={l.int.cor}
                   med={l.med.cor}

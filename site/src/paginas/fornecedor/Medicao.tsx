@@ -75,7 +75,7 @@ function ListaFornecedor({ aoAbrir }: { aoAbrir: (id: string) => void }) {
 
   return (
     <Pagina
-      titulo="Medição mensal"
+      titulo="Mensal trabalhista"
       apoio="Todo mês, envie os documentos do F.48 de cada obra para a Emais conferir os pagamentos dos seus colaboradores. A entrega é até o dia 25 do mês seguinte ao trabalhado."
     >
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
@@ -87,7 +87,7 @@ function ListaFornecedor({ aoAbrir }: { aoAbrir: (id: string) => void }) {
 
       {empresas && opcoes.length > 0 && (
         <section className="bloco bloco-destaque">
-          <h2 className="bloco-titulo">Enviar a medição de um mês</h2>
+          <h2 className="bloco-titulo">Enviar a mensal trabalhista de um mês</h2>
           <form className="em-linha" onSubmit={abrir}>
             <label className="campo">
               <span>Obra</span>
@@ -115,7 +115,7 @@ function ListaFornecedor({ aoAbrir }: { aoAbrir: (id: string) => void }) {
 
       {medicoes && medicoes.length > 0 && (
         <section className="bloco">
-          <h2 className="bloco-titulo">Suas medições</h2>
+          <h2 className="bloco-titulo">Seus envios mensais</h2>
           <div className="tabela-rolagem">
             <table className="tabela tabela-lista">
               <thead>
@@ -138,7 +138,7 @@ function ListaFornecedor({ aoAbrir }: { aoAbrir: (id: string) => void }) {
                     <td>{m.obra ?? <span className="sub">Controle anterior, sem obra</span>}</td>
                     <td>
                       {data(m.prazo)}
-                      {m.retida && <small className="sub texto-erro">pagamento retido</small>}
+                      {m.retida && <small className="sub texto-erro">regularizar: risco de bloqueio do pagamento</small>}
                       {m.em_atraso && <small className="sub texto-alerta">em atraso: regularize até {data(limiteDe(m))}</small>}
                     </td>
                     <td><span className={`selo ${seloMedicao[m.status]}`}>{rotuloStatusMedicao[m.status]}</span></td>
@@ -218,7 +218,7 @@ function DetalheFornecedor({ id, aoVoltar }: { id: string; aoVoltar: () => void 
 
   if (!detalhe || !tipos) {
     return (
-      <Pagina titulo="Medição mensal">
+      <Pagina titulo="Mensal trabalhista">
         {erro ? <Mensagem tipo="erro">{erro}</Mensagem> : <Carregando />}
       </Pagina>
     );
@@ -242,7 +242,7 @@ function DetalheFornecedor({ id, aoVoltar }: { id: string; aoVoltar: () => void 
 
   return (
     <Pagina
-      titulo={`Medição de ${mesPorExtenso(m.competencia)}`}
+      titulo={`Mensal trabalhista de ${mesPorExtenso(m.competencia)}`}
       apoio={
         <>
           {m.empresa}
@@ -261,68 +261,13 @@ function DetalheFornecedor({ id, aoVoltar }: { id: string; aoVoltar: () => void 
 
       <div className={`aviso ${m.status === 'aprovada' ? 'aviso-ok' : m.status === 'pendente_fornecedor' || m.retida || m.em_atraso ? 'aviso-alerta' : 'aviso-ok'}`}>
         <span className={`selo ${seloMedicao[m.status]}`}>{rotuloStatusMedicao[m.status]}</span>{' '}
-        {m.status === 'aberta' && 'Envie os documentos, confira a lista de colaboradores e, no fim da página, envie para a conferência.'}
+        {m.status === 'aberta' && 'Confira a lista de colaboradores, envie os documentos e, no fim da página, envie para a conferência.'}
         {m.status === 'em_analise' && `Enviada em ${data(m.enviada_em)}. A Emais está conferindo; se faltar algo, a medição volta para você com o motivo.`}
         {m.status === 'pendente_fornecedor' && 'A Emais encontrou pendências. Corrija o que está marcado como devolvido ou pendente e envie de novo.'}
         {m.status === 'aprovada' && `Conferida${m.ultima_analise_em ? ` em ${data(m.ultima_analise_em)}` : ''}. Não há nada a fazer.`}
-        {m.em_atraso && editavel && <strong> O prazo do dia {data(m.prazo).slice(0, 5)} venceu. Regularize até {data(limiteDe(m))} para não ter o pagamento retido.</strong>}
-        {m.retida && m.status !== 'aprovada' && <strong> O pagamento está retido até a aprovação desta medição.</strong>}
+        {m.em_atraso && editavel && <strong> O prazo do dia {data(m.prazo).slice(0, 5)} venceu. Regularize até {data(limiteDe(m))}: a falta da regularização poderá ocasionar o bloqueio do pagamento.</strong>}
+        {m.retida && m.status !== 'aprovada' && <strong> Prazo de regularização encerrado. A falta da regularização poderá ocasionar o bloqueio do pagamento.</strong>}
       </div>
-
-      {grupos.map((g) => (
-        <section key={g.titulo} className="bloco">
-          <div className="barra-lista">
-            <h2 className="bloco-titulo">{g.titulo}</h2>
-            <small className="dica">{g.dica}</small>
-          </div>
-          <ul className="lista-pendencias">
-            {g.tipos.map((t) => {
-              const item = itemPorTipo.get(t.codigo);
-              if (!item) return null;
-              const arquivos = arquivosAtuais(item);
-              const podeMexer = editavel && item.status !== 'aprovado';
-              return (
-                <li key={t.codigo}>
-                  <div className="item-pendencia">
-                    <div>
-                      <strong>
-                        {t.item}. {t.nome}
-                      </strong>
-                      {arquivos.length > 0 && item.status !== 'nao_aplica' && !item.justificativa && (
-                        <span className="sub">
-                          {arquivos.length === 1 ? arquivos[0].nome_original : `${arquivos.length} arquivos`}, enviado em {data(item.enviado_em)}
-                        </span>
-                      )}
-                      {item.justificativa && <span className="sub">Não se aplica: {item.justificativa}</span>}
-                      {item.status === 'devolvido' && item.motivo_devolucao && <span className="sub texto-erro">Motivo da devolução: {item.motivo_devolucao}</span>}
-                      {!t.quando_aplicavel ? null : item.status === 'nao_enviado' && <span className="sub">Se não houve no mês, marque "não se aplica".</span>}
-                    </div>
-                    <span className={`selo ${seloItem[item.status]}`}>{rotuloStatusItem[item.status]}</span>
-                    {podeMexer ? (
-                      <span className="linha-botoes">
-                        <button
-                          type="button"
-                          className={item.status === 'em_analise' ? 'botao botao-secundario botao-pequeno' : 'botao botao-pequeno'}
-                          onClick={() => setPedido({ medicao: m, item, tipo: t, modo: 'arquivo' })}
-                        >
-                          {item.status === 'nao_enviado' ? 'Enviar' : item.status === 'em_analise' ? 'Trocar arquivo' : 'Enviar de novo'}
-                        </button>
-                        {t.quando_aplicavel && item.status !== 'em_analise' && (
-                          <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => setPedido({ medicao: m, item, tipo: t, modo: 'nao_aplica' })}>
-                            Não se aplica
-                          </button>
-                        )}
-                      </span>
-                    ) : (
-                      <span />
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
 
       <section className="bloco">
         <div className="barra-lista">
@@ -436,6 +381,61 @@ function DetalheFornecedor({ id, aoVoltar }: { id: string; aoVoltar: () => void 
           </p>
         )}
       </section>
+
+      {grupos.map((g) => (
+        <section key={g.titulo} className="bloco">
+          <div className="barra-lista">
+            <h2 className="bloco-titulo">{g.titulo}</h2>
+            <small className="dica">{g.dica}</small>
+          </div>
+          <ul className="lista-pendencias">
+            {g.tipos.map((t) => {
+              const item = itemPorTipo.get(t.codigo);
+              if (!item) return null;
+              const arquivos = arquivosAtuais(item);
+              const podeMexer = editavel && item.status !== 'aprovado';
+              return (
+                <li key={t.codigo}>
+                  <div className="item-pendencia">
+                    <div>
+                      <strong>
+                        {t.item}. {t.nome}
+                      </strong>
+                      {arquivos.length > 0 && item.status !== 'nao_aplica' && !item.justificativa && (
+                        <span className="sub">
+                          {arquivos.length === 1 ? arquivos[0].nome_original : `${arquivos.length} arquivos`}, enviado em {data(item.enviado_em)}
+                        </span>
+                      )}
+                      {item.justificativa && <span className="sub">Não se aplica: {item.justificativa}</span>}
+                      {item.status === 'devolvido' && item.motivo_devolucao && <span className="sub texto-erro">Motivo da devolução: {item.motivo_devolucao}</span>}
+                      {!t.quando_aplicavel ? null : item.status === 'nao_enviado' && <span className="sub">Se não houve no mês, marque "não se aplica".</span>}
+                    </div>
+                    <span className={`selo ${seloItem[item.status]}`}>{rotuloStatusItem[item.status]}</span>
+                    {podeMexer ? (
+                      <span className="linha-botoes">
+                        <button
+                          type="button"
+                          className={item.status === 'em_analise' ? 'botao botao-secundario botao-pequeno' : 'botao botao-pequeno'}
+                          onClick={() => setPedido({ medicao: m, item, tipo: t, modo: 'arquivo' })}
+                        >
+                          {item.status === 'nao_enviado' ? 'Enviar' : item.status === 'em_analise' ? 'Trocar arquivo' : 'Enviar de novo'}
+                        </button>
+                        {t.quando_aplicavel && item.status !== 'em_analise' && (
+                          <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => setPedido({ medicao: m, item, tipo: t, modo: 'nao_aplica' })}>
+                            Não se aplica
+                          </button>
+                        )}
+                      </span>
+                    ) : (
+                      <span />
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
 
       {editavel && (
         <section className="bloco zona-final">

@@ -709,6 +709,7 @@ span.sub {
 }
 
 .selo-pendente_fornecedor,
+.selo-bloqueado,
 .selo-em_cadastro,
 .selo-doc-nao_enviado,
 .selo-doc-devolvido,
@@ -2344,4 +2345,21 @@ button.celula:hover {
 
 .termo-lgpd .opcao-termo {
   line-height: 1.5;
+}
+
+/* Ajustes de 06/11/2026 */
+.opcoes-linha {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+
+.historico-bloqueio {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
 }

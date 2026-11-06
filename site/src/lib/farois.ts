@@ -110,6 +110,18 @@ function documentos(colabs: ColaboradorObra[]) {
 
   const itens: string[] = [];
   const tarefas: Tarefa[] = [];
+  // Bloqueado pela Emais: não entra na obra até ser desbloqueado.
+  const bloqueados = colabs.filter((c) => c.bloqueado);
+  if (bloqueados.length) {
+    itens.push(`${plural(bloqueados.length, 'colaborador bloqueado', 'colaboradores bloqueados')} pela Emais: ${bloqueados.map((c) => `${c.colaborador}${c.bloqueio_motivo ? ` (${c.bloqueio_motivo})` : ''}`).join('; ')}.`);
+    tarefas.push({
+      cor: 'vermelho',
+      titulo: `Regularizar ${plural(bloqueados.length, 'colaborador bloqueado', 'colaboradores bloqueados')}`,
+      detalhe: `Bloqueado pela Emais: ${bloqueados.map((c) => `${c.colaborador}${c.bloqueio_motivo ? `, ${c.bloqueio_motivo}` : ''}`).join('; ')}. Não entra na obra até ser desbloqueado.`,
+      acao: 'colaboradores',
+      rotulo: 'Ver colaboradores',
+    });
+  }
   if (comFalta.length) {
     itens.push(`${plural(comFalta.length, 'liberado trabalhando', 'liberados trabalhando')} com documento obrigatório faltando ou vencido: ${agruparFaltas(comFalta)}.`);
     tarefas.push({
@@ -161,10 +173,10 @@ function documentos(colabs: ColaboradorObra[]) {
   if (naEmais) itens.push(`${plural(naEmais, 'colaborador', 'colaboradores')} em análise na Emais.`);
   if (noTst) itens.push(`${plural(noTst, 'colaborador aprovado', 'colaboradores aprovados')} pela Emais, aguardando o TST.`);
 
-  const vermelho = comFalta.length > 0 || (daEmpresa.size > 0 && lib.length > 0);
+  const vermelho = comFalta.length > 0 || bloqueados.length > 0 || (daEmpresa.size > 0 && lib.length > 0);
   const amarelo = daEmpresa.size > 0 || colabVencendo > 0 || empresaVence.size > 0 || comFornecedor + naEmais + noTst > 0;
   const cor: Cor = colabs.length === 0 ? 'cinza' : vermelho ? 'vermelho' : amarelo ? 'amarelo' : 'verde';
-  return { frente: { cor, itens: itens.length ? itens : ['Nenhum colaborador na obra.'] }, tarefas, comFalta: comFalta.length, aguardando: comFornecedor + naEmais + noTst, noTst };
+  return { frente: { cor, itens: itens.length ? itens : ['Nenhum colaborador na obra.'] }, tarefas, comFalta: comFalta.length, bloqueados: bloqueados.length, aguardando: comFornecedor + naEmais + noTst, noTst };
 }
 
 function integracao(colabs: ColaboradorObra[]) {
@@ -219,7 +231,7 @@ function medicao(medicoes: MedicaoObra[], temLiberado: boolean, hoje: string) {
     tarefas.push({
       cor: 'vermelho',
       titulo: retidas.length === 1 ? `Corrigir a medição de ${mesPorExtenso(ultima.competencia)}` : `Corrigir as medições retidas (${listaMeses(retidas.map((m) => m.competencia).sort())})`,
-      detalhe: `${mesNome(ultima.competencia)} não aprovado até ${data(limite(ultima))}: pagamento retido até a correção.${ultima.itens_pendentes.length && ultima.itens_pendentes.length < 12 ? ` Falta: ${ultima.itens_pendentes.join('; ')}.` : ''}`,
+      detalhe: `${mesNome(ultima.competencia)} não aprovado até ${data(limite(ultima))}. A falta da regularização poderá ocasionar o bloqueio do pagamento.${ultima.itens_pendentes.length && ultima.itens_pendentes.length < 12 ? ` Falta: ${ultima.itens_pendentes.join('; ')}.` : ''}`,
       acao: 'medicao',
       rotulo: retidas.length === 1 ? 'Abrir medição' : `Abrir ${mesPorExtenso(ultima.competencia).split(' ')[0]}`,
       medicaoId: ultima.id,
@@ -232,7 +244,7 @@ function medicao(medicoes: MedicaoObra[], temLiberado: boolean, hoje: string) {
     else if (pg.acao === 'reter') {
       cor = 'vermelho';
       itens.push(`${nome} não enviado até ${data(doAtual?.tolerancia ?? '')}: pagamento retido.`);
-      tarefas.push({ cor: 'vermelho', titulo: `Enviar a medição de ${mesPorExtenso(atual)}`, detalhe: 'Passou da tolerância: o pagamento fica retido até a medição ser aprovada.', acao: 'medicao', rotulo: 'Abrir medição', medicaoId: doAtual?.id });
+      tarefas.push({ cor: 'vermelho', titulo: `Enviar a medição de ${mesPorExtenso(atual)}`, detalhe: 'Passou da tolerância. A falta da regularização poderá ocasionar o bloqueio do pagamento.', acao: 'medicao', rotulo: 'Abrir medição', medicaoId: doAtual?.id });
     } else if (doAtual?.status === 'pendente_fornecedor') {
       cor = pior(cor, 'amarelo');
       const falta = doAtual.itens_pendentes.length && doAtual.itens_pendentes.length < 12 ? ` Falta: ${doAtual.itens_pendentes.join('; ')}.` : '';
@@ -263,8 +275,9 @@ export function farolDaEmpresa(empresaId: string, empresa: string, colabs: Colab
   // Manchete: primeiro o que bloqueia, depois o que está pendente.
   const partes: string[] = [];
   if (m.frente.cor === 'vermelho') partes.push(m.retidas.length ? `Pagamento retido (${listaMeses([...m.retidas].sort())})` : 'Pagamento retido');
+  if (d.bloqueados) partes.push(`${plural(d.bloqueados, 'colaborador bloqueado', 'colaboradores bloqueados')}`);
   if (d.comFalta) partes.push(`${plural(d.comFalta, 'liberado', 'liberados')} com documento faltando`);
-  if (d.frente.cor === 'vermelho' && !d.comFalta) partes.push('Documento da empresa faltando');
+  if (d.frente.cor === 'vermelho' && !d.comFalta && !d.bloqueados) partes.push('Documento da empresa faltando');
   if (!partes.length) {
     if (m.frente.cor === 'amarelo') partes.push('Medição do mês pendente');
     if (d.aguardando) partes.push(`${plural(d.aguardando, 'colaborador aguardando', 'colaboradores aguardando')} liberação`);

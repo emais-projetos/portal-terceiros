@@ -29,8 +29,9 @@ export function diasAte(isoData: string): number {
 export function erroDatasColaborador(admissao: string, nascimento: string): string | null {
   const hoje = hojeIso();
   const [a, m, d] = hoje.split('-').map(Number);
-  const limiteNascimento = `${a - 14}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  if (nascimento && (nascimento < '1930-01-01' || nascimento > limiteNascimento)) return 'Data de nascimento inválida: confira o ano.';
+  const limiteNascimento = `${a - 18}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  if (nascimento && nascimento < '1930-01-01') return 'Data de nascimento inválida: confira o ano.';
+  if (nascimento && nascimento > limiteNascimento) return 'Colaborador menor de 18 anos não pode ser cadastrado.';
   if (admissao && admissao < '1960-01-01') return 'Data de admissão inválida: confira o ano.';
   if (admissao && admissao > somarDias(hoje, 90)) return 'Data de admissão muito à frente: confira a data.';
   if (admissao && nascimento && admissao <= nascimento) return 'A admissão precisa ser depois do nascimento.';

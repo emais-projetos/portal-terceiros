@@ -31,6 +31,7 @@ export function Integracao() {
   const { usuario } = useSessao();
   const [alocacoes, setAlocacoes] = useState<AlocacaoResumo[] | null>(null);
   const [obra, setObra] = useState('');
+  const [busca, setBusca] = useState('');
   const [turmas, setTurmas] = useState<Integracao[] | null>(null);
   const [selecao, setSelecao] = useState<Set<string>>(new Set());
   const [erro, setErro] = useState<string | null>(null);
@@ -97,16 +98,22 @@ export function Integracao() {
   const nomeObra = obras.find(([id]) => id === obra)?.[1] ?? '';
   const porId = useMemo(() => new Map((alocacoes ?? []).map((a) => [a.alocacao_id, a])), [alocacoes]);
 
-  const abertas = (turmas ?? []).filter((t) => !t.concluida_em);
-  const concluidas = (turmas ?? []).filter((t) => t.concluida_em);
-  const emTurmaAberta = new Set(abertas.flatMap((t) => t.integracoes_participantes.map((p) => p.alocacao_id)));
+  // Busca por colaborador ou empresa: filtra os liberados e as turmas em que eles estão.
+  const termo = busca.trim().toLowerCase();
+  const casa = (a: AlocacaoResumo | undefined) => !!a && (a.colaborador.toLowerCase().includes(termo) || a.empresa.toLowerCase().includes(termo));
+  const turmaCasa = (t: Integracao) => !termo || t.integracoes_participantes.some((p) => casa(porId.get(p.alocacao_id)));
+  const todasAbertas = (turmas ?? []).filter((t) => !t.concluida_em);
+  const abertas = todasAbertas.filter(turmaCasa);
+  const concluidas = (turmas ?? []).filter((t) => t.concluida_em).filter(turmaCasa);
+  const emTurmaAberta = new Set(todasAbertas.flatMap((t) => t.integracoes_participantes.map((p) => p.alocacao_id)));
 
   const elegiveis = useMemo(
     () =>
       (alocacoes ?? [])
         .filter((a) => a.obra_id === obra && a.status === 'liberado' && situacaoIntegracao(a) !== 'em_dia' && !emTurmaAberta.has(a.alocacao_id))
+        .filter((a) => !termo || casa(a))
         .sort((a, b) => a.empresa.localeCompare(b.empresa, 'pt-BR') || a.colaborador.localeCompare(b.colaborador, 'pt-BR')),
-    [alocacoes, obra, turmas], // eslint-disable-line react-hooks/exhaustive-deps
+    [alocacoes, obra, turmas, termo], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   function alternar(id: string) {
@@ -173,15 +180,23 @@ export function Integracao() {
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
       {!alocacoes && !erro && <Carregando />}
 
-      {alocacoes && obras.length > 1 && (
+      {alocacoes && obras.length > 0 && (
         <div className="filtros">
-          <label className="campo">
-            <span>Obra</span>
-            <select value={obra} onChange={(e) => setObra(e.target.value)}>
-              <option value="">Escolha a obra</option>
-              {obras.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
-            </select>
-          </label>
+          {obras.length > 1 && (
+            <label className="campo">
+              <span>Obra</span>
+              <select value={obra} onChange={(e) => setObra(e.target.value)}>
+                <option value="">Escolha a obra</option>
+                {obras.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
+              </select>
+            </label>
+          )}
+          {obra && (
+            <label className="campo campo-busca">
+              <span>Buscar</span>
+              <input type="search" placeholder="Colaborador ou empresa" value={busca} onChange={(e) => setBusca(e.target.value)} />
+            </label>
+          )}
         </div>
       )}
       {alocacoes && obras.length === 0 && <p className="vazio">Nenhuma obra ligada ao seu acesso.</p>}

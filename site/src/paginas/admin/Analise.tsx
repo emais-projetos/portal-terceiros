@@ -6,9 +6,10 @@ import { mensagemDeErro } from '../../lib/supabase';
 import { formatarCnpj } from '../../lib/consultas';
 import { data, diasAte, formatarCpf, tamanhoArquivo } from '../../lib/formato';
 import {
-  abrirArquivo, aprovarDocumento, baixarArquivo, baixarTodos, devolverDocumento, lerFilaAnalise, nomeDoZip, nomePadronizado, vencimentoDoDocumento,
-  type DocumentoEmAnalise,
+  abrirArquivo, aprovarDocumento, baixarArquivo, baixarTodos, devolverDocumento, lerAlocacoes, lerFilaAnalise, nomeDoZip, nomePadronizado, vencimentoDoDocumento,
+  type AlocacaoResumo, type DocumentoEmAnalise,
 } from '../../lib/admin';
+import { Detalhe } from './Colaboradores';
 
 const MOTIVOS_COMUNS = [
   'Arquivo ilegível ou cortado',
@@ -18,7 +19,7 @@ const MOTIVOS_COMUNS = [
   'Data de emissão não confere com o documento',
 ];
 
-type Pessoa = { chave: string; nome: string | null; cpf: string | null; docs: DocumentoEmAnalise[] };
+type Pessoa = { chave: string; nome: string | null; cpf: string | null; colaboradorId: string | null; docs: DocumentoEmAnalise[] };
 type Arquivo = DocumentoEmAnalise['arquivos'][number];
 
 function resumoDoGrupo(docs: DocumentoEmAnalise[]) {
@@ -52,7 +53,16 @@ function LinhaDocumento({ d, ocupado, aoAbrir, aoBaixar, aoAprovar, aoDevolver }
           {d.tipos_documento.impeditivo ? ', impeditivo' : ''}, enviado em {data(d.enviado_em)}
         </small>
       </th>
-      <td>{d.dispensado ? <span className="sub">Dispensado</span> : data(d.data_emissao) || <span className="sub">Não informada</span>}</td>
+      <td>
+        {d.dispensado ? (
+          <>
+            <span className="selo selo-doc-dispensado">Dispensa pedida</span>
+            <small className="sub">Justificativa: {typeof d.dados?.motivo_dispensa === 'string' && d.dados.motivo_dispensa ? d.dados.motivo_dispensa : 'não informada'}</small>
+          </>
+        ) : (
+          data(d.data_emissao) || <span className="sub">Não informada</span>
+        )}
+      </td>
       <td>
         {venc ? data(venc) : <span className="sub">Não vence</span>}
         {dias !== null && dias <= 30 && (
@@ -102,6 +112,24 @@ export function Analise() {
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [devolvendo, setDevolvendo] = useState<DocumentoEmAnalise | null>(null);
   const [baixando, setBaixando] = useState<string | null>(null);
+  // Cadastro do colaborador aberto daqui (o mesmo da aba Colaboradores): editar, pedir outro documento, bloquear.
+  const [cadastro, setCadastro] = useState<AlocacaoResumo | null>(null);
+
+  async function abrirCadastro(colaboradorId: string) {
+    setErro(null);
+    try {
+      const alocs = (await lerAlocacoes()).filter((a) => a.colaborador_id === colaboradorId);
+      const ordem = ['em_analise', 'pendente_fornecedor', 'em_cadastro', 'aprovado_admin', 'liberado', 'encerrado'];
+      const escolhida = alocs.sort((a, b) => ordem.indexOf(a.status) - ordem.indexOf(b.status))[0];
+      if (!escolhida) {
+        setErro('Este colaborador não está em nenhuma obra.');
+        return;
+      }
+      setCadastro(escolhida);
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    }
+  }
 
   async function carregar() {
     try {
@@ -127,7 +155,7 @@ export function Analise() {
       const empresa = d.empresas.razao_social;
       const pessoas = porEmpresa.get(empresa) ?? new Map<string, Pessoa>();
       const chave = d.colaborador_id ? `${empresa}|${d.colaborador_id}` : `${empresa}|empresa`;
-      const p = pessoas.get(chave) ?? { chave, nome: d.colaboradores?.nome ?? null, cpf: d.colaboradores?.cpf ?? null, docs: [] };
+      const p = pessoas.get(chave) ?? { chave, nome: d.colaboradores?.nome ?? null, cpf: d.colaboradores?.cpf ?? null, colaboradorId: d.colaborador_id, docs: [] };
       p.docs.push(d);
       pessoas.set(chave, p);
       porEmpresa.set(empresa, pessoas);
@@ -296,6 +324,11 @@ export function Analise() {
                         {resumo.vencendo > 0 && <span className="selo selo-doc-a_vencer">{resumo.vencendo} vence{resumo.vencendo === 1 ? '' : 'm'} em 30 dias</span>}
                         {resumo.semArquivo > 0 && <span className="selo selo-doc-nao_enviado">{resumo.semArquivo} sem arquivo</span>}
                       </span>
+                      {p.colaboradorId && (
+                        <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => abrirCadastro(p.colaboradorId!)}>
+                          Abrir cadastro
+                        </button>
+                      )}
                       {arquivos > 0 && (
                         <button
                           type="button"
@@ -345,6 +378,8 @@ export function Analise() {
           </section>
         );
       })}
+
+      <Detalhe ehAdmin alocacao={cadastro} aoFechar={() => setCadastro(null)} aoMudar={async () => { await carregar(); }} />
 
       <Devolucao
         documento={devolvendo}

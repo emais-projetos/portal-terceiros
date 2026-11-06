@@ -96,6 +96,41 @@ export function LinhaFarol({
   );
 }
 
+// Linha que abre ao clicar, no mesmo visual da linha de farol, com o que quiser à direita.
+export function LinhaCompacta({
+  id, cor, titulo, subtitulo, manchete, direita, aberta, aoAlternar, children,
+}: {
+  id: string;
+  cor: Cor;
+  titulo: string;
+  subtitulo?: string;
+  manchete: string;
+  direita?: ReactNode;
+  aberta: boolean;
+  aoAlternar: () => void;
+  children: ReactNode;
+}) {
+  const idDetalhe = `linha-${id.replace(/[^a-z0-9]/gi, '')}`;
+  return (
+    <li className={`linha-farol${aberta ? ' linha-farol-aberta' : ''}`}>
+      <button type="button" className="linha-farol-botao" aria-expanded={aberta} aria-controls={idDetalhe} onClick={aoAlternar}>
+        <Farol cor={cor} grande rotulo={rotuloCor[cor]} />
+        <span className="linha-farol-texto">
+          <strong>{titulo}</strong>
+          {subtitulo && <small className="sub">{subtitulo}</small>}
+          <span className="linha-farol-manchete">{manchete}</span>
+        </span>
+        {direita && <span className="linha-farol-frentes">{direita}</span>}
+      </button>
+      {aberta && (
+        <div className="linha-farol-detalhe" id={idDetalhe}>
+          {children}
+        </div>
+      )}
+    </li>
+  );
+}
+
 export function DetalheFrentes({ doc, int, med, extra }: { doc: Frente; int: Frente; med: Frente; extra?: ReactNode }) {
   return (
     <>
