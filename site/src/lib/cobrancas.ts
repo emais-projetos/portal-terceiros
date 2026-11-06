@@ -159,7 +159,7 @@ export function nomeLegivel(texto: string, empresa = false): string {
 export const AVISO_PORTAL = 'Importante: documentos e correções são recebidos somente pelo portal. Arquivos enviados por e-mail não são considerados na conferência.';
 
 export function assinatura(nome: string, a: Assinatura): string[] {
-  return ['', 'Atenciosamente,', nome, `${a.setor} | Grupo Emais`, ...(a.contato ? [a.contato] : [])];
+  return ['', 'Atenciosamente,', ...(nome ? [nome] : []), `${a.setor} | Grupo Emais`, ...(a.contato ? [a.contato] : [])];
 }
 
 // Corta listas longas: o link do Outlook tem limite de tamanho.
@@ -729,8 +729,8 @@ function integracao(base: Base, nome: string, hoje: string): Cobranca[] {
 
 // ---------------------------------------------------------------- Fila
 
-export async function montarFila(nome: string): Promise<Fila> {
-  const hoje = hojeIso();
+// hoje: a data de referência (o envio automático informa a data de São Paulo, ou uma data simulada no teste).
+export async function montarFila(nome: string, hoje = hojeIso()): Promise<Fila> {
   const lembrete = competenciaDoLembrete(hoje);
   const notificacao = competenciaDaNotificacao(hoje);
   const retencao = competenciaDaRetencao(hoje);

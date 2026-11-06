@@ -40,6 +40,7 @@ Portal do Grupo Emais para os fornecedores das obras cadastrarem colaboradores e
 | `20261022_019_painel_farois.sql` | Painel com faróis também para o fornecedor (só as próprias empresas) e pendências com o grupo do documento (empresa ou colaborador) |
 | `20261023_020_aceite_lgpd_medicao.sql` | Aceite de LGPD também no envio dos arquivos da medição, com data e hora gravadas |
 | `20261106_021_ajustes_cadastro.sql` | Idade mínima de 18 anos, correção do cadastro pelo fornecedor até o envio, "Outro documento" e NR dispensável com justificativa, demissão com rescisórios, bloqueio com histórico, subcontratada pelo fornecedor, contrato entre as partes obrigatório, "PGR" e anexo das NRs para o TST |
+| `20261106_022_cobrancas_automaticas.sql` | Envio automático das cobranças pelo n8n: registro de cada envio (enviada ou com erro) e parâmetros para testar com algumas empresas, mandar tudo para um endereço de teste ou pausar |
 
 Os arquivos usados para carregar as planilhas `CONTROLE_DE_INTEGRAÇÃO` e de medição mensal não estão neste repositório, porque têm CPFs. O repositório é público: nenhum dado pessoal, senha ou chave secreta entra aqui.
 
@@ -151,6 +152,27 @@ Quando há e-mails prontos, aparece um aviso no topo do portal e um contador no 
 O botão usa o programa de e-mail padrão do Windows. Para ser o Outlook: **Configurações > Aplicativos > Aplicativos padrão > Outlook**, e em **MAILTO** escolher Outlook.
 
 O envio automático (sem abrir o Outlook) depende de autorização do administrador do Microsoft 365 da Emais; o registro das cobranças já está pronto para isso.
+
+## Cobranças automáticas (n8n)
+
+As regras e os textos são os mesmos da aba Cobranças. A função do Supabase `cobrancas-automaticas` monta os e-mails do dia e o n8n só envia e devolve o resultado. Fluxo para importar no n8n: `n8n/cobrancas-automaticas.json`.
+
+- Dias úteis às 7h o n8n pede a fila, envia cada e-mail pela caixa gente10@emais.com e registra se saiu ou deu erro. Às 7h30 manda um resumo para gente10@emais.com.
+- E-mail enviado entra em `cobrancas` e não sai de novo. Com erro, volta para a fila e tenta no próximo dia útil.
+- Cada tentativa fica em `cobrancas_envios`.
+- Acesso à função: cabeçalho `x-chave-n8n` igual ao segredo `CHAVE_N8N` (cadastrado em Edge Functions > Secrets no Supabase, nunca no repositório).
+
+Quem recebe, na tabela `parametros`:
+
+| Chave | Uso |
+|---|---|
+| `cobranca_automatica_empresas` | CNPJs liberados, separados por vírgula, ou `todas`. Vazio: ninguém recebe. Com só alguns CNPJs, o aviso de retenção para a engenharia não sai (ele lista outras empresas da obra), a não ser em modo de teste. |
+| `cobranca_automatica_teste_para` | Se preenchido, tudo vai para este endereço, com o destinatário real no assunto, e nada é marcado como cobrado. |
+| `cobranca_automatica_pausada` | `sim` suspende os envios. |
+
+Para ligar para todos: rodar uma vez o nó "Marcar fila atual como cobrada" do fluxo (para o atraso acumulado não sair de uma vez) e depois trocar `cobranca_automatica_empresas` para `todas`.
+
+A função é escrita em `supabase/functions/cobrancas-automaticas/fonte.ts` e empacotada com as regras do site em `index.ts` por `empacotar.mjs` (precisa do esbuild). Mudou `site/src/lib/cobrancas.ts`: empacote e publique a função de novo.
 
 ## Aceite de tratamento de dados (LGPD)
 

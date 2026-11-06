@@ -1,0 +1,432 @@
+{
+  "name": "Portal de Terceiros: cobranças automáticas",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Cobranças automáticas do Portal de Terceiros\nAs regras ficam no Supabase. Este fluxo só busca os e-mails do dia, envia e registra.\n\n**Configurar uma vez**\n1. Nos 4 nós HTTP: credencial *Header Auth* com Name `x-chave-n8n` e Value = a chave CHAVE_N8N do Supabase.\n2. Nos 2 nós de e-mail: credencial SMTP da caixa que envia (From gente10@emais.com).\n3. Workflow settings: Timezone = America/Sao_Paulo.\n\n**Testar**: preencha `data` em *Data simulada* (ex.: 2026-11-26) e clique em *Test workflow*. Deixe vazio para usar hoje.\n\n**Quem recebe** é decidido na tabela parametros (cobranca_automatica_empresas, _teste_para, _pausada).",
+        "height": 380,
+        "width": 620,
+        "color": 4
+      },
+      "id": "dd276fda-4091-4f7b-9b99-c1ee1044ebac",
+      "name": "Leia antes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "8d05c063-d151-4047-844b-6bf1012e1de3",
+      "name": "Dias úteis 7h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "96cb8760-5352-4886-b4b8-b5249db5654c",
+      "name": "Teste manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2ba91689-4700-460d-a9ca-657381f23361",
+              "name": "data",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8ea4be39-0191-450b-b297-a965b24168d7",
+      "name": "Data simulada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntjhkengoqpcyjsjawbw.supabase.co/functions/v1/cobrancas-automaticas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ acao: 'fila', data: $json.data || undefined }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "99cb1cda-538f-452a-af19-3d19372b5e0f",
+      "name": "Buscar e-mails do dia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "itens",
+        "options": {}
+      },
+      "id": "b61e28fb-a99c-4359-aef8-3a1b9e21b757",
+      "name": "Um e-mail por cobrança",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "gente10@emais.com",
+        "toEmail": "={{ $json.para.replace(/;/g, ',') }}",
+        "subject": "={{ $json.assunto }}",
+        "emailFormat": "text",
+        "text": "={{ $json.corpo }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "gente10@emais.com"
+        }
+      },
+      "id": "4824a047-259b-4d12-92b2-9f82e6143e06",
+      "name": "Enviar e-mail",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        880,
+        0
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntjhkengoqpcyjsjawbw.supabase.co/functions/v1/cobrancas-automaticas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ acao: 'registrar', situacao: 'enviada', item: $('Um e-mail por cobrança').item.json }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "481ad407-230b-4c28-a3a9-311b09c5118b",
+      "name": "Registrar enviado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        -100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntjhkengoqpcyjsjawbw.supabase.co/functions/v1/cobrancas-automaticas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ acao: 'registrar', situacao: 'erro', erro: String($json.error?.message ?? $json.error ?? 'Erro no envio'), item: $('Um e-mail por cobrança').item.json }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "c2204393-7b2b-4ab8-8ecb-35db85c9a947",
+      "name": "Registrar erro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 7 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "22700bc4-02ab-4939-afeb-53a7fd68486c",
+      "name": "Dias úteis 7h30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntjhkengoqpcyjsjawbw.supabase.co/functions/v1/cobrancas-automaticas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ acao: 'resumo' }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "ccd485eb-6e2b-4a72-bc26-1a3c58a12104",
+      "name": "Buscar resumo do dia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e5f8c934-8b66-4c02-893c-58815832e1ff",
+              "leftValue": "={{ $json.tem_conteudo }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d6a1eec4-083c-423a-9a12-d0662b28c18f",
+      "name": "Tem algo a informar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "gente10@emais.com",
+        "toEmail": "gente10@emais.com",
+        "subject": "={{ $json.assunto }}",
+        "emailFormat": "text",
+        "text": "={{ $json.corpo }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "8a4323e6-2e9b-4b73-8f82-a86906572ac1",
+      "name": "Resumo para o RH",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        660,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Só no dia de ligar para todos (1 vez)\nAntes de trocar cobranca_automatica_empresas para `todas`, clique em *Execute step* no nó abaixo. Ele marca a fila atual como já cobrada, para o atraso acumulado não sair de uma vez.",
+        "height": 300,
+        "width": 420,
+        "color": 3
+      },
+      "id": "6516eaa2-6de1-4ac3-84b8-556c4e692231",
+      "name": "Ligar para todos",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        880,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntjhkengoqpcyjsjawbw.supabase.co/functions/v1/cobrancas-automaticas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ acao: 'marcar_existentes', confirmar: 'sim' }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "932273b7-77ee-4fe3-852f-fea3f536171b",
+      "name": "Marcar fila atual como cobrada (1 vez)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        520
+      ]
+    }
+  ],
+  "connections": {
+    "Dias úteis 7h": {
+      "main": [
+        [
+          {
+            "node": "Buscar e-mails do dia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teste manual": {
+      "main": [
+        [
+          {
+            "node": "Data simulada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data simulada": {
+      "main": [
+        [
+          {
+            "node": "Buscar e-mails do dia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar e-mails do dia": {
+      "main": [
+        [
+          {
+            "node": "Um e-mail por cobrança",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Um e-mail por cobrança": {
+      "main": [
+        [
+          {
+            "node": "Enviar e-mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar e-mail": {
+      "main": [
+        [
+          {
+            "node": "Registrar enviado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dias úteis 7h30": {
+      "main": [
+        [
+          {
+            "node": "Buscar resumo do dia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar resumo do dia": {
+      "main": [
+        [
+          {
+            "node": "Tem algo a informar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem algo a informar?": {
+      "main": [
+        [
+          {
+            "node": "Resumo para o RH",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "pinData": {}
+}
