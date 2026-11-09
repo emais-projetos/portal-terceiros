@@ -2448,7 +2448,7 @@ button.celula:hover {
   top: 0;
   z-index: 40;
   flex-shrink: 0;
-  width: 248px;
+  width: 264px;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -2463,7 +2463,7 @@ button.celula:hover {
 .menu-marca-texto small { font-size: 0.78rem; color: #9fc4bf; }
 .menu-fechar { display: none; }
 
-.menu-grupos { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin: 0 -4px; padding: 0 4px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.25) transparent; }
+.menu-grupos { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin: 0 -4px; padding: 0 4px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.25) transparent; }
 .menu-grupo { display: flex; flex-direction: column; gap: 2px; }
 .menu-grupo-titulo { padding: 8px 12px 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #9fc4bf; }
 .menu-item {
@@ -2511,7 +2511,9 @@ button.celula:hover {
 .menu-lateral.recolhido .menu-grupo-titulo { height: 1px; padding: 0; margin: 6px 8px; overflow: hidden; color: transparent; background: rgba(255, 255, 255, 0.16); }
 .menu-lateral.recolhido .menu-grupo:first-child .menu-grupo-titulo { display: none; }
 .menu-lateral.recolhido .menu-item { position: relative; justify-content: center; width: 44px; height: 44px; padding: 0; }
-.menu-lateral.recolhido .contador { position: absolute; top: 1px; right: -6px; min-width: 18px; padding: 0 5px; font-size: 0.7rem; line-height: 17px; }
+.menu-lateral.recolhido .contador { position: absolute; top: 0; right: -4px; min-width: 16px; padding: 0 4px; font-size: 0.66rem; line-height: 16px; }
+.menu-lateral.recolhido .menu-grupos { scrollbar-width: none; }
+.menu-lateral.recolhido .menu-grupos::-webkit-scrollbar { display: none; }
 .menu-lateral.recolhido .menu-usuario { flex-direction: column; padding: 0; }
 .menu-lateral.recolhido .menu-recolher { justify-content: center; padding: 0; }
 
