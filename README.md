@@ -41,6 +41,7 @@ Portal do Grupo Emais para os fornecedores das obras cadastrarem colaboradores e
 | `20261023_020_aceite_lgpd_medicao.sql` | Aceite de LGPD também no envio dos arquivos da medição, com data e hora gravadas |
 | `20261106_021_ajustes_cadastro.sql` | Idade mínima de 18 anos, correção do cadastro pelo fornecedor até o envio, "Outro documento" e NR dispensável com justificativa, demissão com rescisórios, bloqueio com histórico, subcontratada pelo fornecedor, contrato entre as partes obrigatório, "PGR" e anexo das NRs para o TST |
 | `20261106_022_cobrancas_automaticas.sql` | Envio automático das cobranças pelo n8n: registro de cada envio (enviada ou com erro) e parâmetros para testar com algumas empresas, mandar tudo para um endereço de teste ou pausar |
+| `20261109_023_regras_e_modelos_email.sql` | Acessos > Regras (prazos da medição, avisos de vencimento, integração, envio automático e assinatura, com histórico) e Acessos > E-mails (textos das cobranças em modelos com revisões) |
 
 Os arquivos usados para carregar as planilhas `CONTROLE_DE_INTEGRAÇÃO` e de medição mensal não estão neste repositório, porque têm CPFs. O repositório é público: nenhum dado pessoal, senha ou chave secreta entra aqui.
 
@@ -173,6 +174,12 @@ Quem recebe, na tabela `parametros`:
 Para ligar para todos: rodar uma vez o nó "Marcar fila atual como cobrada" do fluxo (para o atraso acumulado não sair de uma vez) e depois trocar `cobranca_automatica_empresas` para `todas`.
 
 A função é escrita em `supabase/functions/cobrancas-automaticas/fonte.ts` e empacotada com as regras do site em `index.ts` por `empacotar.mjs` (precisa do esbuild). Mudou `site/src/lib/cobrancas.ts`: empacote e publique a função de novo.
+
+## Regras e e-mails (Acessos)
+
+- **Regras**: dias do lembrete, do prazo e da tolerância da medição; primeiro e segundo aviso de vencimento; dias úteis parados na integração; validade de cada documento (com motivo); envio automático; assinatura. Cada mudança vai para `parametros_historico` (ou `tipos_documento_historico`, na validade) e aparece no fim da aba.
+- **E-mails**: assunto e texto de cada cobrança em `modelos_email`, com campos entre chaves (`{empresa}`, `{prazo}`, `{documentos}`...). O banco recusa campos que não são do modelo. Cada mudança salva vira uma revisão em `modelos_email_revisoes`, e dá para voltar ao texto de uma revisão anterior. E-mail desligado sai da aba Cobranças e do envio automático.
+- O portal e a função `cobrancas-automaticas` leem as regras e os modelos a cada cálculo, então não é preciso publicar nada depois de mudar um texto ou um prazo.
 
 ## Aceite de tratamento de dados (LGPD)
 
