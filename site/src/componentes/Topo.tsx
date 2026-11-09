@@ -3,6 +3,7 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useSessao, nomesPerfil } from '../lib/sessao';
 import { contarAguardandoTst, contarEmAnalise } from '../lib/admin';
 import { contarCobrancas } from '../lib/cobrancas';
+import { lerRegras } from '../lib/regras';
 
 export function Topo() {
   const { usuario, sair } = useSessao();
@@ -20,6 +21,11 @@ export function Topo() {
     const t = window.setInterval(() => contar().then(setNaFila).catch(() => undefined), 60000);
     return () => window.clearInterval(t);
   }, [ehAdmin, ehTst]);
+
+  // Prazos da medição usados nas telas (Acessos > Regras).
+  useEffect(() => {
+    if (usuario) lerRegras().catch(() => undefined);
+  }, [usuario]);
 
   // E-mails de cobrança prontos no dia (calculado no máximo a cada 5 minutos).
   useEffect(() => {

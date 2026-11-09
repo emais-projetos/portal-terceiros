@@ -8,6 +8,7 @@ import { mensagemDeErro, enderecoDoSite } from '../../lib/supabase';
 import { useSessao } from '../../lib/sessao';
 import { formatarCnpj } from '../../lib/consultas';
 import { data, hojeIso, tamanhoArquivo } from '../../lib/formato';
+import { prazoDe } from '../../lib/regras';
 import { AVISO_PORTAL, assinatura as linhasAssinatura, guardarDestinatariosObra, lerAssinatura, lerDestinatariosObra, mesBarra, nomeLegivel, type Assinatura } from '../../lib/cobrancas';
 import { copiarTexto, lerAlocacoes, linkOutlook, type AlocacaoResumo } from '../../lib/admin';
 import {
@@ -397,10 +398,6 @@ function linkAprovacao(m: Medicao): string {
   return linkOutlook(m.email_cobranca ?? '', `Mensal trabalhista aprovada · ${m.obra ? `${m.obra} · ` : ''}${mes}`, corpo);
 }
 
-function prazoDe(competencia: string): string {
-  const [a, m] = competencia.split('-').map(Number);
-  return new Date(Date.UTC(a, m, 25)).toISOString().slice(0, 10);
-}
 
 function ordemPainel(m: Medicao): number {
   if (m.status === 'em_analise') return 0;

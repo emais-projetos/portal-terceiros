@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { diasAte, hojeIso } from './formato';
 import type { StatusAlocacao } from './consultas';
 import type { StatusMedicao } from './medicao';
+import { prazoDe, toleranciaDe } from './regras';
 
 // Painel de acompanhamento da obra (engenharia, TST, administrativo e, só com as próprias empresas, fornecedor). Só leitura.
 // Os dados vêm de uma função do banco que confere a obra do acesso e não devolve CPF nem arquivos.
@@ -107,16 +108,8 @@ function somarMeses(competencia: string, n: number): string {
   return new Date(Date.UTC(a, m - 1 + n, 1)).toISOString().slice(0, 10);
 }
 
-export function prazoDe(competencia: string): string {
-  return `${somarMeses(competencia, 1).slice(0, 8)}25`;
-}
-
-export function toleranciaDe(competencia: string): string {
-  const mes = somarMeses(competencia, 1);
-  const [a, m] = mes.split('-').map(Number);
-  const ultimo = new Date(Date.UTC(a, m, 0)).getUTCDate();
-  return `${mes.slice(0, 8)}${String(Math.min(30, ultimo)).padStart(2, '0')}`;
-}
+// Prazo e tolerância seguem as Regras (Acessos > Regras).
+export { prazoDe, toleranciaDe };
 
 // Primeiro mês com medição feita no portal. Antes disso só há o histórico da planilha,
 // então uma empresa sem medição nesses meses não aparece como "não enviada".

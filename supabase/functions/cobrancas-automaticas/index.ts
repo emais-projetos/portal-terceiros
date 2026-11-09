@@ -61,29 +61,70 @@ async function lerTodasMedicoes() {
   return todas;
 }
 
+// site/src/lib/regras.ts
+var REGRAS_PADRAO = { diaLembrete: 20, diaPrazo: 25, diasTolerancia: 5, primeiroAviso: 30, segundoAviso: 15, diasParado: 3 };
+var CHAVES = {
+  diaLembrete: "medicao_dia_lembrete",
+  diaPrazo: "prazo_medicao_dia",
+  diasTolerancia: "medicao_dias_tolerancia",
+  primeiroAviso: "dias_a_vencer",
+  segundoAviso: "vencimento_segundo_aviso_dias",
+  diasParado: "integracao_dias_parado"
+};
+var atuais = REGRAS_PADRAO;
+async function lerRegras() {
+  const { data: data2, error } = await supabase.from("parametros").select("chave, valor").in("chave", Object.values(CHAVES));
+  if (error) throw error;
+  const valor = new Map((data2 ?? []).map((p) => [p.chave, Number(p.valor)]));
+  const r = { ...REGRAS_PADRAO };
+  Object.keys(CHAVES).forEach((k) => {
+    const v = valor.get(CHAVES[k]);
+    if (v !== void 0 && Number.isFinite(v)) r[k] = v;
+  });
+  atuais = r;
+  return r;
+}
+function somarMeses(competencia, n) {
+  const [a, m] = competencia.split("-").map(Number);
+  return new Date(Date.UTC(a, m - 1 + n, 1)).toISOString().slice(0, 10);
+}
+function ultimoDia(mes) {
+  const [a, m] = mes.split("-").map(Number);
+  return new Date(Date.UTC(a, m, 0)).getUTCDate();
+}
+var doisDigitos = (n) => String(n).padStart(2, "0");
+function prazoDe(competencia, r = atuais) {
+  return `${somarMeses(competencia, 1).slice(0, 8)}${doisDigitos(r.diaPrazo)}`;
+}
+function toleranciaDe(competencia, r = atuais) {
+  const mes = somarMeses(competencia, 1);
+  return `${mes.slice(0, 8)}${doisDigitos(Math.min(r.diaPrazo + r.diasTolerancia, ultimoDia(mes)))}`;
+}
+
+// site/src/lib/modelosEmail.ts
+var CAMPOS_MODELO = "tipo, nome, quando, para, campos, assunto, corpo, ativo, ordem, revisao, observacao, atualizado_por, atualizado_em";
+async function lerModelos() {
+  const { data: data2, error } = await supabase.from("modelos_email").select(CAMPOS_MODELO).order("ordem");
+  if (error) throw error;
+  return data2 ?? [];
+}
+function aplicarModelo(m, valores) {
+  const trocar = (t) => t.replace(/\{[a-z_]+\}/g, (c) => c in valores ? valores[c] : c);
+  return {
+    assunto: trocar(m.assunto).replace(/\s+/g, " ").trim(),
+    corpo: trocar(m.corpo).split("\n").map((l) => l.replace(/\s+$/, "")).join("\n").replace(/\n{3,}/g, "\n\n").trim()
+  };
+}
+
 // site/src/lib/cobrancas.ts
-var DIA_LEMBRETE = 20;
-var DIA_NOTIFICACAO = 26;
 var INICIO_PORTAL = "2026-09-01";
 var MAX_LINHAS = 15;
-var DIAS_PARADO = 3;
-function somarMeses(competencia, n) {
+function somarMeses2(competencia, n) {
   const [a, m] = competencia.split("-").map(Number);
   return new Date(Date.UTC(a, m - 1 + n, 1)).toISOString().slice(0, 10);
 }
 var mesAtual = (hoje) => `${hoje.slice(0, 7)}-01`;
 var diaDoMes = (hoje) => Number(hoje.slice(8, 10));
-function ultimoDia(mes) {
-  const [a, m] = mes.split("-").map(Number);
-  return new Date(Date.UTC(a, m, 0)).getUTCDate();
-}
-function prazoDe(competencia) {
-  return `${somarMeses(competencia, 1).slice(0, 8)}25`;
-}
-function toleranciaDe(competencia) {
-  const mes = somarMeses(competencia, 1);
-  return `${mes.slice(0, 8)}${String(Math.min(30, ultimoDia(mes))).padStart(2, "0")}`;
-}
 function diaSemana(iso) {
   const [a, m, d] = iso.split("-").map(Number);
   return new Date(Date.UTC(a, m - 1, d)).getUTCDay();
@@ -112,26 +153,27 @@ function mesBarra(competencia) {
   const [a, m] = competencia.split("-").map(Number);
   return `${nomes[m - 1]}/${a}`;
 }
-function competenciaDoLembrete(hoje = hojeIso()) {
+var diaNoMes = (mes, dia) => `${mes.slice(0, 8)}${String(dia).padStart(2, "0")}`;
+function competenciaDoLembrete(r, hoje = hojeIso()) {
   const d = diaDoMes(hoje);
-  return d >= DIA_LEMBRETE && d < DIA_NOTIFICACAO ? somarMeses(mesAtual(hoje), -1) : null;
+  return d >= r.diaLembrete && d <= r.diaPrazo ? somarMeses2(mesAtual(hoje), -1) : null;
 }
-function competenciaDaNotificacao(hoje = hojeIso()) {
-  const c = somarMeses(mesAtual(hoje), -1);
-  return diaDoMes(hoje) >= DIA_NOTIFICACAO && hoje <= toleranciaDe(c) ? c : null;
+function competenciaDaNotificacao(r, hoje = hojeIso()) {
+  const c = somarMeses2(mesAtual(hoje), -1);
+  return diaDoMes(hoje) > r.diaPrazo && hoje <= toleranciaDe(c, r) ? c : null;
 }
-function competenciaDaRetencao(hoje = hojeIso()) {
-  const c = somarMeses(mesAtual(hoje), -1);
-  return hoje > toleranciaDe(c) ? c : somarMeses(c, -1);
+function competenciaDaRetencao(r, hoje = hojeIso()) {
+  const c = somarMeses2(mesAtual(hoje), -1);
+  return hoje > toleranciaDe(c, r) ? c : somarMeses2(c, -1);
 }
-function proximaData(hoje = hojeIso()) {
+function proximaData(r, hoje = hojeIso()) {
   const d = diaDoMes(hoje);
   const mes = mesAtual(hoje);
-  const tol = toleranciaDe(somarMeses(mes, -1));
-  if (d < DIA_LEMBRETE) return `${mes.slice(0, 8)}${DIA_LEMBRETE}`;
-  if (d < DIA_NOTIFICACAO) return `${mes.slice(0, 8)}${DIA_NOTIFICACAO}`;
+  const tol = toleranciaDe(somarMeses2(mes, -1), r);
+  if (d < r.diaLembrete) return diaNoMes(mes, r.diaLembrete);
+  if (d <= r.diaPrazo) return diaNoMes(mes, r.diaPrazo + 1);
   if (hoje <= tol) return somarDiasIso(tol, 1);
-  return `${somarMeses(mes, 1).slice(0, 8)}${DIA_LEMBRETE}`;
+  return diaNoMes(somarMeses2(mes, 1), r.diaLembrete);
 }
 var MINUSCULAS = /* @__PURE__ */ new Set(["de", "da", "do", "das", "dos", "e", "em", "para", "a"]);
 var SUFIXOS = /\s*(-\s*)?\b(LTDA|ME|EPP|EIRELI|S\/?A|LIMITADA)\.?\s*$/i;
@@ -147,9 +189,8 @@ function nomeLegivel(texto, empresa = false) {
     return baixo.charAt(0).toUpperCase() + baixo.slice(1);
   }).join(" ");
 }
-var AVISO_PORTAL = "Importante: documentos e corre\xE7\xF5es s\xE3o recebidos somente pelo portal. Arquivos enviados por e-mail n\xE3o s\xE3o considerados na confer\xEAncia.";
-function assinatura(nome, a) {
-  return ["", "Atenciosamente,", ...nome ? [nome] : [], `${a.setor} | Grupo Emais`, ...a.contato ? [a.contato] : []];
+function assinaturaTexto(nome, a) {
+  return [...nome ? [nome] : [], `${a.setor} | Grupo Emais`, ...a.contato ? [a.contato] : []].join("\n");
 }
 function limitar(linhas, oQue) {
   if (linhas.length <= MAX_LINHAS) return linhas;
@@ -171,8 +212,8 @@ async function lerTudo2(montar) {
   return todas;
 }
 var CAMPOS_PEND = "alocacao_id, colaborador_id, empresa_id, tipo_codigo, documento, grupo, vencimento, dias_para_vencer, status_envio_aberto, motivo_devolucao, situacao";
-async function lerBase(competencias) {
-  const [medicoes, tipos, alocacoes, pendencias, empresas, obras, feitas, criadas, devolvidos, parametros2] = await Promise.all([
+async function lerBase(competencias, regras) {
+  const [medicoes, tipos, alocacoes, pendencias, empresas, obras, feitas, criadas, devolvidos, parametros2, modelos] = await Promise.all([
     lerTodasMedicoes(),
     lerTiposMedicao(),
     lerAlocacoes(),
@@ -190,7 +231,8 @@ async function lerBase(competencias) {
     lerTudo2(
       (i, f) => supabase.from("documentos").select("empresa_id, colaborador_id, tipo_codigo, analisado_em").eq("status", "devolvido").order("id").range(i, f)
     ),
-    supabase.from("parametros").select("chave, valor").in("chave", ["cobranca_setor", "cobranca_contato"])
+    supabase.from("parametros").select("chave, valor").in("chave", ["cobranca_setor", "cobranca_contato"]),
+    lerModelos()
   ]);
   const ids = medicoes.filter((m) => competencias.includes(m.competencia) && m.status !== "aprovada").map((m) => m.id);
   const itens = [];
@@ -217,8 +259,14 @@ async function lerBase(competencias) {
     empresas,
     obras,
     feitas: new Set(feitas.map((c) => `${c.tipo}|${c.referencia}`)),
-    assinatura: { setor: param.get("cobranca_setor") ?? "Gente e Gest\xE3o", contato: param.get("cobranca_contato") ?? "" }
+    assinatura: { setor: param.get("cobranca_setor") ?? "Gente e Gest\xE3o", contato: param.get("cobranca_contato") ?? "" },
+    regras,
+    modelos: new Map(modelos.map((m) => [m.tipo, m]))
   };
+}
+function modeloAtivo(base, tipo) {
+  const m = base.modelos.get(tipo);
+  return m && m.ativo ? m : null;
 }
 var LINK_MEDICAO = () => `${enderecoDoSite}medicao`;
 var LINK_PENDENCIAS = () => `${enderecoDoSite}pendencias`;
@@ -272,51 +320,43 @@ function oQueFalta(base, l) {
   });
   return limitarItens(linhas, "itens");
 }
-var COMO_ENVIAR_MEDICAO = (mes) => [
-  "Como enviar:",
-  `1. Acesse ${LINK_MEDICAO()}`,
-  `2. Escolha a obra e o m\xEAs de ${mes} e clique em Come\xE7ar.`,
-  '3. Anexe um arquivo por item ou marque "n\xE3o se aplica" quando for o caso.',
-  "4. Confira a lista de colaboradores do m\xEAs e clique em Enviar para confer\xEAncia."
-];
-var COMO_REGULARIZAR = (mes, final) => [
-  `1. Acesse ${LINK_MEDICAO()}`,
-  `2. Abra ${mes}, envie ou corrija os itens acima e clique em Enviar para confer\xEAncia.`,
-  `3. ${final}`
-];
 var pendenteDoFornecedor = (x) => !x.medicao || x.medicao.status === "aberta" || x.medicao.status === "pendente_fornecedor";
-function lembretes(base, competencia, nome) {
+function camposMedicao(competencia, r) {
   const mes = mesBarra(competencia);
-  const prazo = prazoDe(competencia);
+  const prazo = prazoDe(competencia, r);
+  const tol = toleranciaDe(competencia, r);
+  return {
+    "{mes}": mes,
+    "{mes_nome}": mes.split("/")[0],
+    "{prazo}": data(prazo),
+    "{prazo_curto}": curta(prazo),
+    "{tolerancia}": data(tol),
+    "{tolerancia_curta}": curta(tol),
+    "{link_medicao}": LINK_MEDICAO()
+  };
+}
+function lembretes(base, competencia, nome) {
+  const modelo = modeloAtivo(base, "lembrete_medicao");
+  if (!modelo) return [];
   const empresaPor = new Map(base.empresas.map((e) => [e.id, e]));
+  const comuns = camposMedicao(competencia, base.regras);
   const lista = [];
   porEmpresa(esperadas(base, competencia).filter(pendenteDoFornecedor)).forEach((l, empresaId) => {
     const referencia = `${competencia}:${empresaId}`;
     if (base.feitas.has(`lembrete_medicao|${referencia}`)) return;
-    const empresa = nomeLegivel(l[0].empresa, true);
+    const texto = aplicarModelo(modelo, {
+      ...comuns,
+      "{empresa}": nomeLegivel(l[0].empresa, true),
+      "{situacao_obras}": limitar(l.map((x) => `- ${nomeObra(x)}: ${situacaoParaLembrete(x)}`), "obras").join("\n"),
+      "{assinatura}": assinaturaTexto(nome, base.assinatura)
+    });
     lista.push({
       chave: `lembrete|${referencia}`,
       tipo: "lembrete_medicao",
       titulo: l[0].empresa,
       resumo: `${l.length} ${l.length === 1 ? "obra" : "obras"} sem envio`,
       para: emailDaEmpresa(empresaPor.get(empresaId)),
-      assunto: `Medi\xE7\xE3o de ${mes}: envio at\xE9 ${curta(prazo)}, ${empresa}`,
-      corpo: [
-        `Ol\xE1, equipe da ${empresa},`,
-        "",
-        `A medi\xE7\xE3o de ${mes} deve ser enviada pelo Portal de Terceiros at\xE9 ${data(prazo)}.`,
-        "",
-        "Situa\xE7\xE3o hoje:",
-        ...limitar(l.map((x) => `- ${nomeObra(x)}: ${situacaoParaLembrete(x)}`), "obras"),
-        "",
-        "Por que \xE9 importante:",
-        `O pagamento do m\xEAs s\xF3 \xE9 liberado depois que a Emais confere os documentos da medi\xE7\xE3o (holerites, ponto, folha, FGTS, INSS, DCTFWeb, DARF e seguro de vida). Se a medi\xE7\xE3o n\xE3o for apresentada no prazo, o pagamento de ${mes.split("/")[0]} pode ser retido.`,
-        "",
-        ...COMO_ENVIAR_MEDICAO(mes),
-        "",
-        AVISO_PORTAL,
-        ...assinatura(nome, base.assinatura)
-      ].join("\n"),
+      ...texto,
       registros: [{ tipo: "lembrete_medicao", referencia, empresa_id: empresaId, obra_id: null, competencia }],
       medicoes: l.filter((x) => x.medicao).map((x) => x.medicao.id),
       obraId: null
@@ -325,45 +365,28 @@ function lembretes(base, competencia, nome) {
   return lista;
 }
 function notificacoes(base, competencia, nome, hoje) {
-  const mes = mesBarra(competencia);
-  const mesNome = mes.split("/")[0];
-  const prazo = prazoDe(competencia);
-  const tol = toleranciaDe(competencia);
-  const resposta2 = proximoDiaUtil(hoje);
+  const modelo = modeloAtivo(base, "notificacao_medicao");
+  if (!modelo) return [];
+  const tol = toleranciaDe(competencia, base.regras);
   const empresaPor = new Map(base.empresas.map((e) => [e.id, e]));
+  const comuns = { ...camposMedicao(competencia, base.regras), "{responder_ate}": curta(proximoDiaUtil(hoje)) };
   const lista = [];
   porEmpresa(esperadas(base, competencia).filter(pendenteDoFornecedor)).forEach((l, empresaId) => {
     const referencia = `${competencia}:${empresaId}`;
     if (base.feitas.has(`notificacao_medicao|${referencia}`)) return;
-    const empresa = nomeLegivel(l[0].empresa, true);
+    const texto = aplicarModelo(modelo, {
+      ...comuns,
+      "{empresa}": nomeLegivel(l[0].empresa, true),
+      "{o_que_falta}": oQueFalta(base, l).join("\n"),
+      "{assinatura}": assinaturaTexto(nome, base.assinatura)
+    });
     lista.push({
       chave: `notificacao|${referencia}`,
       tipo: "notificacao_medicao",
       titulo: l[0].empresa,
       resumo: `${l.length} ${l.length === 1 ? "obra" : "obras"} em atraso, toler\xE2ncia at\xE9 ${curta(tol)}`,
       para: emailDaEmpresa(empresaPor.get(empresaId)),
-      assunto: `Medi\xE7\xE3o de ${mes} em atraso: envie at\xE9 ${curta(tol)} para evitar a reten\xE7\xE3o do pagamento, ${empresa}`,
-      corpo: [
-        `Ol\xE1, equipe da ${empresa},`,
-        "",
-        `O prazo da medi\xE7\xE3o de ${mes} terminou em ${data(prazo)} e ainda faltam documentos. Para que o pagamento de ${mesNome} n\xE3o seja retido, regularize pelo portal at\xE9 ${data(tol)}.`,
-        "",
-        "O que falta:",
-        ...oQueFalta(base, l),
-        "",
-        `Pedimos que responda este e-mail at\xE9 ${curta(resposta2)} informando a data em que os documentos ser\xE3o enviados no portal.`,
-        "",
-        `Se n\xE3o for regularizado at\xE9 ${data(tol)}:`,
-        `- o pagamento de ${mesNome} fica retido at\xE9 a aprova\xE7\xE3o da medi\xE7\xE3o;`,
-        "- a engenharia da obra \xE9 avisada da reten\xE7\xE3o;",
-        "- o atraso fica registrado no hist\xF3rico de entregas da empresa, considerado na avalia\xE7\xE3o de fornecedores da Emais.",
-        "",
-        "Como regularizar:",
-        ...COMO_REGULARIZAR(mes, "A Emais confere em at\xE9 3 dias \xFAteis."),
-        "",
-        AVISO_PORTAL,
-        ...assinatura(nome, base.assinatura)
-      ].join("\n"),
+      ...texto,
       registros: [{ tipo: "notificacao_medicao", referencia, empresa_id: empresaId, obra_id: null, competencia }],
       medicoes: l.filter((x) => x.medicao).map((x) => x.medicao.id),
       obraId: null
@@ -373,18 +396,26 @@ function notificacoes(base, competencia, nome, hoje) {
 }
 var combinadaAte = (x, hoje) => x.medicao?.prazo_combinado && x.medicao.prazo_combinado >= hoje ? x.medicao.prazo_combinado : null;
 function retencoesFornecedor(base, competencia, nome, hoje) {
+  const modelo = modeloAtivo(base, "cobranca_medicao");
+  if (!modelo) return [];
   const mes = mesBarra(competencia);
-  const mesNome = mes.split("/")[0];
-  const tol = toleranciaDe(competencia);
-  const notificacao = `${somarMeses(competencia, 1).slice(0, 8)}${DIA_NOTIFICACAO}`;
+  const tol = toleranciaDe(competencia, base.regras);
+  const notificacao = somarDiasIso(prazoDe(competencia, base.regras), 1);
   const empresaPor = new Map(base.empresas.map((e) => [e.id, e]));
+  const comuns = camposMedicao(competencia, base.regras);
   const retidas = esperadas(base, competencia).filter((x) => pendenteDoFornecedor(x) && !combinadaAte(x, hoje));
   const lista = [];
   porEmpresa(retidas).forEach((l, empresaId) => {
-    const empresa = nomeLegivel(l[0].empresa, true);
     const combinada = l.map((x) => x.medicao?.prazo_combinado).filter((d) => !!d && d > tol).sort().pop();
     const referencia = combinada ? `${competencia}:${empresaId}:combinado:${combinada}` : `${competencia}:${empresaId}`;
     if (base.feitas.has(`cobranca_medicao|${referencia}`)) return;
+    const texto = aplicarModelo(modelo, {
+      ...comuns,
+      "{empresa}": nomeLegivel(l[0].empresa, true),
+      "{historico_atraso}": combinada ? `A medi\xE7\xE3o de ${mes} estava em atraso e combinamos o envio no portal at\xE9 ${data(combinada)}.` : `No dia ${data(notificacao)} avisamos que a medi\xE7\xE3o de ${mes} estava em atraso, com prazo at\xE9 ${data(tol)} para regulariza\xE7\xE3o no portal.`,
+      "{o_que_falta}": oQueFalta(base, l).join("\n"),
+      "{assinatura}": assinaturaTexto(nome, base.assinatura)
+    });
     lista.push({
       chave: `retencao-fornecedor|${referencia}`,
       tipo: "cobranca_medicao",
@@ -392,23 +423,7 @@ function retencoesFornecedor(base, competencia, nome, hoje) {
       titulo: l[0].empresa,
       resumo: `${l.length} ${l.length === 1 ? "obra" : "obras"} com pagamento retido`,
       para: emailDaEmpresa(empresaPor.get(empresaId)),
-      assunto: `Pagamento retido: medi\xE7\xE3o de ${mes} pendente, ${empresa}`,
-      corpo: [
-        `Ol\xE1, equipe da ${empresa},`,
-        "",
-        combinada && combinada > tol ? `A medi\xE7\xE3o de ${mes} estava em atraso e combinamos o envio no portal at\xE9 ${data(combinada)}. Como os itens abaixo continuam pendentes, o pagamento de ${mesNome} est\xE1 retido.` : `No dia ${data(notificacao)} avisamos que a medi\xE7\xE3o de ${mes} estava em atraso, com prazo at\xE9 ${data(tol)} para regulariza\xE7\xE3o no portal. Como os itens abaixo continuam pendentes, o pagamento de ${mesNome} est\xE1 retido.`,
-        "",
-        "O que falta:",
-        ...oQueFalta(base, l),
-        "",
-        "O pagamento \xE9 liberado assim que a medi\xE7\xE3o for aprovada:",
-        ...COMO_REGULARIZAR(mes, "A Emais confere em at\xE9 3 dias \xFAteis e avisa a obra da libera\xE7\xE3o."),
-        "",
-        "O atraso fica registrado no hist\xF3rico de entregas da empresa, considerado na avalia\xE7\xE3o de fornecedores da Emais.",
-        "",
-        AVISO_PORTAL,
-        ...assinatura(nome, base.assinatura)
-      ].join("\n"),
+      ...texto,
       registros: [{ tipo: "cobranca_medicao", referencia, empresa_id: empresaId, obra_id: null, competencia }],
       medicoes: l.filter((x) => x.medicao).map((x) => x.medicao.id),
       obraId: null
@@ -417,9 +432,10 @@ function retencoesFornecedor(base, competencia, nome, hoje) {
   return lista;
 }
 function retencoesObra(base, competencia, nome, hoje) {
-  const mes = mesBarra(competencia);
-  const mesNome = mes.split("/")[0];
-  const tol = toleranciaDe(competencia);
+  const modelo = modeloAtivo(base, "retencao_obra");
+  if (!modelo) return [];
+  const tol = toleranciaDe(competencia, base.regras);
+  const comuns = camposMedicao(competencia, base.regras);
   const obraPor = new Map(base.obras.map((o) => [o.id, o]));
   const porObra = /* @__PURE__ */ new Map();
   esperadas(base, competencia).filter((x) => x.obra_id).forEach((x) => porObra.set(x.obra_id, [...porObra.get(x.obra_id) ?? [], x]));
@@ -433,10 +449,22 @@ function retencoesObra(base, competencia, nome, hoje) {
     const referencia = vencidaCombinada ? `${competencia}:${obraId}:combinado:${vencidaCombinada}` : `${competencia}:${obraId}`;
     if (base.feitas.has(`retencao_obra|${referencia}`)) return;
     const nomeDaObra = obraPor.get(obraId)?.nome ?? l[0].obra;
-    const obra = nomeLegivel(nomeDaObra);
     const aprovadas = l.filter((x) => x.medicao?.status === "aprovada");
     const ordem = (a, b) => a.empresa.localeCompare(b.empresa, "pt-BR");
     const motivo = (x) => !x.medicao || itensPendentes(base, x.medicao.id) >= 12 ? "medi\xE7\xE3o n\xE3o enviada" : x.medicao.status === "em_analise" ? "em confer\xEAncia na Emais" : "documentos pendentes";
+    const texto = aplicarModelo(modelo, {
+      ...comuns,
+      "{obra}": nomeLegivel(nomeDaObra),
+      "{prazo_regularizacao}": `${curta(tol)}${vencidaCombinada ? " ou at\xE9 a data combinada" : ""}`,
+      "{qtd_empresas}": `${reter.length} ${reter.length === 1 ? "empresa" : "empresas"}`,
+      "{empresas_reter}": limitar(reter.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}: ${motivo(x)}`), "empresas").join("\n"),
+      "{empresas_liberadas}": aprovadas.length ? ["Liberadas para pagamento:", ...limitar(aprovadas.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}`), "empresas")].join("\n") : "",
+      "{empresas_aguardando}": aguardando.length ? [
+        "Aguardando data combinada com o fornecedor (ainda n\xE3o reter):",
+        ...aguardando.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}: envio combinado at\xE9 ${curta(combinadaAte(x, hoje))}`)
+      ].join("\n") : "",
+      "{assinatura}": assinaturaTexto(nome, base.assinatura)
+    });
     lista.push({
       chave: `retencao-obra|${referencia}`,
       tipo: "retencao_obra",
@@ -444,20 +472,7 @@ function retencoesObra(base, competencia, nome, hoje) {
       titulo: nomeDaObra,
       resumo: `${reter.length} ${reter.length === 1 ? "empresa a reter" : "empresas a reter"}${aguardando.length ? `, ${aguardando.length} com data combinada` : ""}`,
       para: obraPor.get(obraId)?.emails_engenharia ?? "",
-      assunto: `${obra}: reter pagamento de ${reter.length} ${reter.length === 1 ? "empresa" : "empresas"} (medi\xE7\xE3o de ${mes})`,
-      corpo: [
-        "Ol\xE1,",
-        "",
-        `As empresas abaixo n\xE3o regularizaram a medi\xE7\xE3o de ${mes} at\xE9 ${curta(tol)}${vencidaCombinada ? " ou at\xE9 a data combinada" : ""}, mesmo ap\xF3s notifica\xE7\xE3o. A\xE7\xE3o: n\xE3o liberar o pagamento de ${mesNome} dessas empresas at\xE9 novo aviso.`,
-        "",
-        "Reter pagamento:",
-        ...limitar(reter.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}: ${motivo(x)}`), "empresas"),
-        ...aprovadas.length ? ["", "Liberadas para pagamento:", ...limitar(aprovadas.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}`), "empresas")] : [],
-        ...aguardando.length ? ["", "Aguardando data combinada com o fornecedor (ainda n\xE3o reter):", ...aguardando.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}: envio combinado at\xE9 ${curta(combinadaAte(x, hoje))}`)] : [],
-        "",
-        "Os fornecedores j\xE1 foram notificados. Assim que cada empresa for aprovada, enviamos a libera\xE7\xE3o.",
-        ...assinatura(nome, base.assinatura)
-      ].join("\n"),
+      ...texto,
       registros: [{ tipo: "retencao_obra", referencia, empresa_id: null, obra_id: obraId, competencia }],
       medicoes: [],
       obraId
@@ -465,16 +480,18 @@ function retencoesObra(base, competencia, nome, hoje) {
   });
   return lista;
 }
+var MODELO_DA_FAIXA = { vencido: "vencimento_vencido", "15": "vencimento_segundo", "30": "vencimento_primeiro" };
 function vencimentos(base, nome) {
+  const r = base.regras;
   const liberadas = new Map(base.alocacoes.filter((a) => a.status === "liberado").map((a) => [a.alocacao_id, a]));
   const empresaPor = new Map(base.empresas.map((e) => [e.id, e]));
   const docs = /* @__PURE__ */ new Map();
   base.pendencias.forEach((p) => {
     const a = liberadas.get(p.alocacao_id);
-    if (!a || !p.vencimento || p.dias_para_vencer === null || p.dias_para_vencer > 30) return;
+    if (!a || !p.vencimento || p.dias_para_vencer === null || p.dias_para_vencer > r.primeiroAviso) return;
     if (p.situacao !== "a_vencer" && p.situacao !== "vencido") return;
     if (p.status_envio_aberto === "em_analise") return;
-    const faixa = p.dias_para_vencer <= 0 ? "vencido" : p.dias_para_vencer <= 15 ? "15" : "30";
+    const faixa = p.dias_para_vencer <= 0 ? "vencido" : p.dias_para_vencer <= r.segundoAviso ? "15" : "30";
     const deQuem = p.grupo === "empresa" ? "empresa" : p.colaborador_id;
     const chave = `${faixa}:${p.empresa_id}:${p.tipo_codigo}:${deQuem}:${p.vencimento}`;
     if (base.feitas.has(`vencimento_documento|${chave}`) || docs.has(chave)) return;
@@ -493,44 +510,36 @@ function vencimentos(base, nome) {
   const lista = [];
   porEmpresa([...docs.values()]).forEach((l, empresaId) => {
     const e = empresaPor.get(empresaId);
-    const empresa = nomeLegivel(e?.razao_social ?? "", true);
     const vencidos = l.filter((d) => d.faixa === "vencido");
     const em15 = l.filter((d) => d.faixa === "15");
     const em30 = l.filter((d) => d.faixa === "30");
-    const assunto = vencidos.length ? `Colaboradores impedidos de entrar na obra: documentos vencidos, ${empresa}` : em15.length ? `Faltam 15 dias: documentos vencendo, ${empresa}` : `Documentos vencem nos pr\xF3ximos 30 dias: renove no portal para manter a libera\xE7\xE3o, ${empresa}`;
+    const faixa = vencidos.length ? "vencido" : em15.length ? "15" : "30";
+    const modelo = modeloAtivo(base, MODELO_DA_FAIXA[faixa]);
+    if (!modelo) return;
     const secoes = [
       ...vencidos.length ? ["", "J\xE1 vencidos:", ...linhas(vencidos)] : [],
-      ...em15.length ? ["", "Vencem em at\xE9 15 dias:", ...linhas(em15)] : [],
-      ...em30.length ? ["", "Vencem em at\xE9 30 dias:", ...linhas(em30)] : []
+      ...em15.length ? ["", `Vencem em at\xE9 ${r.segundoAviso} dias:`, ...linhas(em15)] : [],
+      ...em30.length ? ["", `Vencem em at\xE9 ${r.primeiroAviso} dias:`, ...linhas(em30)] : []
     ];
+    const texto = aplicarModelo(modelo, {
+      "{empresa}": nomeLegivel(e?.razao_social ?? "", true),
+      "{dias}": String(faixa === "15" ? r.segundoAviso : r.primeiroAviso),
+      "{documentos}": limitarItens(secoes, "documentos").join("\n").trim(),
+      "{link_pendencias}": LINK_PENDENCIAS(),
+      "{assinatura}": assinaturaTexto(nome, base.assinatura)
+    });
     lista.push({
       chave: `documentos|${empresaId}|${l.map((d) => d.chave).sort().join(",")}`,
       tipo: "vencimento_documento",
       urgente: vencidos.length > 0,
       titulo: e?.razao_social ?? "",
-      resumo: [vencidos.length ? `${vencidos.length} ${vencidos.length === 1 ? "vencido" : "vencidos"}` : "", em15.length ? `${em15.length} em 15 dias` : "", em30.length ? `${em30.length} em 30 dias` : ""].filter(Boolean).join(", "),
+      resumo: [
+        vencidos.length ? `${vencidos.length} ${vencidos.length === 1 ? "vencido" : "vencidos"}` : "",
+        em15.length ? `${em15.length} em ${r.segundoAviso} dias` : "",
+        em30.length ? `${em30.length} em ${r.primeiroAviso} dias` : ""
+      ].filter(Boolean).join(", "),
       para: emailDaEmpresa(e),
-      assunto,
-      corpo: [
-        `Ol\xE1, equipe da ${empresa},`,
-        "",
-        "Os documentos abaixo, de colaboradores liberados nas obras da Emais, precisam ser renovados no portal. Para que eles continuem trabalhando sem interrup\xE7\xE3o, envie a renova\xE7\xE3o antes do vencimento.",
-        ...limitarItens(secoes, "documentos"),
-        "",
-        "Se o documento vencer:",
-        "- o colaborador fica impedido de entrar na obra at\xE9 a renova\xE7\xE3o ser aprovada;",
-        "- se for preciso refazer exame (ASO) ou treinamento (NR), conte o tempo de agendamento;",
-        "- sem colaborador liberado, o servi\xE7o contratado pode atrasar.",
-        "",
-        "Como enviar:",
-        `1. Acesse ${LINK_PENDENCIAS()}`,
-        "2. Localize o colaborador e clique em Enviar novo no documento.",
-        "3. Anexe o arquivo atualizado e informe a data de emiss\xE3o.",
-        "4. A Emais confere em at\xE9 2 dias \xFAteis.",
-        "",
-        AVISO_PORTAL,
-        ...assinatura(nome, base.assinatura)
-      ].join("\n"),
+      ...texto,
       registros: l.map((d) => ({ tipo: "vencimento_documento", referencia: d.chave, empresa_id: empresaId, obra_id: null, competencia: null })),
       medicoes: [],
       obraId: null
@@ -539,6 +548,8 @@ function vencimentos(base, nome) {
   return lista;
 }
 function integracao(base, nome, hoje) {
+  const modelo = modeloAtivo(base, "integracao_documentos");
+  if (!modelo) return [];
   const semana = segundaDaSemana(hoje);
   const travadas = new Map(base.alocacoes.filter((a) => a.status === "em_cadastro" || a.status === "pendente_fornecedor").map((a) => [a.alocacao_id, a]));
   const empresaPor = new Map(base.empresas.map((e) => [e.id, e]));
@@ -549,11 +560,11 @@ function integracao(base, nome, hoje) {
     if (p.status_envio_aberto === "em_analise") return;
     if (p.situacao === "nao_enviado") {
       const criada = base.criacao.get(p.alocacao_id);
-      if (!criada || diasUteisDesde(criada, hoje) < DIAS_PARADO) return;
+      if (!criada || diasUteisDesde(criada, hoje) < base.regras.diasParado) return;
     }
     if (p.situacao === "devolvido") {
       const em = base.devolucoes.get(`${p.empresa_id}|${p.grupo === "empresa" ? "" : p.colaborador_id}|${p.tipo_codigo}`);
-      if (em && diasUteisDesde(em, hoje) < DIAS_PARADO) return;
+      if (em && diasUteisDesde(em, hoje) < base.regras.diasParado) return;
     }
     const f = porColaborador.get(p.alocacao_id) ?? { empresa_id: a.empresa_id, obra: a.obra, colaborador: nomeLegivel(a.colaborador), docs: [] };
     const doc = p.situacao === "devolvido" ? `${p.documento} (devolvido${p.motivo_devolucao ? `: ${p.motivo_devolucao.toLowerCase()}` : ""}; corrija no portal)` : p.situacao === "vencido" ? `${p.documento} (vencido)` : p.documento;
@@ -565,35 +576,24 @@ function integracao(base, nome, hoje) {
     const referencia = `${semana}:${empresaId}`;
     if (base.feitas.has(`integracao_documentos|${referencia}`)) return;
     const e = empresaPor.get(empresaId);
-    const empresa = nomeLegivel(e?.razao_social ?? "", true);
     const obras = [...new Set(l.map((x) => x.obra))].sort((a, b) => a.localeCompare(b, "pt-BR"));
     const linhas = obras.flatMap((o) => [
       `Obra ${nomeLegivel(o)}`,
       ...l.filter((x) => x.obra === o).sort((a, b) => a.colaborador.localeCompare(b.colaborador, "pt-BR")).map((x) => `- ${x.colaborador}: ${x.docs.join(", ")}`)
     ]);
+    const texto = aplicarModelo(modelo, {
+      "{empresa}": nomeLegivel(e?.razao_social ?? "", true),
+      "{colaboradores}": limitarItens(linhas, "colaboradores").join("\n"),
+      "{link_pendencias}": LINK_PENDENCIAS(),
+      "{assinatura}": assinaturaTexto(nome, base.assinatura)
+    });
     lista.push({
       chave: `integracao|${referencia}`,
       tipo: "integracao_documentos",
       titulo: e?.razao_social ?? "",
       resumo: `${l.length} ${l.length === 1 ? "colaborador" : "colaboradores"} sem libera\xE7\xE3o`,
       para: emailDaEmpresa(e),
-      assunto: `Colaboradores sem libera\xE7\xE3o para a obra: documentos pendentes, ${empresa}`,
-      corpo: [
-        `Ol\xE1, equipe da ${empresa},`,
-        "",
-        "Os colaboradores abaixo est\xE3o cadastrados no portal, mas ainda n\xE3o podem ser liberados porque faltam documentos obrigat\xF3rios. Sem eles, o colaborador n\xE3o faz a integra\xE7\xE3o de seguran\xE7a e n\xE3o entra na obra.",
-        "",
-        ...limitarItens(linhas, "colaboradores"),
-        "",
-        "Como enviar:",
-        `1. Acesse ${LINK_PENDENCIAS()}`,
-        "2. Envie os documentos de cada colaborador.",
-        "3. Com tudo enviado, clique em Enviar para an\xE1lise.",
-        "4. A Emais confere em at\xE9 2 dias \xFAteis; depois o TST da obra valida e agenda a integra\xE7\xE3o.",
-        "",
-        AVISO_PORTAL,
-        ...assinatura(nome, base.assinatura)
-      ].join("\n"),
+      ...texto,
       registros: [{ tipo: "integracao_documentos", referencia, empresa_id: empresaId, obra_id: null, competencia: null }],
       medicoes: [],
       obraId: null
@@ -602,11 +602,12 @@ function integracao(base, nome, hoje) {
   return lista;
 }
 async function montarFila(nome, hoje = hojeIso()) {
-  const lembrete = competenciaDoLembrete(hoje);
-  const notificacao = competenciaDaNotificacao(hoje);
-  const retencao = competenciaDaRetencao(hoje);
+  const regras = await lerRegras();
+  const lembrete = competenciaDoLembrete(regras, hoje);
+  const notificacao = competenciaDaNotificacao(regras, hoje);
+  const retencao = competenciaDaRetencao(regras, hoje);
   const doPortal = (c) => !!c && c >= INICIO_PORTAL;
-  const base = await lerBase([lembrete, notificacao, retencao].filter(doPortal));
+  const base = await lerBase([lembrete, notificacao, retencao].filter(doPortal), regras);
   const ordem = (a, b) => a.titulo.localeCompare(b.titulo, "pt-BR");
   return {
     cobrancas: [
@@ -617,8 +618,9 @@ async function montarFila(nome, hoje = hojeIso()) {
       ...vencimentos(base, nome).sort(ordem),
       ...integracao(base, nome, hoje).sort(ordem)
     ],
-    proxima: proximaData(hoje),
-    assinatura: base.assinatura
+    proxima: proximaData(regras, hoje),
+    assinatura: base.assinatura,
+    regras
   };
 }
 

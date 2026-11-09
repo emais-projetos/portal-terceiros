@@ -123,8 +123,10 @@ export function Cobrancas() {
             <details className="ajuda">
               <summary>Calendário das cobranças</summary>
               <p>
-                Medição: lembrete no dia 20, notificação de atraso no dia 26 com tolerância até o dia 30, e retenção com aviso à obra depois disso. Documentos dos liberados: em 30
-                dias, em 15 dias e quando vencem. Integração: toda segunda-feira.
+                Medição: lembrete no dia {fila.regras.diaLembrete}, prazo no dia {fila.regras.diaPrazo}, notificação de atraso no dia seguinte com tolerância de{' '}
+                {fila.regras.diasTolerancia} dias, e retenção com aviso à obra depois disso. Documentos dos liberados: {fila.regras.primeiroAviso} dias antes,{' '}
+                {fila.regras.segundoAviso} dias antes e quando vencem. Integração: toda segunda-feira. Os dias e os textos dos e-mails ficam em Acessos, nas abas Regras e
+                E-mails.
               </p>
             </details>
             <EditarAssinatura
@@ -189,7 +191,7 @@ export function Cobrancas() {
               <h2 className="bloco-titulo">
                 Avisos de retenção para as obras <span className="sub">{obras.length}</span>
               </h2>
-              <p className="dica">{titulosGrupo.retencao_obra.apoio}</p>
+              <p className="dica">{titulosGrupo(fila.regras).retencao_obra.apoio}</p>
               <ul className="lista-farois">{obras.map(linha)}</ul>
             </section>
           )}
@@ -237,7 +239,7 @@ const ORDEM_FRENTES: Frente[] = ['Medição', 'Documentos', 'Integração'];
 
 // Nome curto do e-mail dentro da linha do fornecedor.
 const rotuloTipo: Record<TipoCobranca, string> = {
-  lembrete_medicao: 'Medição: lembrete do prazo (dia 25)',
+  lembrete_medicao: 'Medição: lembrete do prazo',
   notificacao_medicao: 'Medição: notificação de atraso',
   cobranca_medicao: 'Medição: pagamento retido',
   retencao_obra: 'Aviso de retenção para a engenharia',

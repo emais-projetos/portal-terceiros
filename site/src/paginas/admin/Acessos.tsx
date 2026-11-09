@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { ModelosEmail, Regras } from './RegrasEmails';
 import { Pagina, Mensagem } from '../../componentes/Pagina';
 import { Dialogo } from '../../componentes/Dialogo';
 import { Carregando } from '../../componentes/Carregando';
@@ -13,8 +15,17 @@ import {
 
 const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const ABAS = [
+  ['usuarios', 'Usuários'],
+  ['regras', 'Regras'],
+  ['emails', 'E-mails'],
+] as const;
+type Aba = (typeof ABAS)[number][0];
+
 export function Acessos() {
   const { usuario } = useSessao();
+  const [params, setParams] = useSearchParams();
+  const aba: Aba = ABAS.some(([a]) => a === params.get('aba')) ? (params.get('aba') as Aba) : 'usuarios';
   const [acessos, setAcessos] = useState<Acesso[] | null>(null);
   const [empresas, setEmpresas] = useState<EmpresaOpcao[]>([]);
   const [obras, setObras] = useState<Obra[]>([]);
@@ -82,9 +93,26 @@ export function Acessos() {
   return (
     <Pagina
       titulo="Acessos"
-      apoio={`Quem entra no portal. ${semAcesso > 0 ? `${semAcesso} empresas ainda não têm acesso.` : 'Todas as empresas já têm acesso.'}`}
-      acoes={<button className="botao" type="button" onClick={() => setNovoAberto(true)}>Novo acesso</button>}
+      apoio={
+        aba === 'regras'
+          ? 'Prazos das cobranças, validade dos documentos, envio automático e assinatura dos e-mails.'
+          : aba === 'emails'
+            ? 'Os textos das cobranças. Os dados entram sozinhos nos campos entre chaves, e cada mudança salva vira uma nova revisão.'
+            : `Quem entra no portal. ${semAcesso > 0 ? `${semAcesso} empresas ainda não têm acesso.` : 'Todas as empresas já têm acesso.'}`
+      }
+      acoes={aba === 'usuarios' ? <button className="botao" type="button" onClick={() => setNovoAberto(true)}>Novo acesso</button> : undefined}
     >
+      <nav className="abas abas-botoes" aria-label="Acessos">
+        {ABAS.map(([a, nome]) => (
+          <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => setParams(a === 'usuarios' ? {} : { aba: a })}>
+            {nome}
+          </button>
+        ))}
+      </nav>
+      {aba === 'regras' && <Regras />}
+      {aba === 'emails' && <ModelosEmail />}
+      {aba === 'usuarios' && (
+        <>
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
 
@@ -173,6 +201,8 @@ export function Acessos() {
         }}
       />
       <EnvioDoLink link={link} empresas={acessos?.find((a) => a.id === link?.usuario_id)?.empresas ?? []} aoFechar={() => setLink(null)} />
+        </>
+      )}
     </Pagina>
   );
 }

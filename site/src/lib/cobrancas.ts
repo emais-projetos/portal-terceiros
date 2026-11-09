@@ -2,22 +2,24 @@ import { supabase, enderecoDoSite } from './supabase';
 import { data, hojeIso } from './formato';
 import { lerAlocacoes, type AlocacaoResumo } from './admin';
 import { lerTiposMedicao, lerTodasMedicoes, type Medicao, type TipoMedicao } from './medicao';
+import { lerRegras, prazoDe, toleranciaDe, type Regras } from './regras';
+import { aplicarModelo, lerModelos, type Modelo, type TipoModelo } from './modelosEmail';
 
-// Calendário de cobrança (aprovado com o administrativo):
-// medição: dia 20 lembrete (prazo dia 25); dia 26 notificação de atraso com tolerância até o dia 30
-// (as guias vencem no dia 20); depois do dia 30, pagamento retido e aviso à engenharia da obra, salvo
-// quando há data combinada com o fornecedor;
-// documentos dos liberados: quando entram em 30 dias, em 15 dias e quando vencem;
+export { prazoDe, toleranciaDe } from './regras';
+
+// Calendário de cobrança (dias editáveis em Acessos > Regras; padrão aprovado com o administrativo):
+// medição: lembrete no dia 20 (prazo dia 25); no dia seguinte ao prazo, notificação de atraso com tolerância
+// de 5 dias; depois da tolerância, pagamento retido e aviso à engenharia da obra, salvo quando há data
+// combinada com o fornecedor;
+// documentos dos liberados: no primeiro aviso (30 dias), no segundo (15 dias) e quando vencem;
 // integração: toda segunda-feira, colaboradores ainda não liberados com documento obrigatório parado há
 // 3 dias úteis ou mais.
-// Cada e-mail é aberto no Outlook por uma pessoa, que confere e envia. Depois de aberto ou dispensado, sai da fila.
+// Os textos saem dos modelos de Acessos > E-mails. No portal, cada e-mail é aberto no Outlook por uma pessoa,
+// que confere e envia; no envio automático, o n8n envia. Depois de enviado, aberto ou dispensado, sai da fila.
 
-export const DIA_LEMBRETE = 20;
-export const DIA_NOTIFICACAO = 26;
 // Antes disso a medição era controlada na planilha, que já tem as cobranças feitas.
 const INICIO_PORTAL = '2026-09-01';
 const MAX_LINHAS = 15;
-const DIAS_PARADO = 3;
 
 export type TipoCobranca =
   | 'lembrete_medicao'
@@ -45,7 +47,7 @@ export type Cobranca = {
 
 export type Assinatura = { setor: string; contato: string };
 
-export type Fila = { cobrancas: Cobranca[]; proxima: string; assinatura: Assinatura };
+export type Fila = { cobrancas: Cobranca[]; proxima: string; assinatura: Assinatura; regras: Regras };
 
 // ---------------------------------------------------------------- Datas
 
@@ -56,21 +58,6 @@ function somarMeses(competencia: string, n: number): string {
 
 const mesAtual = (hoje: string) => `${hoje.slice(0, 7)}-01`;
 const diaDoMes = (hoje: string) => Number(hoje.slice(8, 10));
-
-function ultimoDia(mes: string): number {
-  const [a, m] = mes.split('-').map(Number);
-  return new Date(Date.UTC(a, m, 0)).getUTCDate();
-}
-
-// Prazo (dia 25) e tolerância (dia 30, ou o último dia do mês) da medição de uma competência.
-export function prazoDe(competencia: string): string {
-  return `${somarMeses(competencia, 1).slice(0, 8)}25`;
-}
-
-export function toleranciaDe(competencia: string): string {
-  const mes = somarMeses(competencia, 1);
-  return `${mes.slice(0, 8)}${String(Math.min(30, ultimoDia(mes))).padStart(2, '0')}`;
-}
 
 function diaSemana(iso: string): number {
   const [a, m, d] = iso.split('-').map(Number);
@@ -108,30 +95,33 @@ export function mesBarra(competencia: string): string {
   return `${nomes[m - 1]}/${a}`;
 }
 
-export function competenciaDoLembrete(hoje = hojeIso()): string | null {
+const diaNoMes = (mes: string, dia: number) => `${mes.slice(0, 8)}${String(dia).padStart(2, '0')}`;
+
+// Lembrete: do dia do lembrete até o prazo. Notificação: do dia seguinte ao prazo até o fim da tolerância.
+export function competenciaDoLembrete(r: Regras, hoje = hojeIso()): string | null {
   const d = diaDoMes(hoje);
-  return d >= DIA_LEMBRETE && d < DIA_NOTIFICACAO ? somarMeses(mesAtual(hoje), -1) : null;
+  return d >= r.diaLembrete && d <= r.diaPrazo ? somarMeses(mesAtual(hoje), -1) : null;
 }
 
-export function competenciaDaNotificacao(hoje = hojeIso()): string | null {
+export function competenciaDaNotificacao(r: Regras, hoje = hojeIso()): string | null {
   const c = somarMeses(mesAtual(hoje), -1);
-  return diaDoMes(hoje) >= DIA_NOTIFICACAO && hoje <= toleranciaDe(c) ? c : null;
+  return diaDoMes(hoje) > r.diaPrazo && hoje <= toleranciaDe(c, r) ? c : null;
 }
 
 // Retenção: o último mês trabalhado cuja tolerância já passou.
-export function competenciaDaRetencao(hoje = hojeIso()): string {
+export function competenciaDaRetencao(r: Regras, hoje = hojeIso()): string {
   const c = somarMeses(mesAtual(hoje), -1);
-  return hoje > toleranciaDe(c) ? c : somarMeses(c, -1);
+  return hoje > toleranciaDe(c, r) ? c : somarMeses(c, -1);
 }
 
-export function proximaData(hoje = hojeIso()): string {
+export function proximaData(r: Regras, hoje = hojeIso()): string {
   const d = diaDoMes(hoje);
   const mes = mesAtual(hoje);
-  const tol = toleranciaDe(somarMeses(mes, -1));
-  if (d < DIA_LEMBRETE) return `${mes.slice(0, 8)}${DIA_LEMBRETE}`;
-  if (d < DIA_NOTIFICACAO) return `${mes.slice(0, 8)}${DIA_NOTIFICACAO}`;
+  const tol = toleranciaDe(somarMeses(mes, -1), r);
+  if (d < r.diaLembrete) return diaNoMes(mes, r.diaLembrete);
+  if (d <= r.diaPrazo) return diaNoMes(mes, r.diaPrazo + 1);
   if (hoje <= tol) return somarDiasIso(tol, 1);
-  return `${somarMeses(mes, 1).slice(0, 8)}${DIA_LEMBRETE}`;
+  return diaNoMes(somarMeses(mes, 1), r.diaLembrete);
 }
 
 // ---------------------------------------------------------------- Textos
@@ -160,6 +150,11 @@ export const AVISO_PORTAL = 'Importante: documentos e correções são recebidos
 
 export function assinatura(nome: string, a: Assinatura): string[] {
   return ['', 'Atenciosamente,', ...(nome ? [nome] : []), `${a.setor} | Grupo Emais`, ...(a.contato ? [a.contato] : [])];
+}
+
+// Campo {assinatura} dos modelos: o "Atenciosamente," fica no próprio texto do modelo.
+function assinaturaTexto(nome: string, a: Assinatura): string {
+  return [...(nome ? [nome] : []), `${a.setor} | Grupo Emais`, ...(a.contato ? [a.contato] : [])].join('\n');
 }
 
 // Corta listas longas: o link do Outlook tem limite de tamanho.
@@ -217,14 +212,16 @@ type Base = {
   obras: Obra[];
   feitas: Set<string>;
   assinatura: Assinatura;
+  regras: Regras;
+  modelos: Map<TipoModelo, Modelo>;
 };
 
 const CAMPOS_PEND = 'alocacao_id, colaborador_id, empresa_id, tipo_codigo, documento, grupo, vencimento, dias_para_vencer, status_envio_aberto, motivo_devolucao, situacao';
 
 type Devolvido = { empresa_id: string; colaborador_id: string | null; tipo_codigo: string; analisado_em: string | null };
 
-async function lerBase(competencias: string[]): Promise<Base> {
-  const [medicoes, tipos, alocacoes, pendencias, empresas, obras, feitas, criadas, devolvidos, parametros] = await Promise.all([
+async function lerBase(competencias: string[], regras: Regras): Promise<Base> {
+  const [medicoes, tipos, alocacoes, pendencias, empresas, obras, feitas, criadas, devolvidos, parametros, modelos] = await Promise.all([
     lerTodasMedicoes(),
     lerTiposMedicao(),
     lerAlocacoes(),
@@ -250,6 +247,7 @@ async function lerBase(competencias: string[]): Promise<Base> {
       supabase.from('documentos').select('empresa_id, colaborador_id, tipo_codigo, analisado_em').eq('status', 'devolvido').order('id').range(i, f) as unknown as PromiseLike<{ data: Devolvido[] | null; error: unknown }>,
     ),
     supabase.from('parametros').select('chave, valor').in('chave', ['cobranca_setor', 'cobranca_contato']),
+    lerModelos(),
   ]);
   const ids = medicoes.filter((m) => competencias.includes(m.competencia) && m.status !== 'aprovada').map((m) => m.id);
   const itens: ItemMed[] = [];
@@ -277,7 +275,15 @@ async function lerBase(competencias: string[]): Promise<Base> {
     obras,
     feitas: new Set(feitas.map((c) => `${c.tipo}|${c.referencia}`)),
     assinatura: { setor: param.get('cobranca_setor') ?? 'Gente e Gestão', contato: param.get('cobranca_contato') ?? '' },
+    regras,
+    modelos: new Map(modelos.map((m) => [m.tipo, m])),
   };
+}
+
+// Modelo em vigor do e-mail; desligado em Acessos > E-mails, a cobrança não entra na fila.
+function modeloAtivo(base: Base, tipo: TipoModelo): Modelo | null {
+  const m = base.modelos.get(tipo);
+  return m && m.ativo ? m : null;
 }
 
 // ---------------------------------------------------------------- Medição
@@ -352,54 +358,46 @@ function oQueFalta(base: Base, l: Esperada[]): string[] {
   return limitarItens(linhas, 'itens');
 }
 
-const COMO_ENVIAR_MEDICAO = (mes: string) => [
-  'Como enviar:',
-  `1. Acesse ${LINK_MEDICAO()}`,
-  `2. Escolha a obra e o mês de ${mes} e clique em Começar.`,
-  '3. Anexe um arquivo por item ou marque "não se aplica" quando for o caso.',
-  '4. Confira a lista de colaboradores do mês e clique em Enviar para conferência.',
-];
-
-const COMO_REGULARIZAR = (mes: string, final: string) => [
-  `1. Acesse ${LINK_MEDICAO()}`,
-  `2. Abra ${mes}, envie ou corrija os itens acima e clique em Enviar para conferência.`,
-  `3. ${final}`,
-];
-
 const pendenteDoFornecedor = (x: Esperada) => !x.medicao || x.medicao.status === 'aberta' || x.medicao.status === 'pendente_fornecedor';
 
-function lembretes(base: Base, competencia: string, nome: string): Cobranca[] {
+// Campos comuns da medição de uma competência.
+function camposMedicao(competencia: string, r: Regras) {
   const mes = mesBarra(competencia);
-  const prazo = prazoDe(competencia);
+  const prazo = prazoDe(competencia, r);
+  const tol = toleranciaDe(competencia, r);
+  return {
+    '{mes}': mes,
+    '{mes_nome}': mes.split('/')[0],
+    '{prazo}': data(prazo),
+    '{prazo_curto}': curta(prazo),
+    '{tolerancia}': data(tol),
+    '{tolerancia_curta}': curta(tol),
+    '{link_medicao}': LINK_MEDICAO(),
+  };
+}
+
+function lembretes(base: Base, competencia: string, nome: string): Cobranca[] {
+  const modelo = modeloAtivo(base, 'lembrete_medicao');
+  if (!modelo) return [];
   const empresaPor = new Map(base.empresas.map((e) => [e.id, e]));
+  const comuns = camposMedicao(competencia, base.regras);
   const lista: Cobranca[] = [];
   porEmpresa(esperadas(base, competencia).filter(pendenteDoFornecedor)).forEach((l, empresaId) => {
     const referencia = `${competencia}:${empresaId}`;
     if (base.feitas.has(`lembrete_medicao|${referencia}`)) return;
-    const empresa = nomeLegivel(l[0].empresa, true);
+    const texto = aplicarModelo(modelo, {
+      ...comuns,
+      '{empresa}': nomeLegivel(l[0].empresa, true),
+      '{situacao_obras}': limitar(l.map((x) => `- ${nomeObra(x)}: ${situacaoParaLembrete(x)}`), 'obras').join('\n'),
+      '{assinatura}': assinaturaTexto(nome, base.assinatura),
+    });
     lista.push({
       chave: `lembrete|${referencia}`,
       tipo: 'lembrete_medicao',
       titulo: l[0].empresa,
       resumo: `${l.length} ${l.length === 1 ? 'obra' : 'obras'} sem envio`,
       para: emailDaEmpresa(empresaPor.get(empresaId)),
-      assunto: `Medição de ${mes}: envio até ${curta(prazo)}, ${empresa}`,
-      corpo: [
-        `Olá, equipe da ${empresa},`,
-        '',
-        `A medição de ${mes} deve ser enviada pelo Portal de Terceiros até ${data(prazo)}.`,
-        '',
-        'Situação hoje:',
-        ...limitar(l.map((x) => `- ${nomeObra(x)}: ${situacaoParaLembrete(x)}`), 'obras'),
-        '',
-        'Por que é importante:',
-        `O pagamento do mês só é liberado depois que a Emais confere os documentos da medição (holerites, ponto, folha, FGTS, INSS, DCTFWeb, DARF e seguro de vida). Se a medição não for apresentada no prazo, o pagamento de ${mes.split('/')[0]} pode ser retido.`,
-        '',
-        ...COMO_ENVIAR_MEDICAO(mes),
-        '',
-        AVISO_PORTAL,
-        ...assinatura(nome, base.assinatura),
-      ].join('\n'),
+      ...texto,
       registros: [{ tipo: 'lembrete_medicao', referencia, empresa_id: empresaId, obra_id: null, competencia }],
       medicoes: l.filter((x) => x.medicao).map((x) => x.medicao!.id),
       obraId: null,
@@ -409,45 +407,28 @@ function lembretes(base: Base, competencia: string, nome: string): Cobranca[] {
 }
 
 function notificacoes(base: Base, competencia: string, nome: string, hoje: string): Cobranca[] {
-  const mes = mesBarra(competencia);
-  const mesNome = mes.split('/')[0];
-  const prazo = prazoDe(competencia);
-  const tol = toleranciaDe(competencia);
-  const resposta = proximoDiaUtil(hoje);
+  const modelo = modeloAtivo(base, 'notificacao_medicao');
+  if (!modelo) return [];
+  const tol = toleranciaDe(competencia, base.regras);
   const empresaPor = new Map(base.empresas.map((e) => [e.id, e]));
+  const comuns = { ...camposMedicao(competencia, base.regras), '{responder_ate}': curta(proximoDiaUtil(hoje)) };
   const lista: Cobranca[] = [];
   porEmpresa(esperadas(base, competencia).filter(pendenteDoFornecedor)).forEach((l, empresaId) => {
     const referencia = `${competencia}:${empresaId}`;
     if (base.feitas.has(`notificacao_medicao|${referencia}`)) return;
-    const empresa = nomeLegivel(l[0].empresa, true);
+    const texto = aplicarModelo(modelo, {
+      ...comuns,
+      '{empresa}': nomeLegivel(l[0].empresa, true),
+      '{o_que_falta}': oQueFalta(base, l).join('\n'),
+      '{assinatura}': assinaturaTexto(nome, base.assinatura),
+    });
     lista.push({
       chave: `notificacao|${referencia}`,
       tipo: 'notificacao_medicao',
       titulo: l[0].empresa,
       resumo: `${l.length} ${l.length === 1 ? 'obra' : 'obras'} em atraso, tolerância até ${curta(tol)}`,
       para: emailDaEmpresa(empresaPor.get(empresaId)),
-      assunto: `Medição de ${mes} em atraso: envie até ${curta(tol)} para evitar a retenção do pagamento, ${empresa}`,
-      corpo: [
-        `Olá, equipe da ${empresa},`,
-        '',
-        `O prazo da medição de ${mes} terminou em ${data(prazo)} e ainda faltam documentos. Para que o pagamento de ${mesNome} não seja retido, regularize pelo portal até ${data(tol)}.`,
-        '',
-        'O que falta:',
-        ...oQueFalta(base, l),
-        '',
-        `Pedimos que responda este e-mail até ${curta(resposta)} informando a data em que os documentos serão enviados no portal.`,
-        '',
-        `Se não for regularizado até ${data(tol)}:`,
-        `- o pagamento de ${mesNome} fica retido até a aprovação da medição;`,
-        '- a engenharia da obra é avisada da retenção;',
-        '- o atraso fica registrado no histórico de entregas da empresa, considerado na avaliação de fornecedores da Emais.',
-        '',
-        'Como regularizar:',
-        ...COMO_REGULARIZAR(mes, 'A Emais confere em até 3 dias úteis.'),
-        '',
-        AVISO_PORTAL,
-        ...assinatura(nome, base.assinatura),
-      ].join('\n'),
+      ...texto,
       registros: [{ tipo: 'notificacao_medicao', referencia, empresa_id: empresaId, obra_id: null, competencia }],
       medicoes: l.filter((x) => x.medicao).map((x) => x.medicao!.id),
       obraId: null,
@@ -459,20 +440,31 @@ function notificacoes(base: Base, competencia: string, nome: string, hoje: strin
 const combinadaAte = (x: Esperada, hoje: string) => (x.medicao?.prazo_combinado && x.medicao.prazo_combinado >= hoje ? x.medicao.prazo_combinado : null);
 
 function retencoesFornecedor(base: Base, competencia: string, nome: string, hoje: string): Cobranca[] {
+  const modelo = modeloAtivo(base, 'cobranca_medicao');
+  if (!modelo) return [];
   const mes = mesBarra(competencia);
-  const mesNome = mes.split('/')[0];
-  const tol = toleranciaDe(competencia);
-  const notificacao = `${somarMeses(competencia, 1).slice(0, 8)}${DIA_NOTIFICACAO}`;
+  const tol = toleranciaDe(competencia, base.regras);
+  // A notificação saiu no dia seguinte ao prazo.
+  const notificacao = somarDiasIso(prazoDe(competencia, base.regras), 1);
   const empresaPor = new Map(base.empresas.map((e) => [e.id, e]));
+  const comuns = camposMedicao(competencia, base.regras);
   // Em conferência na Emais não é cobrado do fornecedor: ele já fez a parte dele.
   const retidas = esperadas(base, competencia).filter((x) => pendenteDoFornecedor(x) && !combinadaAte(x, hoje));
   const lista: Cobranca[] = [];
   porEmpresa(retidas).forEach((l, empresaId) => {
-    const empresa = nomeLegivel(l[0].empresa, true);
     const combinada = l.map((x) => x.medicao?.prazo_combinado).filter((d): d is string => !!d && d > tol).sort().pop();
-    // Quando a data combinada vence, sai uma nova cobrança, mesmo que a do dia 31 já tenha sido enviada.
+    // Quando a data combinada vence, sai uma nova cobrança, mesmo que a do fim da tolerância já tenha sido enviada.
     const referencia = combinada ? `${competencia}:${empresaId}:combinado:${combinada}` : `${competencia}:${empresaId}`;
     if (base.feitas.has(`cobranca_medicao|${referencia}`)) return;
+    const texto = aplicarModelo(modelo, {
+      ...comuns,
+      '{empresa}': nomeLegivel(l[0].empresa, true),
+      '{historico_atraso}': combinada
+        ? `A medição de ${mes} estava em atraso e combinamos o envio no portal até ${data(combinada)}.`
+        : `No dia ${data(notificacao)} avisamos que a medição de ${mes} estava em atraso, com prazo até ${data(tol)} para regularização no portal.`,
+      '{o_que_falta}': oQueFalta(base, l).join('\n'),
+      '{assinatura}': assinaturaTexto(nome, base.assinatura),
+    });
     lista.push({
       chave: `retencao-fornecedor|${referencia}`,
       tipo: 'cobranca_medicao',
@@ -480,25 +472,7 @@ function retencoesFornecedor(base: Base, competencia: string, nome: string, hoje
       titulo: l[0].empresa,
       resumo: `${l.length} ${l.length === 1 ? 'obra' : 'obras'} com pagamento retido`,
       para: emailDaEmpresa(empresaPor.get(empresaId)),
-      assunto: `Pagamento retido: medição de ${mes} pendente, ${empresa}`,
-      corpo: [
-        `Olá, equipe da ${empresa},`,
-        '',
-        combinada && combinada > tol
-          ? `A medição de ${mes} estava em atraso e combinamos o envio no portal até ${data(combinada)}. Como os itens abaixo continuam pendentes, o pagamento de ${mesNome} está retido.`
-          : `No dia ${data(notificacao)} avisamos que a medição de ${mes} estava em atraso, com prazo até ${data(tol)} para regularização no portal. Como os itens abaixo continuam pendentes, o pagamento de ${mesNome} está retido.`,
-        '',
-        'O que falta:',
-        ...oQueFalta(base, l),
-        '',
-        'O pagamento é liberado assim que a medição for aprovada:',
-        ...COMO_REGULARIZAR(mes, 'A Emais confere em até 3 dias úteis e avisa a obra da liberação.'),
-        '',
-        'O atraso fica registrado no histórico de entregas da empresa, considerado na avaliação de fornecedores da Emais.',
-        '',
-        AVISO_PORTAL,
-        ...assinatura(nome, base.assinatura),
-      ].join('\n'),
+      ...texto,
       registros: [{ tipo: 'cobranca_medicao', referencia, empresa_id: empresaId, obra_id: null, competencia }],
       medicoes: l.filter((x) => x.medicao).map((x) => x.medicao!.id),
       obraId: null,
@@ -508,9 +482,10 @@ function retencoesFornecedor(base: Base, competencia: string, nome: string, hoje
 }
 
 function retencoesObra(base: Base, competencia: string, nome: string, hoje: string): Cobranca[] {
-  const mes = mesBarra(competencia);
-  const mesNome = mes.split('/')[0];
-  const tol = toleranciaDe(competencia);
+  const modelo = modeloAtivo(base, 'retencao_obra');
+  if (!modelo) return [];
+  const tol = toleranciaDe(competencia, base.regras);
+  const comuns = camposMedicao(competencia, base.regras);
   const obraPor = new Map(base.obras.map((o) => [o.id, o]));
   const porObra = new Map<string, Esperada[]>();
   esperadas(base, competencia)
@@ -526,11 +501,27 @@ function retencoesObra(base: Base, competencia: string, nome: string, hoje: stri
     const referencia = vencidaCombinada ? `${competencia}:${obraId}:combinado:${vencidaCombinada}` : `${competencia}:${obraId}`;
     if (base.feitas.has(`retencao_obra|${referencia}`)) return;
     const nomeDaObra = obraPor.get(obraId)?.nome ?? l[0].obra;
-    const obra = nomeLegivel(nomeDaObra);
     const aprovadas = l.filter((x) => x.medicao?.status === 'aprovada');
     const ordem = (a: Esperada, b: Esperada) => a.empresa.localeCompare(b.empresa, 'pt-BR');
     const motivo = (x: Esperada) =>
       !x.medicao || itensPendentes(base, x.medicao.id) >= 12 ? 'medição não enviada' : x.medicao.status === 'em_analise' ? 'em conferência na Emais' : 'documentos pendentes';
+    const texto = aplicarModelo(modelo, {
+      ...comuns,
+      '{obra}': nomeLegivel(nomeDaObra),
+      '{prazo_regularizacao}': `${curta(tol)}${vencidaCombinada ? ' ou até a data combinada' : ''}`,
+      '{qtd_empresas}': `${reter.length} ${reter.length === 1 ? 'empresa' : 'empresas'}`,
+      '{empresas_reter}': limitar(reter.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}: ${motivo(x)}`), 'empresas').join('\n'),
+      '{empresas_liberadas}': aprovadas.length
+        ? ['Liberadas para pagamento:', ...limitar(aprovadas.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}`), 'empresas')].join('\n')
+        : '',
+      '{empresas_aguardando}': aguardando.length
+        ? [
+            'Aguardando data combinada com o fornecedor (ainda não reter):',
+            ...aguardando.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}: envio combinado até ${curta(combinadaAte(x, hoje)!)}`),
+          ].join('\n')
+        : '',
+      '{assinatura}': assinaturaTexto(nome, base.assinatura),
+    });
     lista.push({
       chave: `retencao-obra|${referencia}`,
       tipo: 'retencao_obra',
@@ -538,22 +529,7 @@ function retencoesObra(base: Base, competencia: string, nome: string, hoje: stri
       titulo: nomeDaObra,
       resumo: `${reter.length} ${reter.length === 1 ? 'empresa a reter' : 'empresas a reter'}${aguardando.length ? `, ${aguardando.length} com data combinada` : ''}`,
       para: obraPor.get(obraId)?.emails_engenharia ?? '',
-      assunto: `${obra}: reter pagamento de ${reter.length} ${reter.length === 1 ? 'empresa' : 'empresas'} (medição de ${mes})`,
-      corpo: [
-        'Olá,',
-        '',
-        `As empresas abaixo não regularizaram a medição de ${mes} até ${curta(tol)}${vencidaCombinada ? ' ou até a data combinada' : ''}, mesmo após notificação. Ação: não liberar o pagamento de ${mesNome} dessas empresas até novo aviso.`,
-        '',
-        'Reter pagamento:',
-        ...limitar(reter.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}: ${motivo(x)}`), 'empresas'),
-        ...(aprovadas.length ? ['', 'Liberadas para pagamento:', ...limitar(aprovadas.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}`), 'empresas')] : []),
-        ...(aguardando.length
-          ? ['', 'Aguardando data combinada com o fornecedor (ainda não reter):', ...aguardando.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}: envio combinado até ${curta(combinadaAte(x, hoje)!)}`)]
-          : []),
-        '',
-        'Os fornecedores já foram notificados. Assim que cada empresa for aprovada, enviamos a liberação.',
-        ...assinatura(nome, base.assinatura),
-      ].join('\n'),
+      ...texto,
       registros: [{ tipo: 'retencao_obra', referencia, empresa_id: null, obra_id: obraId, competencia }],
       medicoes: [],
       obraId,
@@ -564,19 +540,23 @@ function retencoesObra(base: Base, competencia: string, nome: string, hoje: stri
 
 // ---------------------------------------------------------------- Documentos dos liberados
 
+// Faixas do aviso. Os nomes '30' e '15' ficam fixos (primeiro e segundo aviso) porque entram na referência
+// das cobranças já feitas; os dias de cada aviso vêm das Regras.
 type Faixa = 'vencido' | '15' | '30';
+const MODELO_DA_FAIXA: Record<Faixa, TipoModelo> = { vencido: 'vencimento_vencido', '15': 'vencimento_segundo', '30': 'vencimento_primeiro' };
 
 function vencimentos(base: Base, nome: string): Cobranca[] {
+  const r = base.regras;
   const liberadas = new Map(base.alocacoes.filter((a) => a.status === 'liberado').map((a) => [a.alocacao_id, a]));
   const empresaPor = new Map(base.empresas.map((e) => [e.id, e]));
   type Doc = { chave: string; faixa: Faixa; empresa_id: string; quem: string; documento: string; vencimento: string };
   const docs = new Map<string, Doc>();
   base.pendencias.forEach((p) => {
     const a = liberadas.get(p.alocacao_id);
-    if (!a || !p.vencimento || p.dias_para_vencer === null || p.dias_para_vencer > 30) return;
+    if (!a || !p.vencimento || p.dias_para_vencer === null || p.dias_para_vencer > r.primeiroAviso) return;
     if (p.situacao !== 'a_vencer' && p.situacao !== 'vencido') return;
     if (p.status_envio_aberto === 'em_analise') return; // renovação já enviada, esperando a análise
-    const faixa: Faixa = p.dias_para_vencer <= 0 ? 'vencido' : p.dias_para_vencer <= 15 ? '15' : '30';
+    const faixa: Faixa = p.dias_para_vencer <= 0 ? 'vencido' : p.dias_para_vencer <= r.segundoAviso ? '15' : '30';
     const deQuem = p.grupo === 'empresa' ? 'empresa' : p.colaborador_id;
     const chave = `${faixa}:${p.empresa_id}:${p.tipo_codigo}:${deQuem}:${p.vencimento}`;
     if (base.feitas.has(`vencimento_documento|${chave}`) || docs.has(chave)) return;
@@ -600,48 +580,39 @@ function vencimentos(base: Base, nome: string): Cobranca[] {
   const lista: Cobranca[] = [];
   porEmpresa([...docs.values()]).forEach((l, empresaId) => {
     const e = empresaPor.get(empresaId);
-    const empresa = nomeLegivel(e?.razao_social ?? '', true);
     const vencidos = l.filter((d) => d.faixa === 'vencido');
     const em15 = l.filter((d) => d.faixa === '15');
     const em30 = l.filter((d) => d.faixa === '30');
-    const assunto = vencidos.length
-      ? `Colaboradores impedidos de entrar na obra: documentos vencidos, ${empresa}`
-      : em15.length
-        ? `Faltam 15 dias: documentos vencendo, ${empresa}`
-        : `Documentos vencem nos próximos 30 dias: renove no portal para manter a liberação, ${empresa}`;
+    // O e-mail segue o modelo da faixa mais grave; os documentos das outras faixas vão junto.
+    const faixa: Faixa = vencidos.length ? 'vencido' : em15.length ? '15' : '30';
+    const modelo = modeloAtivo(base, MODELO_DA_FAIXA[faixa]);
+    if (!modelo) return;
     const secoes = [
       ...(vencidos.length ? ['', 'Já vencidos:', ...linhas(vencidos)] : []),
-      ...(em15.length ? ['', 'Vencem em até 15 dias:', ...linhas(em15)] : []),
-      ...(em30.length ? ['', 'Vencem em até 30 dias:', ...linhas(em30)] : []),
+      ...(em15.length ? ['', `Vencem em até ${r.segundoAviso} dias:`, ...linhas(em15)] : []),
+      ...(em30.length ? ['', `Vencem em até ${r.primeiroAviso} dias:`, ...linhas(em30)] : []),
     ];
+    const texto = aplicarModelo(modelo, {
+      '{empresa}': nomeLegivel(e?.razao_social ?? '', true),
+      '{dias}': String(faixa === '15' ? r.segundoAviso : r.primeiroAviso),
+      '{documentos}': limitarItens(secoes, 'documentos').join('\n').trim(),
+      '{link_pendencias}': LINK_PENDENCIAS(),
+      '{assinatura}': assinaturaTexto(nome, base.assinatura),
+    });
     lista.push({
       chave: `documentos|${empresaId}|${l.map((d) => d.chave).sort().join(',')}`,
       tipo: 'vencimento_documento',
       urgente: vencidos.length > 0,
       titulo: e?.razao_social ?? '',
-      resumo: [vencidos.length ? `${vencidos.length} ${vencidos.length === 1 ? 'vencido' : 'vencidos'}` : '', em15.length ? `${em15.length} em 15 dias` : '', em30.length ? `${em30.length} em 30 dias` : ''].filter(Boolean).join(', '),
+      resumo: [
+        vencidos.length ? `${vencidos.length} ${vencidos.length === 1 ? 'vencido' : 'vencidos'}` : '',
+        em15.length ? `${em15.length} em ${r.segundoAviso} dias` : '',
+        em30.length ? `${em30.length} em ${r.primeiroAviso} dias` : '',
+      ]
+        .filter(Boolean)
+        .join(', '),
       para: emailDaEmpresa(e),
-      assunto,
-      corpo: [
-        `Olá, equipe da ${empresa},`,
-        '',
-        'Os documentos abaixo, de colaboradores liberados nas obras da Emais, precisam ser renovados no portal. Para que eles continuem trabalhando sem interrupção, envie a renovação antes do vencimento.',
-        ...limitarItens(secoes, 'documentos'),
-        '',
-        'Se o documento vencer:',
-        '- o colaborador fica impedido de entrar na obra até a renovação ser aprovada;',
-        '- se for preciso refazer exame (ASO) ou treinamento (NR), conte o tempo de agendamento;',
-        '- sem colaborador liberado, o serviço contratado pode atrasar.',
-        '',
-        'Como enviar:',
-        `1. Acesse ${LINK_PENDENCIAS()}`,
-        '2. Localize o colaborador e clique em Enviar novo no documento.',
-        '3. Anexe o arquivo atualizado e informe a data de emissão.',
-        '4. A Emais confere em até 2 dias úteis.',
-        '',
-        AVISO_PORTAL,
-        ...assinatura(nome, base.assinatura),
-      ].join('\n'),
+      ...texto,
       registros: l.map((d) => ({ tipo: 'vencimento_documento' as const, referencia: d.chave, empresa_id: empresaId, obra_id: null, competencia: null })),
       medicoes: [],
       obraId: null,
@@ -653,6 +624,8 @@ function vencimentos(base: Base, nome: string): Cobranca[] {
 // ---------------------------------------------------------------- Integração (semanal)
 
 function integracao(base: Base, nome: string, hoje: string): Cobranca[] {
+  const modelo = modeloAtivo(base, 'integracao_documentos');
+  if (!modelo) return [];
   const semana = segundaDaSemana(hoje);
   const travadas = new Map(base.alocacoes.filter((a) => a.status === 'em_cadastro' || a.status === 'pendente_fornecedor').map((a) => [a.alocacao_id, a]));
   const empresaPor = new Map(base.empresas.map((e) => [e.id, e]));
@@ -662,14 +635,14 @@ function integracao(base: Base, nome: string, hoje: string): Cobranca[] {
     const a = travadas.get(p.alocacao_id);
     if (!a || !['nao_enviado', 'devolvido', 'vencido'].includes(p.situacao)) return;
     if (p.status_envio_aberto === 'em_analise') return;
-    // Parado há 3 dias úteis: desde o cadastro (não enviado) ou desde a devolução.
+    // Parado há X dias úteis (Regras): desde o cadastro (não enviado) ou desde a devolução.
     if (p.situacao === 'nao_enviado') {
       const criada = base.criacao.get(p.alocacao_id);
-      if (!criada || diasUteisDesde(criada, hoje) < DIAS_PARADO) return;
+      if (!criada || diasUteisDesde(criada, hoje) < base.regras.diasParado) return;
     }
     if (p.situacao === 'devolvido') {
       const em = base.devolucoes.get(`${p.empresa_id}|${p.grupo === 'empresa' ? '' : p.colaborador_id}|${p.tipo_codigo}`);
-      if (em && diasUteisDesde(em, hoje) < DIAS_PARADO) return;
+      if (em && diasUteisDesde(em, hoje) < base.regras.diasParado) return;
     }
     const f = porColaborador.get(p.alocacao_id) ?? { empresa_id: a.empresa_id, obra: a.obra, colaborador: nomeLegivel(a.colaborador), docs: [] };
     const doc =
@@ -687,7 +660,6 @@ function integracao(base: Base, nome: string, hoje: string): Cobranca[] {
     const referencia = `${semana}:${empresaId}`;
     if (base.feitas.has(`integracao_documentos|${referencia}`)) return;
     const e = empresaPor.get(empresaId);
-    const empresa = nomeLegivel(e?.razao_social ?? '', true);
     const obras = [...new Set(l.map((x) => x.obra))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     const linhas = obras.flatMap((o) => [
       `Obra ${nomeLegivel(o)}`,
@@ -696,29 +668,19 @@ function integracao(base: Base, nome: string, hoje: string): Cobranca[] {
         .sort((a, b) => a.colaborador.localeCompare(b.colaborador, 'pt-BR'))
         .map((x) => `- ${x.colaborador}: ${x.docs.join(', ')}`),
     ]);
+    const texto = aplicarModelo(modelo, {
+      '{empresa}': nomeLegivel(e?.razao_social ?? '', true),
+      '{colaboradores}': limitarItens(linhas, 'colaboradores').join('\n'),
+      '{link_pendencias}': LINK_PENDENCIAS(),
+      '{assinatura}': assinaturaTexto(nome, base.assinatura),
+    });
     lista.push({
       chave: `integracao|${referencia}`,
       tipo: 'integracao_documentos',
       titulo: e?.razao_social ?? '',
       resumo: `${l.length} ${l.length === 1 ? 'colaborador' : 'colaboradores'} sem liberação`,
       para: emailDaEmpresa(e),
-      assunto: `Colaboradores sem liberação para a obra: documentos pendentes, ${empresa}`,
-      corpo: [
-        `Olá, equipe da ${empresa},`,
-        '',
-        'Os colaboradores abaixo estão cadastrados no portal, mas ainda não podem ser liberados porque faltam documentos obrigatórios. Sem eles, o colaborador não faz a integração de segurança e não entra na obra.',
-        '',
-        ...limitarItens(linhas, 'colaboradores'),
-        '',
-        'Como enviar:',
-        `1. Acesse ${LINK_PENDENCIAS()}`,
-        '2. Envie os documentos de cada colaborador.',
-        '3. Com tudo enviado, clique em Enviar para análise.',
-        '4. A Emais confere em até 2 dias úteis; depois o TST da obra valida e agenda a integração.',
-        '',
-        AVISO_PORTAL,
-        ...assinatura(nome, base.assinatura),
-      ].join('\n'),
+      ...texto,
       registros: [{ tipo: 'integracao_documentos', referencia, empresa_id: empresaId, obra_id: null, competencia: null }],
       medicoes: [],
       obraId: null,
@@ -731,11 +693,12 @@ function integracao(base: Base, nome: string, hoje: string): Cobranca[] {
 
 // hoje: a data de referência (o envio automático informa a data de São Paulo, ou uma data simulada no teste).
 export async function montarFila(nome: string, hoje = hojeIso()): Promise<Fila> {
-  const lembrete = competenciaDoLembrete(hoje);
-  const notificacao = competenciaDaNotificacao(hoje);
-  const retencao = competenciaDaRetencao(hoje);
+  const regras = await lerRegras();
+  const lembrete = competenciaDoLembrete(regras, hoje);
+  const notificacao = competenciaDaNotificacao(regras, hoje);
+  const retencao = competenciaDaRetencao(regras, hoje);
   const doPortal = (c: string | null): c is string => !!c && c >= INICIO_PORTAL;
-  const base = await lerBase([lembrete, notificacao, retencao].filter(doPortal));
+  const base = await lerBase([lembrete, notificacao, retencao].filter(doPortal), regras);
   const ordem = (a: Cobranca, b: Cobranca) => a.titulo.localeCompare(b.titulo, 'pt-BR');
   return {
     cobrancas: [
@@ -746,8 +709,9 @@ export async function montarFila(nome: string, hoje = hojeIso()): Promise<Fila> 
       ...vencimentos(base, nome).sort(ordem),
       ...integracao(base, nome, hoje).sort(ordem),
     ],
-    proxima: proximaData(hoje),
+    proxima: proximaData(regras, hoje),
     assinatura: base.assinatura,
+    regras,
   };
 }
 
@@ -807,17 +771,23 @@ export async function guardarAssinatura(a: Assinatura) {
   esquecerContagem();
 }
 
-export const titulosGrupo: Record<TipoCobranca, { titulo: string; apoio: string }> = {
-  lembrete_medicao: { titulo: 'Medição: lembrete (dia 20)', apoio: 'Empresas que ainda não enviaram a medição do mês. O prazo é o dia 25.' },
-  notificacao_medicao: {
-    titulo: 'Medição: notificação de atraso (dia 26)',
-    apoio: 'Prazo vencido: tolerância até o dia 30 e pedido de retorno com a data de envio. Quando o fornecedor responder, registre a data combinada na medição.',
-  },
-  cobranca_medicao: { titulo: 'Medição: pagamento retido', apoio: 'Passou a tolerância do dia 30 (ou a data combinada) e a medição continua pendente.' },
-  retencao_obra: { titulo: 'Medição: aviso de retenção para as obras', apoio: 'Para a engenharia de cada obra, com quem reter, quem está liberado e quem tem data combinada.' },
-  vencimento_documento: { titulo: 'Documentos vencendo dos liberados', apoio: 'Documentos que vencem em até 30 dias, em até 15 dias ou que já venceram. Cada documento entra uma vez por faixa.' },
-  integracao_documentos: {
-    titulo: 'Integração: colaboradores sem liberação (semanal)',
-    apoio: 'Toda segunda-feira: colaboradores cadastrados com documento obrigatório faltando ou devolvido, parado há 3 dias úteis ou mais.',
-  },
-};
+// Títulos dos grupos da aba Cobranças, com os dias das Regras.
+export function titulosGrupo(r: Regras): Record<TipoCobranca, { titulo: string; apoio: string }> {
+  return {
+    lembrete_medicao: { titulo: `Medição: lembrete (dia ${r.diaLembrete})`, apoio: `Empresas que ainda não enviaram a medição do mês. O prazo é o dia ${r.diaPrazo}.` },
+    notificacao_medicao: {
+      titulo: `Medição: notificação de atraso (dia ${r.diaPrazo + 1})`,
+      apoio: `Prazo vencido: tolerância de ${r.diasTolerancia} dias e pedido de retorno com a data de envio. Quando o fornecedor responder, registre a data combinada na medição.`,
+    },
+    cobranca_medicao: { titulo: 'Medição: pagamento retido', apoio: 'Passou a tolerância (ou a data combinada) e a medição continua pendente.' },
+    retencao_obra: { titulo: 'Medição: aviso de retenção para as obras', apoio: 'Para a engenharia de cada obra, com quem reter, quem está liberado e quem tem data combinada.' },
+    vencimento_documento: {
+      titulo: 'Documentos vencendo dos liberados',
+      apoio: `Documentos que vencem em até ${r.primeiroAviso} dias, em até ${r.segundoAviso} dias ou que já venceram. Cada documento entra uma vez por faixa.`,
+    },
+    integracao_documentos: {
+      titulo: 'Integração: colaboradores sem liberação (semanal)',
+      apoio: `Toda segunda-feira: colaboradores cadastrados com documento obrigatório faltando ou devolvido, parado há ${r.diasParado} dias úteis ou mais.`,
+    },
+  };
+}
