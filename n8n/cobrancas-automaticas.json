@@ -1,20 +1,20 @@
 {
-  "name": "Portal de Terceiros: cobranças automáticas",
+  "name": "Portal de Terceiros: cobranças e avisos automáticos",
   "nodes": [
     {
       "parameters": {
-        "content": "## Cobranças automáticas do Portal de Terceiros\nAs regras ficam no Supabase. Este fluxo só busca os e-mails do dia, envia e registra.\n\n**Configurar uma vez**\n1. Nos 4 nós HTTP: credencial *Header Auth* com Name `x-chave-n8n` e Value = a chave CHAVE_N8N do Supabase.\n2. Nos 2 nós de e-mail: credencial SMTP da caixa que envia (From gente10@emais.com).\n3. Workflow settings: Timezone = America/Sao_Paulo.\n\n**Testar**: preencha `data` em *Data simulada* (ex.: 2026-11-26) e clique em *Test workflow*. Deixe vazio para usar hoje.\n\n**Quem recebe** é decidido na tabela parametros (cobranca_automatica_empresas, _teste_para, _pausada).",
+        "content": "## Cobranças automáticas do Portal de Terceiros\nAs regras ficam no Supabase. Este fluxo só busca os e-mails do dia, envia e registra.\n\n**Configurar uma vez**\n1. Nos 4 nós HTTP: credencial *Header Auth* com Name `x-chave-n8n` e Value = a chave CHAVE_N8N do Supabase.\n2. Nos 2 nós de e-mail: credencial SMTP da caixa que envia (From gente10@emais.com).\n3. Workflow settings: Timezone = America/Sao_Paulo.\n\n**Testar**: preencha `data` em *Data simulada* (ex.: 2026-11-26) e clique em *Test workflow*. Deixe vazio para usar hoje.\n\n**Aviso de liberação**: trecho de baixo, a cada 10 minutos.\n\n**Quem recebe** é decidido na tabela parametros (cobranca_automatica_empresas, _teste_para, _pausada).",
         "height": 380,
         "width": 620,
         "color": 4
       },
-      "id": "dd276fda-4091-4f7b-9b99-c1ee1044ebac",
+      "id": "c791623c-6731-4a20-88f6-234b4dc4ae45",
       "name": "Leia antes",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -260,
-        -420
+        -944,
+        528
       ]
     },
     {
@@ -28,29 +28,28 @@
           ]
         }
       },
-      "id": "8d05c063-d151-4047-844b-6bf1012e1de3",
+      "id": "486b886d-ddd5-482f-a3e4-078110af5d12",
       "name": "Dias úteis 7h",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        0,
-        0
+        272,
+        432
       ]
     },
     {
       "parameters": {},
-      "id": "96cb8760-5352-4886-b4b8-b5249db5654c",
+      "id": "ea1bb685-d527-41ce-9eb9-ff5600862f70",
       "name": "Teste manual",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        0,
-        200
+        272,
+        624
       ]
     },
     {
       "parameters": {
-        "mode": "manual",
         "assignments": {
           "assignments": [
             {
@@ -63,13 +62,13 @@
         },
         "options": {}
       },
-      "id": "8ea4be39-0191-450b-b297-a965b24168d7",
+      "id": "6c60979d-f73e-4dfa-ab49-f606e05f6c09",
       "name": "Data simulada",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        220,
-        200
+        480,
+        624
       ]
     },
     {
@@ -85,27 +84,33 @@
           "timeout": 120000
         }
       },
-      "id": "99cb1cda-538f-452a-af19-3d19372b5e0f",
+      "id": "824c713c-4b1c-4243-9483-8a2304f0ba17",
       "name": "Buscar e-mails do dia",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        440,
-        0
-      ]
+        704,
+        432
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ExpxXIP7kOba4dcy",
+          "name": "CHAVE_N8N_PORTAL_TERCEIROS"
+        }
+      }
     },
     {
       "parameters": {
         "fieldToSplitOut": "itens",
         "options": {}
       },
-      "id": "b61e28fb-a99c-4359-aef8-3a1b9e21b757",
+      "id": "a72e3f8f-4258-4429-bf5c-434dd576b8ea",
       "name": "Um e-mail por cobrança",
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        660,
-        0
+        928,
+        432
       ]
     },
     {
@@ -120,14 +125,21 @@
           "replyTo": "gente10@emais.com"
         }
       },
-      "id": "4824a047-259b-4d12-92b2-9f82e6143e06",
+      "id": "3989f0c9-4daa-48c6-8167-564c9ad7e1f2",
       "name": "Enviar e-mail",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        880,
-        0
+        1152,
+        432
       ],
+      "webhookId": "93d91c89-aa7a-49da-ad24-3913d7f1d4c4",
+      "credentials": {
+        "smtp": {
+          "id": "ysuGL6pPB1QbTxrj",
+          "name": "Email_Jana_Treinamentos"
+        }
+      },
       "onError": "continueErrorOutput"
     },
     {
@@ -143,17 +155,23 @@
           "timeout": 120000
         }
       },
-      "id": "481ad407-230b-4c28-a3a9-311b09c5118b",
+      "id": "cf707650-df2d-46d2-bf11-731eb2f80bcd",
       "name": "Registrar enviado",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1120,
-        -100
+        1392,
+        320
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 3000
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ExpxXIP7kOba4dcy",
+          "name": "CHAVE_N8N_PORTAL_TERCEIROS"
+        }
+      }
     },
     {
       "parameters": {
@@ -168,17 +186,23 @@
           "timeout": 120000
         }
       },
-      "id": "c2204393-7b2b-4ab8-8ecb-35db85c9a947",
+      "id": "7869c676-a7c5-44c6-8915-cda5a335e7d1",
       "name": "Registrar erro",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1120,
-        100
+        1392,
+        528
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 3000
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ExpxXIP7kOba4dcy",
+          "name": "CHAVE_N8N_PORTAL_TERCEIROS"
+        }
+      }
     },
     {
       "parameters": {
@@ -191,13 +215,13 @@
           ]
         }
       },
-      "id": "22700bc4-02ab-4939-afeb-53a7fd68486c",
+      "id": "19c89a7c-e4e9-4898-9c81-f60e06e872f1",
       "name": "Dias úteis 7h30",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        0,
-        480
+        272,
+        912
       ]
     },
     {
@@ -213,14 +237,20 @@
           "timeout": 120000
         }
       },
-      "id": "ccd485eb-6e2b-4a72-bc26-1a3c58a12104",
+      "id": "2ec8236a-c604-4579-b036-4f150fa4c41d",
       "name": "Buscar resumo do dia",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        220,
-        480
-      ]
+        480,
+        912
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ExpxXIP7kOba4dcy",
+          "name": "CHAVE_N8N_PORTAL_TERCEIROS"
+        }
+      }
     },
     {
       "parameters": {
@@ -247,18 +277,18 @@
         },
         "options": {}
       },
-      "id": "d6a1eec4-083c-423a-9a12-d0662b28c18f",
+      "id": "e71014e8-5c2a-4253-b911-81faad257966",
       "name": "Tem algo a informar?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        440,
-        480
+        704,
+        912
       ]
     },
     {
       "parameters": {
-        "fromEmail": "gente10@emais.com",
+        "fromEmail": "gestaoterceiros@emais.com",
         "toEmail": "gente10@emais.com",
         "subject": "={{ $json.assunto }}",
         "emailFormat": "text",
@@ -267,14 +297,21 @@
           "appendAttribution": false
         }
       },
-      "id": "8a4323e6-2e9b-4b73-8f82-a86906572ac1",
+      "id": "c694c336-a2a7-4078-ae7c-c754f29a117d",
       "name": "Resumo para o RH",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        660,
-        460
-      ]
+        928,
+        880
+      ],
+      "webhookId": "b1010215-805e-4307-b398-86b24aec500e",
+      "credentials": {
+        "smtp": {
+          "id": "ysuGL6pPB1QbTxrj",
+          "name": "Email_Jana_Treinamentos"
+        }
+      }
     },
     {
       "parameters": {
@@ -283,13 +320,13 @@
         "width": 420,
         "color": 3
       },
-      "id": "6516eaa2-6de1-4ac3-84b8-556c4e692231",
+      "id": "cb75918e-ead0-430c-995e-70e200733585",
       "name": "Ligar para todos",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        880,
-        340
+        1152,
+        768
       ]
     },
     {
@@ -305,16 +342,192 @@
           "timeout": 120000
         }
       },
-      "id": "932273b7-77ee-4fe3-852f-fea3f536171b",
+      "id": "0655cd5b-a475-4d89-9a3a-e9ec8d72233e",
       "name": "Marcar fila atual como cobrada (1 vez)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1000,
-        520
+        1312,
+        896
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ExpxXIP7kOba4dcy",
+          "name": "CHAVE_N8N_PORTAL_TERCEIROS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### Aviso de liberação\nQuando o administrativo clica em **Enviar** na tela Aviso de liberação, o aviso entra na fila. A cada 10 minutos (dias úteis, 7h às 19h) este trecho busca a fila, envia e registra.\n\nPara testar agora: passe o mouse em *A cada 10 minutos* e clique em *Test workflow*.",
+        "height": 220,
+        "width": 560,
+        "color": 5
+      },
+      "id": "15e0a7b7-0037-4c28-9699-3799420808bd",
+      "name": "Sobre o aviso de liberação",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -944,
+        1260
       ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/10 7-19 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "6b5d6172-afa6-431d-bb7a-b13a6dcf4540",
+      "name": "A cada 10 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        272,
+        1300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntjhkengoqpcyjsjawbw.supabase.co/functions/v1/cobrancas-automaticas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ acao: 'liberacoes' }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "82975615-202d-4d8b-9262-8910d996e26f",
+      "name": "Buscar avisos de liberação",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        1300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ExpxXIP7kOba4dcy",
+          "name": "CHAVE_N8N_PORTAL_TERCEIROS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "itens",
+        "options": {}
+      },
+      "id": "47ee6690-c9cd-49f2-b54d-45509e5cfd15",
+      "name": "Um e-mail por aviso",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        704,
+        1300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "gente10@emais.com",
+        "toEmail": "={{ $json.para.replace(/;/g, ',') }}",
+        "subject": "={{ $json.assunto }}",
+        "emailFormat": "text",
+        "text": "={{ $json.corpo }}",
+        "options": {
+          "appendAttribution": false,
+          "replyTo": "gente10@emais.com"
+        }
+      },
+      "id": "2636e248-8a97-411d-bd4b-42d97d3830fb",
+      "name": "Enviar aviso de liberação",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        928,
+        1300
+      ],
+      "onError": "continueErrorOutput",
+      "webhookId": "bb942382-f51d-4173-b953-73f07ab8858b",
+      "credentials": {
+        "smtp": {
+          "id": "ysuGL6pPB1QbTxrj",
+          "name": "Email_Jana_Treinamentos"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntjhkengoqpcyjsjawbw.supabase.co/functions/v1/cobrancas-automaticas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ acao: 'registrar_liberacao', situacao: 'enviada', item: $('Um e-mail por aviso').item.json }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "45a63487-237a-4583-bd0b-11fdcfd6198f",
+      "name": "Registrar aviso enviado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1168,
+        1200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ExpxXIP7kOba4dcy",
+          "name": "CHAVE_N8N_PORTAL_TERCEIROS"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ntjhkengoqpcyjsjawbw.supabase.co/functions/v1/cobrancas-automaticas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ acao: 'registrar_liberacao', situacao: 'erro', erro: String($json.error?.message ?? $json.error ?? 'Erro no envio'), item: $('Um e-mail por aviso').item.json }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "e271e6d3-ac83-4087-961f-d38870422b0d",
+      "name": "Registrar erro do aviso",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1168,
+        1400
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ExpxXIP7kOba4dcy",
+          "name": "CHAVE_N8N_PORTAL_TERCEIROS"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
     }
   ],
+  "pinData": {},
   "connections": {
     "Dias úteis 7h": {
       "main": [
@@ -419,8 +632,58 @@
             "type": "main",
             "index": 0
           }
+        ]
+      ]
+    },
+    "A cada 10 minutos": {
+      "main": [
+        [
+          {
+            "node": "Buscar avisos de liberação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar avisos de liberação": {
+      "main": [
+        [
+          {
+            "node": "Um e-mail por aviso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Um e-mail por aviso": {
+      "main": [
+        [
+          {
+            "node": "Enviar aviso de liberação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar aviso de liberação": {
+      "main": [
+        [
+          {
+            "node": "Registrar aviso enviado",
+            "type": "main",
+            "index": 0
+          }
         ],
-        []
+        [
+          {
+            "node": "Registrar erro do aviso",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
@@ -428,5 +691,5 @@
     "executionOrder": "v1",
     "timezone": "America/Sao_Paulo"
   },
-  "pinData": {}
+  "tags": []
 }

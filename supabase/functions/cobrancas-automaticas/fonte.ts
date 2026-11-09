@@ -10,6 +10,8 @@
 //   { "acao": "registrar", "item": {...}, "situacao": "enviada" | "erro", "erro"?: "..." }
 //   { "acao": "resumo", "data"?: "AAAA-MM-DD" }     resumo do dia para o RH
 //   { "acao": "marcar_existentes", "confirmar": "sim" }  marca a fila atual como já cobrada (ao ligar para todos)
+//   { "acao": "liberacoes" }                         avisos de liberação que o administrativo mandou enviar
+//   { "acao": "registrar_liberacao", "item": {...}, "situacao": "enviada" | "erro", "erro"?: "..." }
 import { supabase } from './servidor-supabase.ts';
 import { montarFila, type Cobranca } from '../../../site/src/lib/cobrancas.ts';
 
@@ -191,6 +193,96 @@ async function resumo(dataRef: string) {
   };
 }
 
+// ---------------------------------------------------------------- Aviso de liberação
+
+type ItemLiberacao = {
+  id: string;
+  obra_id: string;
+  titulo: string;
+  para: string;
+  para_original: string;
+  assunto: string;
+  corpo: string;
+  empresa_ids: string[];
+  teste: boolean;
+};
+
+// Avisos na fila. Quem ficou "enviando" por mais de 30 minutos (o n8n caiu no meio) volta para a fila.
+async function liberacoes() {
+  const cfg = await parametros();
+  const base = { pausada: cfg.pausada, modo_teste: !!cfg.testePara, teste_para: cfg.testePara || null };
+  if (cfg.pausada) return { ...base, itens: [] };
+  const limite = new Date(Date.now() - 30 * 60000).toISOString();
+  const { data, error } = await supabase
+    .from('avisos_liberacao')
+    .select('id, obra_id, alocacoes, destinatarios, assunto, corpo')
+    .or(`situacao_envio.eq.aguardando,and(situacao_envio.eq.enviando,envio_iniciado_em.lt."${limite}")`)
+    .order('envio_pedido_em')
+    .limit(25);
+  if (error) throw error;
+  const avisos = data ?? [];
+  if (!avisos.length) return { ...base, itens: [] };
+
+  const ids = avisos.map((a) => a.id as string);
+  const { error: e1 } = await supabase.from('avisos_liberacao').update({ situacao_envio: 'enviando', envio_iniciado_em: new Date().toISOString() }).in('id', ids);
+  if (e1) throw e1;
+
+  const obras = [...new Set(avisos.map((a) => a.obra_id as string))];
+  const { data: os, error: e2 } = await supabase.from('obras').select('id, nome').in('id', obras);
+  if (e2) throw e2;
+  const nomeObra = new Map((os ?? []).map((o) => [o.id as string, o.nome as string]));
+  const alocs = [...new Set(avisos.flatMap((a) => a.alocacoes as string[]))];
+  const { data: al, error: e3 } = await supabase.from('v_alocacoes_resumo').select('alocacao_id, empresa_id').in('alocacao_id', alocs);
+  if (e3) throw e3;
+  const empresaDa = new Map((al ?? []).map((x) => [x.alocacao_id as string, x.empresa_id as string]));
+
+  const teste = !!cfg.testePara;
+  const itens: ItemLiberacao[] = avisos.map((a) => {
+    const original = ((a.destinatarios as string | null) ?? '').trim();
+    return {
+      id: a.id as string,
+      obra_id: a.obra_id as string,
+      titulo: nomeObra.get(a.obra_id as string) ?? '',
+      para: teste ? cfg.testePara : original,
+      para_original: original,
+      assunto: teste ? `[TESTE · para ${original}] ${a.assunto}` : (a.assunto as string),
+      corpo: a.corpo as string,
+      empresa_ids: [...new Set((a.alocacoes as string[]).map((x) => empresaDa.get(x)).filter((x): x is string => !!x))],
+      teste,
+    };
+  });
+  return { ...base, itens };
+}
+
+async function registrarLiberacao(item: ItemLiberacao, situacao: 'enviada' | 'erro', erro?: string) {
+  const agora = new Date().toISOString();
+  const { error } = await supabase.from('cobrancas_envios').insert({
+    chave: `liberacao|${item.id}`,
+    tipo: 'aviso_liberacao',
+    titulo: item.titulo,
+    empresa_ids: item.empresa_ids,
+    obra_id: item.obra_id,
+    para: item.para,
+    para_original: item.para_original,
+    assunto: item.assunto,
+    corpo: item.corpo,
+    situacao,
+    erro: situacao === 'erro' ? (erro ?? 'Erro no envio') : null,
+    teste: item.teste,
+  });
+  if (error) throw error;
+  const mudanca: Record<string, unknown> =
+    situacao === 'enviada'
+      ? { situacao_envio: 'enviado', enviado_em: agora, envio_erro: null, envio_teste: item.teste, envio_para: item.para }
+      : { situacao_envio: 'erro', envio_erro: erro ?? 'Erro no envio' };
+  const { error: e2 } = await supabase.from('avisos_liberacao').update(mudanca).eq('id', item.id);
+  if (e2) throw e2;
+  if (situacao === 'enviada' && !item.teste) {
+    const { error: e3 } = await supabase.from('avisos_liberacao').update({ marcado_enviado_em: agora }).eq('id', item.id).is('marcado_enviado_em', null);
+    if (e3) throw e3;
+  }
+}
+
 // Ao ligar para todos: a fila de hoje entra como já cobrada, para não disparar o atraso acumulado de uma vez.
 async function marcarExistentes(dataRef: string) {
   const { cobrancas } = await montarFila('', dataRef);
@@ -225,6 +317,12 @@ Deno.serve(async (req) => {
       return resposta(200, { ok: true });
     }
     if (corpo.acao === 'resumo') return resposta(200, await resumo(dataRef));
+    if (corpo.acao === 'liberacoes') return resposta(200, await liberacoes());
+    if (corpo.acao === 'registrar_liberacao') {
+      const situacao = corpo.situacao === 'erro' ? 'erro' : 'enviada';
+      await registrarLiberacao(corpo.item as ItemLiberacao, situacao, typeof corpo.erro === 'string' ? corpo.erro : undefined);
+      return resposta(200, { ok: true });
+    }
     if (corpo.acao === 'marcar_existentes') {
       if (corpo.confirmar !== 'sim') return resposta(400, { erro: 'Envie "confirmar": "sim"' });
       return resposta(200, await marcarExistentes(dataRef));

@@ -504,12 +504,18 @@ export type AvisoLiberacao = {
   corpo: string;
   gerado_em: string;
   marcado_enviado_em: string | null;
+  situacao_envio: 'aguardando' | 'enviando' | 'enviado' | 'erro' | null;
+  envio_pedido_em: string | null;
+  enviado_em: string | null;
+  envio_erro: string | null;
+  envio_teste: boolean;
+  envio_para: string | null;
 };
 
 export async function lerAvisos(obraId: string): Promise<AvisoLiberacao[]> {
   const { data, error } = await supabase
     .from('avisos_liberacao')
-    .select('id, obra_id, alocacoes, destinatarios, assunto, corpo, gerado_em, marcado_enviado_em')
+    .select('id, obra_id, alocacoes, destinatarios, assunto, corpo, gerado_em, marcado_enviado_em, situacao_envio, envio_pedido_em, enviado_em, envio_erro, envio_teste, envio_para')
     .eq('obra_id', obraId)
     .order('gerado_em', { ascending: false });
   if (error) throw error;
@@ -522,6 +528,19 @@ export async function gerarAviso(obraId: string, alocacoes: string[], destinatar
     p_alocacoes: alocacoes,
     p_destinatarios: destinatarios,
   });
+  if (error) throw error;
+  return data as AvisoLiberacao;
+}
+
+// Gera o aviso e coloca na fila: o n8n envia em até 10 minutos.
+export async function enviarAviso(obraId: string, alocacoes: string[], destinatarios: string): Promise<AvisoLiberacao> {
+  const { data, error } = await supabase.rpc('enviar_aviso_liberacao', { p_obra: obraId, p_alocacoes: alocacoes, p_destinatarios: destinatarios });
+  if (error) throw error;
+  return data as AvisoLiberacao;
+}
+
+export async function reenviarAviso(id: string): Promise<AvisoLiberacao> {
+  const { data, error } = await supabase.rpc('reenviar_aviso_liberacao', { p_aviso: id });
   if (error) throw error;
   return data as AvisoLiberacao;
 }

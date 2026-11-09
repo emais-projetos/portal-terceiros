@@ -11,7 +11,8 @@ export type TipoModelo =
   | 'vencimento_primeiro'
   | 'vencimento_segundo'
   | 'vencimento_vencido'
-  | 'integracao_documentos';
+  | 'integracao_documentos'
+  | 'aviso_liberacao';
 
 export type Modelo = {
   tipo: TipoModelo;
@@ -111,6 +112,10 @@ export const CAMPOS: Record<string, { descricao: string; exemplo: string }> = {
     descricao: 'Bloco das empresas com data combinada (some quando não há nenhuma)',
     exemplo: 'Aguardando data combinada com o fornecedor (ainda não reter):\n- Pinturas Amostra: envio combinado até 05/12',
   },
+  '{data}': { descricao: 'Data do envio', exemplo: '09/11/2026' },
+  '{qtd}': { descricao: 'Quantos colaboradores no aviso', exemplo: '2' },
+  '{frase_liberados}': { descricao: '"O colaborador abaixo está liberado" ou "Os colaboradores abaixo estão liberados"', exemplo: 'Os colaboradores abaixo estão liberados' },
+  '{liberados}': { descricao: 'Lista dos liberados: nome, função e empresa', exemplo: '- Maria de Souza, servente de obras (Construtora Exemplo)\n- João da Silva, ajudante (Construtora Exemplo)' },
   '{dias}': { descricao: 'Dias do aviso, conforme Regras', exemplo: '30' },
   '{documentos}': {
     descricao: 'Documentos por faixa (vencidos, segundo e primeiro aviso)',

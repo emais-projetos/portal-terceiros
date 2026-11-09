@@ -4,11 +4,35 @@ import { Carregando } from '../../componentes/Carregando';
 import { mensagemDeErro } from '../../lib/supabase';
 import { data } from '../../lib/formato';
 import {
-  copiarTexto, gerarAviso, lerAlocacoes, lerAvisos, lerEmailsEmpresas, lerEmailsTst, linkOutlook, marcarAvisoEnviado,
+  copiarTexto, enviarAviso, gerarAviso, lerAlocacoes, lerAvisos, lerEmailsEmpresas, lerEmailsTst, linkOutlook, marcarAvisoEnviado, reenviarAviso,
   type AlocacaoResumo, type AvisoLiberacao,
 } from '../../lib/admin';
 
 const CHAVE_DESTINO = 'portal-terceiros:destinatarios:';
+
+const hora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+
+// Situação do envio automático do aviso.
+function SituacaoEnvio({ av, aoReenviar }: { av: AvisoLiberacao; aoReenviar?: () => void }) {
+  if (av.situacao_envio === 'aguardando' || av.situacao_envio === 'enviando')
+    return <span className="selo-envio selo-fila">Na fila: o envio automático manda em até 10 minutos</span>;
+  if (av.situacao_envio === 'enviado' && av.envio_teste)
+    return (
+      <span className="selo-envio selo-teste">
+        Enviado em modo de teste para {av.envio_para} ({hora(av.enviado_em!)})
+        {aoReenviar && <button type="button" className="botao botao-discreto botao-pequeno" onClick={aoReenviar}>Enviar de novo</button>}
+      </span>
+    );
+  if (av.situacao_envio === 'enviado') return <span className="selo-envio selo-ok">Enviado em {hora(av.enviado_em!)}</span>;
+  if (av.situacao_envio === 'erro')
+    return (
+      <span className="selo-envio selo-erro">
+        Não saiu: {av.envio_erro}
+        {aoReenviar && <button type="button" className="botao botao-discreto botao-pequeno" onClick={aoReenviar}>Tentar de novo</button>}
+      </span>
+    );
+  return av.marcado_enviado_em ? <span className="selo-envio selo-ok">Enviado pelo Outlook em {data(av.marcado_enviado_em)}</span> : <span className="sub">Gerado para o Outlook</span>;
+}
 
 function lerDestino(obraId: string): string {
   try {
@@ -39,7 +63,7 @@ export function Liberacao() {
   const [aviso, setAviso] = useState<AvisoLiberacao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
-  const [gerando, setGerando] = useState(false);
+  const [gerando, setGerando] = useState<'enviar' | 'outlook' | null>(null);
 
   useEffect(() => {
     lerAlocacoes()
@@ -85,6 +109,21 @@ export function Liberacao() {
     setPara([...new Set(lista)].join('; '));
   }, [obra, fornecedor, emailsEmpresas, emailsTst]);
 
+  // Enquanto houver aviso na fila, atualiza a situação a cada 30 segundos.
+  const naFila = avisos.some((a) => a.situacao_envio === 'aguardando' || a.situacao_envio === 'enviando');
+  useEffect(() => {
+    if (!obra || !naFila) return;
+    const t = window.setInterval(() => {
+      lerAvisos(obra)
+        .then((lista) => {
+          setAvisos(lista);
+          setAviso((atual) => (atual ? lista.find((x) => x.id === atual.id) ?? atual : atual));
+        })
+        .catch(() => undefined);
+    }, 30000);
+    return () => window.clearInterval(t);
+  }, [obra, naFila]);
+
   const avisados = useMemo(() => {
     const s = new Map<string, string>();
     avisos.forEach((av) => av.alocacoes.forEach((id) => { if (!s.has(id)) s.set(id, av.gerado_em); }));
@@ -123,21 +162,36 @@ export function Liberacao() {
     });
   }
 
-  async function gerar() {
+  async function gerar(modo: 'enviar' | 'outlook') {
     setErro(null);
-    setGerando(true);
+    setOk(null);
+    setGerando(modo);
     try {
       // Lembra só os destinatários extras (os do fornecedor e do TST vêm do cadastro).
       const cadastrados = new Set([emailsEmpresas.get(fornecedor) ?? '', ...emailsTst].map((e) => e.trim().toLowerCase()));
       guardarDestino(obra, para.split(/[;,\s]+/).map((e) => e.trim().toLowerCase()).filter((e) => e.includes('@') && !cadastrados.has(e)).join('; '));
-      const novo = await gerarAviso(obra, [...selecao], para.trim());
+      const novo = modo === 'enviar' ? await enviarAviso(obra, [...selecao], para.trim()) : await gerarAviso(obra, [...selecao], para.trim());
       setAviso(novo);
       setAvisos(await lerAvisos(obra));
       setSelecao(new Set());
+      if (modo === 'enviar') setOk('Aviso na fila: o envio automático manda o e-mail em até 10 minutos.');
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
     } finally {
-      setGerando(false);
+      setGerando(null);
+    }
+  }
+
+  async function reenviar(av: AvisoLiberacao) {
+    setErro(null);
+    try {
+      const novo = await reenviarAviso(av.id);
+      setOk('Aviso de volta na fila do envio automático.');
+      const lista = await lerAvisos(obra);
+      setAvisos(lista);
+      if (aviso?.id === av.id) setAviso(novo);
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
     }
   }
 
@@ -157,7 +211,7 @@ export function Liberacao() {
   return (
     <Pagina
       titulo="Aviso de liberação"
-      apoio="Escolha a obra e o fornecedor: o e-mail sai com os liberados dele, já endereçado ao fornecedor e ao TST da obra, pronto para o Outlook."
+      apoio="Escolha a obra e o fornecedor, marque os liberados e clique em Enviar: o envio automático manda o e-mail ao fornecedor e ao TST da obra. O texto fica em Acessos > E-mails."
     >
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
@@ -253,12 +307,19 @@ export function Liberacao() {
                   Já vem com o e-mail cadastrado do fornecedor{emailsTst.length ? ' e do TST da obra' : ' (a obra não tem TST cadastrado)'}. Separe com ponto e vírgula; os extras ficam lembrados neste navegador.
                 </small>
               </label>
-              <button type="button" className="botao" disabled={selecao.size === 0 || gerando} onClick={gerar}>
-                {gerando ? 'Gerando' : `Gerar aviso com ${selecao.size} ${selecao.size === 1 ? 'colaborador' : 'colaboradores'}`}
-              </button>
+              <div className="linha-botoes">
+                <button type="button" className="botao" disabled={selecao.size === 0 || !!gerando} onClick={() => gerar('enviar')}>
+                  {gerando === 'enviar' ? 'Enviando' : `Enviar aviso com ${selecao.size} ${selecao.size === 1 ? 'colaborador' : 'colaboradores'}`}
+                </button>
+                <button type="button" className="botao botao-discreto" disabled={selecao.size === 0 || !!gerando} onClick={() => gerar('outlook')}>
+                  {gerando === 'outlook' ? 'Gerando' : 'Gerar para enviar pelo Outlook'}
+                </button>
+              </div>
 
               {aviso && (
                 <div className="previa-email">
+                  <p><SituacaoEnvio av={aviso} aoReenviar={() => reenviar(aviso)} /></p>
+                  <p><span className="sub">Para</span> {aviso.destinatarios}</p>
                   <p><span className="sub">Assunto</span> {aviso.assunto}</p>
                   <pre>{aviso.corpo}</pre>
                   <div className="linha-botoes">
@@ -266,7 +327,7 @@ export function Liberacao() {
                     <button type="button" className="botao botao-secundario" onClick={() => copiarTexto(aviso.corpo).then(() => setOk('Texto copiado.')).catch(() => setErro('O navegador não deixou copiar. Selecione o texto e copie com Ctrl+C.'))}>
                       Copiar texto
                     </button>
-                    {!aviso.marcado_enviado_em && (
+                    {!aviso.marcado_enviado_em && !aviso.situacao_envio && (
                       <button type="button" className="botao botao-discreto" onClick={() => marcarEnviado(aviso)}>Marcar como enviado</button>
                     )}
                   </div>
@@ -287,7 +348,7 @@ export function Liberacao() {
                   <th scope="col">Gerado em</th>
                   <th scope="col">Colaboradores</th>
                   <th scope="col">Para</th>
-                  <th scope="col">Enviado</th>
+                  <th scope="col">Envio</th>
                   <th scope="col"><span className="sr">Ações</span></th>
                 </tr>
               </thead>
@@ -297,7 +358,7 @@ export function Liberacao() {
                     <th scope="row">{data(av.gerado_em)}</th>
                     <td>{av.alocacoes.length}</td>
                     <td className="quebra">{av.destinatarios || <span className="sub">Não informado</span>}</td>
-                    <td>{av.marcado_enviado_em ? data(av.marcado_enviado_em) : <span className="sub">Não marcado</span>}</td>
+                    <td><SituacaoEnvio av={av} aoReenviar={() => reenviar(av)} /></td>
                     <td className="acoes">
                       <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => setAviso(av)}>Ver e-mail</button>
                     </td>

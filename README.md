@@ -42,6 +42,7 @@ Portal do Grupo Emais para os fornecedores das obras cadastrarem colaboradores e
 | `20261106_021_ajustes_cadastro.sql` | Idade mínima de 18 anos, correção do cadastro pelo fornecedor até o envio, "Outro documento" e NR dispensável com justificativa, demissão com rescisórios, bloqueio com histórico, subcontratada pelo fornecedor, contrato entre as partes obrigatório, "PGR" e anexo das NRs para o TST |
 | `20261106_022_cobrancas_automaticas.sql` | Envio automático das cobranças pelo n8n: registro de cada envio (enviada ou com erro) e parâmetros para testar com algumas empresas, mandar tudo para um endereço de teste ou pausar |
 | `20261109_023_regras_e_modelos_email.sql` | Acessos > Regras (prazos da medição, avisos de vencimento, integração, envio automático e assinatura, com histórico) e Acessos > E-mails (textos das cobranças em modelos com revisões) |
+| `20261109_024_aviso_liberacao_automatico.sql` | Aviso de liberação pelo envio automático: o administrativo clica em Enviar, o aviso entra na fila e o n8n envia; texto no modelo "Aviso de liberação" de Acessos > E-mails |
 
 Os arquivos usados para carregar as planilhas `CONTROLE_DE_INTEGRAÇÃO` e de medição mensal não estão neste repositório, porque têm CPFs. O repositório é público: nenhum dado pessoal, senha ou chave secreta entra aqui.
 
@@ -162,6 +163,8 @@ As regras e os textos são os mesmos da aba Cobranças. A função do Supabase `
 - E-mail enviado entra em `cobrancas` e não sai de novo. Com erro, volta para a fila e tenta no próximo dia útil.
 - Cada tentativa fica em `cobrancas_envios`.
 - Acesso à função: cabeçalho `x-chave-n8n` igual ao segredo `CHAVE_N8N` (cadastrado em Edge Functions > Secrets no Supabase, nunca no repositório).
+
+- Aviso de liberação: na tela Aviso de liberação, o botão Enviar coloca o aviso na fila (`avisos_liberacao.situacao_envio`). A cada 10 minutos, em dias úteis das 7h às 19h, o n8n busca a fila (`acao: liberacoes`), envia e registra (`acao: registrar_liberacao`). O modo de teste e a pausa valem também aqui.
 
 Quem recebe, na tabela `parametros`:
 

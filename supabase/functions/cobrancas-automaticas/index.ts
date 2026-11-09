@@ -762,6 +762,68 @@ async function resumo(dataRef) {
     corpo: linhas.join("\n")
   };
 }
+async function liberacoes() {
+  const cfg = await parametros();
+  const base = { pausada: cfg.pausada, modo_teste: !!cfg.testePara, teste_para: cfg.testePara || null };
+  if (cfg.pausada) return { ...base, itens: [] };
+  const limite = new Date(Date.now() - 30 * 6e4).toISOString();
+  const { data: data2, error } = await supabase.from("avisos_liberacao").select("id, obra_id, alocacoes, destinatarios, assunto, corpo").or(`situacao_envio.eq.aguardando,and(situacao_envio.eq.enviando,envio_iniciado_em.lt."${limite}")`).order("envio_pedido_em").limit(25);
+  if (error) throw error;
+  const avisos = data2 ?? [];
+  if (!avisos.length) return { ...base, itens: [] };
+  const ids = avisos.map((a) => a.id);
+  const { error: e1 } = await supabase.from("avisos_liberacao").update({ situacao_envio: "enviando", envio_iniciado_em: (/* @__PURE__ */ new Date()).toISOString() }).in("id", ids);
+  if (e1) throw e1;
+  const obras = [...new Set(avisos.map((a) => a.obra_id))];
+  const { data: os, error: e2 } = await supabase.from("obras").select("id, nome").in("id", obras);
+  if (e2) throw e2;
+  const nomeObra2 = new Map((os ?? []).map((o) => [o.id, o.nome]));
+  const alocs = [...new Set(avisos.flatMap((a) => a.alocacoes))];
+  const { data: al, error: e3 } = await supabase.from("v_alocacoes_resumo").select("alocacao_id, empresa_id").in("alocacao_id", alocs);
+  if (e3) throw e3;
+  const empresaDa = new Map((al ?? []).map((x) => [x.alocacao_id, x.empresa_id]));
+  const teste = !!cfg.testePara;
+  const itens = avisos.map((a) => {
+    const original = (a.destinatarios ?? "").trim();
+    return {
+      id: a.id,
+      obra_id: a.obra_id,
+      titulo: nomeObra2.get(a.obra_id) ?? "",
+      para: teste ? cfg.testePara : original,
+      para_original: original,
+      assunto: teste ? `[TESTE \xB7 para ${original}] ${a.assunto}` : a.assunto,
+      corpo: a.corpo,
+      empresa_ids: [...new Set(a.alocacoes.map((x) => empresaDa.get(x)).filter((x) => !!x))],
+      teste
+    };
+  });
+  return { ...base, itens };
+}
+async function registrarLiberacao(item, situacao, erro) {
+  const agora = (/* @__PURE__ */ new Date()).toISOString();
+  const { error } = await supabase.from("cobrancas_envios").insert({
+    chave: `liberacao|${item.id}`,
+    tipo: "aviso_liberacao",
+    titulo: item.titulo,
+    empresa_ids: item.empresa_ids,
+    obra_id: item.obra_id,
+    para: item.para,
+    para_original: item.para_original,
+    assunto: item.assunto,
+    corpo: item.corpo,
+    situacao,
+    erro: situacao === "erro" ? erro ?? "Erro no envio" : null,
+    teste: item.teste
+  });
+  if (error) throw error;
+  const mudanca = situacao === "enviada" ? { situacao_envio: "enviado", enviado_em: agora, envio_erro: null, envio_teste: item.teste, envio_para: item.para } : { situacao_envio: "erro", envio_erro: erro ?? "Erro no envio" };
+  const { error: e2 } = await supabase.from("avisos_liberacao").update(mudanca).eq("id", item.id);
+  if (e2) throw e2;
+  if (situacao === "enviada" && !item.teste) {
+    const { error: e3 } = await supabase.from("avisos_liberacao").update({ marcado_enviado_em: agora }).eq("id", item.id).is("marcado_enviado_em", null);
+    if (e3) throw e3;
+  }
+}
 async function marcarExistentes(dataRef) {
   const { cobrancas } = await montarFila("", dataRef);
   const linhas = cobrancas.flatMap(
@@ -792,6 +854,12 @@ Deno.serve(async (req) => {
       return resposta(200, { ok: true });
     }
     if (corpo.acao === "resumo") return resposta(200, await resumo(dataRef));
+    if (corpo.acao === "liberacoes") return resposta(200, await liberacoes());
+    if (corpo.acao === "registrar_liberacao") {
+      const situacao = corpo.situacao === "erro" ? "erro" : "enviada";
+      await registrarLiberacao(corpo.item, situacao, typeof corpo.erro === "string" ? corpo.erro : void 0);
+      return resposta(200, { ok: true });
+    }
     if (corpo.acao === "marcar_existentes") {
       if (corpo.confirmar !== "sim") return resposta(400, { erro: 'Envie "confirmar": "sim"' });
       return resposta(200, await marcarExistentes(dataRef));
