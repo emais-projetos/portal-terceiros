@@ -1,19 +1,32 @@
 import type { ReactNode } from 'react';
-import { Topo } from './Topo';
+import { useLocation } from 'react-router-dom';
+import { Topo, grupoDaPagina } from './Topo';
+import { useSessao } from '../lib/sessao';
 
-export function Pagina({ titulo, apoio, acoes, children }: { titulo: string; apoio?: ReactNode; acoes?: ReactNode; children: ReactNode }) {
+// Estrutura das telas com login: menu lateral fixo e, à direita, o cabeçalho da página (título, ações e abas),
+// que fica preso no topo ao rolar.
+export function Pagina({ titulo, apoio, acoes, abas, children }: { titulo: string; apoio?: ReactNode; acoes?: ReactNode; abas?: ReactNode; children: ReactNode }) {
+  const { usuario } = useSessao();
+  const { pathname, search } = useLocation();
+  const grupo = grupoDaPagina(usuario?.perfil, pathname, search);
   return (
     <div className="pagina">
       <Topo />
-      <main className="conteudo">
-        <section className="cabecalho cabecalho-com-acoes">
-          <div>
-            <h1>{titulo}</h1>
-            {apoio && <p className="apoio">{apoio}</p>}
+      <main className="area">
+        <header className={`cabecalho-fixo${abas ? ' com-abas' : ''}`}>
+          <div className="cabecalho-interno">
+            <section className="cabecalho cabecalho-com-acoes">
+              <div>
+                {grupo && <span className="cabecalho-grupo">{grupo}</span>}
+                <h1>{titulo}</h1>
+                {apoio && <p className="apoio">{apoio}</p>}
+              </div>
+              {acoes && <div className="cabecalho-acoes">{acoes}</div>}
+            </section>
+            {abas}
           </div>
-          {acoes && <div className="cabecalho-acoes">{acoes}</div>}
-        </section>
-        {children}
+        </header>
+        <div className="conteudo">{children}</div>
       </main>
     </div>
   );

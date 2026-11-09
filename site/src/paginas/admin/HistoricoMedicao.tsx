@@ -44,8 +44,8 @@ export function HistoricoMedicao() {
     <Pagina
       titulo="Medição mensal"
       apoio="Situação de cada empresa mês a mês, como na planilha de controle. Clique numa célula para abrir a medição."
+      abas={<AbasMedicao atual="historico" />}
     >
-      <AbasMedicao atual="historico" />
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {!medicoes && !erro && <Carregando />}
 

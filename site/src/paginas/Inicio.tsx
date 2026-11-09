@@ -6,7 +6,7 @@ import { lerObrasDoPainel, lerPainelObra } from '../lib/painelObra';
 import { contarCores, faroisDaObra, ordemCor, pior, rotuloCor, type Cor, type FarolEmpresa } from '../lib/farois';
 import { Farol, LegendaFarois, LinhaFarol, ResumoFarois, SeloFrente } from '../componentes/Farois';
 import { mensagemDeErro } from '../lib/supabase';
-import { Topo } from '../componentes/Topo';
+import { Pagina } from '../componentes/Pagina';
 import { Carregando } from '../componentes/Carregando';
 import { Dialogo } from '../componentes/Dialogo';
 import { criarObra, lerObrasCadastro, renomearObra, type ObraCadastro } from '../lib/admin';
@@ -76,16 +76,11 @@ function InicioPadrao() {
   const empresas = useMemo(() => (obras ?? []).flatMap((o) => o.farois), [obras]);
 
   return (
-    <div className="pagina">
-      <Topo />
-      <main className="conteudo">
-        <section className="cabecalho cabecalho-com-acao">
-          <div className="barra-lista">
-            <h1>Situação das obras</h1>
-            <button type="button" className="botao botao-secundario" onClick={() => setGestao(true)}>Criar ou renomear obra</button>
-          </div>
-          <p className="apoio">Cada obra com os faróis de documentos, integração e medição das empresas que trabalham nela. Os números do topo contam as empresas em cada obra. Clique na obra para ver as empresas.</p>
-        </section>
+    <Pagina
+      titulo="Situação das obras"
+      apoio="Cada obra com os faróis de documentos, integração e medição das empresas que trabalham nela. Os números do topo contam as empresas em cada obra. Clique na obra para ver as empresas."
+      acoes={<button type="button" className="botao botao-secundario" onClick={() => setGestao(true)}>Criar ou renomear obra</button>}
+    >
 
         {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
         {!erro && !obras && <Carregando />}
@@ -143,8 +138,7 @@ function InicioPadrao() {
           </>
         )}
         <GestaoObras aberto={gestao} aoFechar={() => setGestao(false)} aoMudar={() => setVersao((v) => v + 1)} />
-      </main>
-    </div>
+    </Pagina>
   );
 }
 

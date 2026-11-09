@@ -212,8 +212,8 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
           Aviso de retenção
         </button>
       }
+      abas={<AbasMedicao atual="mes" />}
     >
-      <AbasMedicao atual="mes" />
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
 

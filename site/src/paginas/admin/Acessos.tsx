@@ -101,14 +101,16 @@ export function Acessos() {
             : `Quem entra no portal. ${semAcesso > 0 ? `${semAcesso} empresas ainda não têm acesso.` : 'Todas as empresas já têm acesso.'}`
       }
       acoes={aba === 'usuarios' ? <button className="botao" type="button" onClick={() => setNovoAberto(true)}>Novo acesso</button> : undefined}
+      abas={
+        <nav className="abas abas-botoes" aria-label="Acessos">
+          {ABAS.map(([a, nome]) => (
+            <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => setParams(a === 'usuarios' ? {} : { aba: a })}>
+              {nome}
+            </button>
+          ))}
+        </nav>
+      }
     >
-      <nav className="abas abas-botoes" aria-label="Acessos">
-        {ABAS.map(([a, nome]) => (
-          <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => setParams(a === 'usuarios' ? {} : { aba: a })}>
-            {nome}
-          </button>
-        ))}
-      </nav>
       {aba === 'regras' && <Regras />}
       {aba === 'emails' && <ModelosEmail />}
       {aba === 'usuarios' && (
