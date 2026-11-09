@@ -2480,7 +2480,7 @@ button.celula:hover {
 .menu-item:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
 .menu-item:focus-visible, .menu-filho:focus-visible, .menu-lateral button:focus-visible { outline: 2px solid var(--broto); outline-offset: 1px; }
 .menu-item svg { flex-shrink: 0; }
-.menu-item-rotulo { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-item-rotulo { flex: 1; min-width: 0; line-height: 1.2; padding: 6px 0; }
 .menu-item.ativo { background: rgba(255, 255, 255, 0.13); color: #fff; font-weight: 600; }
 .menu-item.ativo svg { color: var(--broto); }
 .menu-lateral .contador { color: #1c3232; }
