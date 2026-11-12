@@ -87,6 +87,19 @@ export function Acessos() {
     carregar();
   }, []);
 
+  // Obras de cada acesso: as das empresas (fornecedor) ou as ligadas ao TST e à engenharia.
+  const obrasDoAcesso = useMemo(() => {
+    const nomeObra = new Map(obras.map((o) => [o.id, o.nome]));
+    const obrasDaEmpresa = new Map(empresas.map((e) => [e.id, e.obras]));
+    return new Map(
+      (acessos ?? []).map((a) => {
+        const ids = a.perfil === 'fornecedor' ? [...new Set(a.empresas.flatMap((e) => obrasDaEmpresa.get(e.id) ?? []))] : a.obras.map((o) => o.id);
+        const nomes = ids.map((id) => nomeObra.get(id) ?? a.obras.find((o) => o.id === id)?.nome).filter((x): x is string => !!x);
+        return [a.id, nomes.sort((x, y) => x.localeCompare(y, 'pt-BR'))];
+      }),
+    );
+  }, [acessos, empresas, obras]);
+
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
     if (!acessos) return [];
@@ -94,9 +107,9 @@ export function Acessos() {
       if (filtro === 'nunca' && (a.ultimo_login || !a.ativo)) return false;
       if (filtro === 'sem_convite' && (a.ultimo_login || !a.ativo || (a.convite && a.convite.situacao_envio !== 'erro'))) return false;
       if (filtro === 'erro' && a.convite?.situacao_envio !== 'erro') return false;
-      return !t || [a.nome, a.email, ...a.empresas.map((e) => e.razao_social), ...a.obras.map((o) => o.nome)].some((v) => v.toLowerCase().includes(t));
+      return !t || [a.nome, a.email, ...a.empresas.map((e) => e.razao_social), ...(obrasDoAcesso.get(a.id) ?? [])].some((v) => v.toLowerCase().includes(t));
     });
-  }, [acessos, busca, filtro]);
+  }, [acessos, busca, filtro, obrasDoAcesso]);
 
   const semAcesso = empresas.filter((e) => !e.temAcesso).length;
 
@@ -180,7 +193,7 @@ export function Acessos() {
               <tr>
                 <th scope="col">Nome</th>
                 <th scope="col">Perfil</th>
-                <th scope="col">Empresas ou obras</th>
+                <th scope="col">Obras</th>
                 <th scope="col">Acesso</th>
                 <th scope="col"><span className="sr">Ações</span></th>
               </tr>
@@ -197,9 +210,14 @@ export function Acessos() {
                     {!a.ativo && <small className="sub">Desativado</small>}
                   </td>
                   <td className="quebra">
-                    {a.perfil === 'fornecedor' && a.empresas.map((e) => e.razao_social).join(', ')}
-                    {(a.perfil === 'tst' || a.perfil === 'engenharia') && a.obras.map((o) => o.nome).join(', ')}
-                    {a.perfil === 'admin' && <span className="sub">Todas</span>}
+                    {a.perfil === 'admin' ? (
+                      <span className="sub">Todas</span>
+                    ) : (obrasDoAcesso.get(a.id) ?? []).length > 0 ? (
+                      (obrasDoAcesso.get(a.id) ?? []).join(', ')
+                    ) : (
+                      <span className="sub">Sem obra</span>
+                    )}
+                    {a.perfil === 'fornecedor' && a.empresas.length > 1 && <small className="sub">{a.empresas.length} empresas neste acesso</small>}
                   </td>
                   <td className="quebra">
                     <SituacaoAcesso a={a} />
