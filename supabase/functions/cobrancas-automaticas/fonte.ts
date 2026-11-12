@@ -10,8 +10,10 @@
 //   { "acao": "registrar", "item": {...}, "situacao": "enviada" | "erro", "erro"?: "..." }
 //   { "acao": "resumo", "data"?: "AAAA-MM-DD" }     resumo do dia para o RH
 //   { "acao": "marcar_existentes", "confirmar": "sim" }  marca a fila atual como já cobrada (ao ligar para todos)
-//   { "acao": "liberacoes" }                         avisos de liberação que o administrativo mandou enviar
+//   { "acao": "liberacoes" }                         avisos de liberação e convites de acesso que o administrativo mandou enviar
 //   { "acao": "registrar_liberacao", "item": {...}, "situacao": "enviada" | "erro", "erro"?: "..." }
+// Os convites de acesso vêm na mesma lista dos avisos de liberação (campo "tipo"), para o fluxo do n8n
+// que já existe enviar os dois sem mudança.
 import { supabase } from './servidor-supabase.ts';
 import { montarFila, type Cobranca } from '../../../site/src/lib/cobrancas.ts';
 
@@ -196,6 +198,7 @@ async function resumo(dataRef: string) {
 // ---------------------------------------------------------------- Aviso de liberação
 
 type ItemLiberacao = {
+  tipo?: 'aviso_liberacao' | 'convite_acesso';
   id: string;
   obra_id: string;
   titulo: string;
@@ -212,6 +215,12 @@ async function liberacoes() {
   const cfg = await parametros();
   const base = { pausada: cfg.pausada, modo_teste: !!cfg.testePara, teste_para: cfg.testePara || null };
   if (cfg.pausada) return { ...base, itens: [] };
+  const avisos = await avisosDeLiberacao(cfg);
+  const convites = await convitesDeAcesso(cfg);
+  return { ...base, itens: [...avisos, ...convites] };
+}
+
+async function avisosDeLiberacao(cfg: Awaited<ReturnType<typeof parametros>>): Promise<ItemLiberacao[]> {
   const limite = new Date(Date.now() - 30 * 60000).toISOString();
   const { data, error } = await supabase
     .from('avisos_liberacao')
@@ -221,7 +230,7 @@ async function liberacoes() {
     .limit(25);
   if (error) throw error;
   const avisos = data ?? [];
-  if (!avisos.length) return { ...base, itens: [] };
+  if (!avisos.length) return [];
 
   const ids = avisos.map((a) => a.id as string);
   const { error: e1 } = await supabase.from('avisos_liberacao').update({ situacao_envio: 'enviando', envio_iniciado_em: new Date().toISOString() }).in('id', ids);
@@ -240,6 +249,7 @@ async function liberacoes() {
   const itens: ItemLiberacao[] = avisos.map((a) => {
     const original = ((a.destinatarios as string | null) ?? '').trim();
     return {
+      tipo: 'aviso_liberacao' as const,
       id: a.id as string,
       obra_id: a.obra_id as string,
       titulo: nomeObra.get(a.obra_id as string) ?? '',
@@ -251,10 +261,150 @@ async function liberacoes() {
       teste,
     };
   });
-  return { ...base, itens };
+  return itens;
+}
+
+// ---------------------------------------------------------------- Convite de acesso
+
+const PORTAL = 'https://emais-projetos.github.io/portal-terceiros/';
+
+async function resumoHash(texto: string): Promise<string> {
+  const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(texto)));
+  return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function codigoAleatorio(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function motivoDoPerfil(perfil: string, empresas: string[]): string {
+  if (perfil === 'fornecedor')
+    return `É por ele que ${empresas.length === 1 ? `a ${empresas[0]}` : 'as suas empresas'} vai cadastrar os colaboradores e enviar a documentação para as obras da Emais.`;
+  if (perfil === 'tst') return 'É por ele que você vai consultar os colaboradores das suas obras e dar a validação final da segurança do trabalho.';
+  if (perfil === 'engenharia')
+    return 'É por ele que você vai acompanhar, nas suas obras, a integração dos terceiros, a situação dos documentos e a medição de cada empresa, com quem está liberado para pagamento.';
+  return 'É por ele que você vai conferir a documentação dos terceiros e liberar os colaboradores para as obras.';
+}
+
+// Link que vai no e-mail e como ele aparece no histórico de envios (sem o código).
+const LINK_OCULTO = `${PORTAL}acesso?c=[código do convite]`;
+
+// Convites na fila. O código é gerado agora; se o n8n buscar de novo (erro ou queda), sai um código novo.
+async function convitesDeAcesso(cfg: Awaited<ReturnType<typeof parametros>>): Promise<ItemLiberacao[]> {
+  const limite = new Date(Date.now() - 30 * 60000).toISOString();
+  const { data, error } = await supabase
+    .from('convites_acesso')
+    .select('id, usuario_id, tipo, pedido_por')
+    .or(`situacao_envio.eq.aguardando,and(situacao_envio.eq.enviando,envio_iniciado_em.lt."${limite}")`)
+    .order('pedido_em')
+    .limit(25);
+  if (error) throw error;
+  const convites = data ?? [];
+  if (!convites.length) return [];
+
+  const ids = [...new Set(convites.flatMap((c) => [c.usuario_id as string, c.pedido_por as string | null]).filter((x): x is string => !!x))];
+  const [{ data: us, error: e1 }, { data: ue, error: e2 }, { data: ms, error: e3 }, { data: ps, error: e4 }] = await Promise.all([
+    supabase.from('usuarios').select('id, nome, email, perfil, ativo').in('id', ids),
+    supabase.from('usuarios_empresas').select('usuario_id, empresa_id, empresas(razao_social)').in('usuario_id', convites.map((c) => c.usuario_id as string)),
+    supabase.from('modelos_email').select('tipo, assunto, corpo, ativo').in('tipo', ['convite_acesso', 'nova_senha_acesso']),
+    supabase.from('parametros').select('chave, valor').in('chave', ['convite_validade_dias', 'cobranca_setor', 'cobranca_contato']),
+  ]);
+  if (e1 || e2 || e3 || e4) throw e1 ?? e2 ?? e3 ?? e4;
+  const usuario = new Map((us ?? []).map((u) => [u.id as string, u]));
+  const modelo = new Map((ms ?? []).map((m) => [m.tipo as string, m]));
+  const param = new Map((ps ?? []).map((x) => [x.chave as string, ((x.valor as string) ?? '').trim()]));
+  const dias = Math.max(1, Number(param.get('convite_validade_dias')) || 7);
+  const empresasDe = new Map<string, { ids: string[]; nomes: string[] }>();
+  (ue ?? []).forEach((x) => {
+    const atual = empresasDe.get(x.usuario_id as string) ?? { ids: [], nomes: [] };
+    atual.ids.push(x.empresa_id as string);
+    const nome = (x.empresas as unknown as { razao_social?: string } | null)?.razao_social;
+    if (nome) atual.nomes.push(nome);
+    empresasDe.set(x.usuario_id as string, atual);
+  });
+
+  const teste = !!cfg.testePara;
+  const itens: ItemLiberacao[] = [];
+  for (const c of convites) {
+    const u = usuario.get(c.usuario_id as string);
+    const m = modelo.get(c.tipo === 'primeiro_acesso' ? 'convite_acesso' : 'nova_senha_acesso');
+    if (!u || !u.ativo || !m?.ativo) {
+      const motivo = !u || !u.ativo ? 'Acesso desativado' : 'Envio automático deste e-mail desligado em Acessos > E-mails';
+      await supabase.from('convites_acesso').update({ situacao_envio: 'erro', envio_erro: motivo }).eq('id', c.id);
+      continue;
+    }
+    const codigo = codigoAleatorio();
+    const expira = new Date(Date.now() + dias * 86400000).toISOString();
+    const { error: e5 } = await supabase
+      .from('convites_acesso')
+      .update({ situacao_envio: 'enviando', envio_iniciado_em: new Date().toISOString(), token_hash: await resumoHash(codigo), expira_em: expira, para: u.email })
+      .eq('id', c.id);
+    if (e5) throw e5;
+
+    const quem = c.pedido_por ? (usuario.get(c.pedido_por as string)?.nome as string | undefined) : undefined;
+    const assinatura = [quem?.trim(), `${param.get('cobranca_setor') || 'Gente e Gestão'} | Grupo Emais`, param.get('cobranca_contato')].filter(Boolean).join('\n');
+    const nome = (u.nome as string).trim();
+    const valores: Record<string, string> = {
+      '{nome}': nome,
+      '{primeiro_nome}': nome.split(/\s+/)[0],
+      '{motivo}': motivoDoPerfil(u.perfil as string, empresasDe.get(u.id as string)?.nomes ?? []),
+      '{link}': `${PORTAL}acesso?c=${codigo}`,
+      '{validade}': dias === 1 ? '1 dia' : `${dias} dias`,
+      '{email}': u.email as string,
+      '{endereco_portal}': PORTAL,
+      '{assinatura}': assinatura,
+    };
+    const trocar = (t: string) => t.replace(/\{[a-z_]+\}/g, (x) => (x in valores ? valores[x] : x));
+    let corpo = trocar(m.corpo as string).split('\n').map((l) => l.replace(/\s+$/, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    // O link não pode faltar, mesmo que tenham tirado o campo do texto.
+    if (!corpo.includes(valores['{link}'])) corpo += `\n\n${valores['{link}']}`;
+    const assunto = trocar(m.assunto as string).replace(/\s+/g, ' ').trim();
+    const original = u.email as string;
+    itens.push({
+      tipo: 'convite_acesso',
+      id: c.id as string,
+      obra_id: '',
+      titulo: nome,
+      para: teste ? cfg.testePara : original,
+      para_original: original,
+      assunto: teste ? `[TESTE · para ${original}] ${assunto}` : assunto,
+      corpo,
+      empresa_ids: empresasDe.get(u.id as string)?.ids ?? [],
+      teste,
+    });
+  }
+  return itens;
+}
+
+async function registrarConvite(item: ItemLiberacao, situacao: 'enviada' | 'erro', erro?: string) {
+  const agora = new Date().toISOString();
+  const { error } = await supabase.from('cobrancas_envios').insert({
+    chave: `convite|${item.id}`,
+    tipo: 'convite_acesso',
+    titulo: item.titulo,
+    empresa_ids: item.empresa_ids,
+    obra_id: null,
+    para: item.para,
+    para_original: item.para_original,
+    assunto: item.assunto,
+    corpo: item.corpo.replace(/https:\/\/\S+\/acesso\?c=[A-Za-z0-9_-]+/g, LINK_OCULTO),
+    situacao,
+    erro: situacao === 'erro' ? (erro ?? 'Erro no envio') : null,
+    teste: item.teste,
+  });
+  if (error) throw error;
+  const mudanca: Record<string, unknown> =
+    situacao === 'enviada'
+      ? { situacao_envio: 'enviado', enviado_em: agora, envio_erro: null, envio_teste: item.teste, envio_para: item.para }
+      : { situacao_envio: 'erro', envio_erro: erro ?? 'Erro no envio', token_hash: null };
+  // Só mexe no convite que ainda está em envio (um convite novo pode ter substituído este).
+  const { error: e2 } = await supabase.from('convites_acesso').update(mudanca).eq('id', item.id).eq('situacao_envio', 'enviando');
+  if (e2) throw e2;
 }
 
 async function registrarLiberacao(item: ItemLiberacao, situacao: 'enviada' | 'erro', erro?: string) {
+  if (item.tipo === 'convite_acesso') return registrarConvite(item, situacao, erro);
   const agora = new Date().toISOString();
   const { error } = await supabase.from('cobrancas_envios').insert({
     chave: `liberacao|${item.id}`,

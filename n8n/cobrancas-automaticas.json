@@ -359,8 +359,8 @@
     },
     {
       "parameters": {
-        "content": "### Aviso de liberação\nQuando o administrativo clica em **Enviar** na tela Aviso de liberação, o aviso entra na fila. A cada 10 minutos (dias úteis, 7h às 19h) este trecho busca a fila, envia e registra.\n\nPara testar agora: passe o mouse em *A cada 10 minutos* e clique em *Test workflow*.",
-        "height": 220,
+        "content": "### Aviso de liberação e convite de acesso\nQuando o administrativo clica em **Enviar** na tela Aviso de liberação, ou em **Enviar acesso** em Acessos, o e-mail entra na fila. A cada 10 minutos (dias úteis, 7h às 19h) este trecho busca a fila, envia e registra. Os dois tipos vêm na mesma lista.\n\nPara testar agora: passe o mouse em *A cada 10 minutos* e clique em *Test workflow*.",
+        "height": 240,
         "width": 560,
         "color": 5
       },

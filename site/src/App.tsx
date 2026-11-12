@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useSessao, type Perfil } from './lib/sessao';
 import { Entrar } from './paginas/Entrar';
 import { EsqueciSenha } from './paginas/EsqueciSenha';
+import { AceitarConvite } from './paginas/AceitarConvite';
 import { NovaSenha } from './paginas/NovaSenha';
 import { Inicio } from './paginas/Inicio';
 import { AcessoBloqueado } from './paginas/AcessoBloqueado';
@@ -35,6 +36,7 @@ export function App() {
       <Route path="/entrar" element={<SoForaDoLogin><Entrar /></SoForaDoLogin>} />
       <Route path="/esqueci-senha" element={<SoForaDoLogin><EsqueciSenha /></SoForaDoLogin>} />
       <Route path="/nova-senha" element={<NovaSenha />} />
+      <Route path="/acesso" element={<AceitarConvite />} />
       <Route path="/" element={<ComLogin><Inicio /></ComLogin>} />
       <Route path="/painel-obra" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><PainelObra /></SoPerfil>} />
       <Route path="/analise" element={<SoAdmin><Analise /></SoAdmin>} />

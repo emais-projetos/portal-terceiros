@@ -1,10 +1,11 @@
-// Cria acessos ao portal e gera o link de primeiro acesso (ou de nova senha).
-// Só o administrativo chama. Nenhum e-mail é disparado daqui: o link volta para a tela,
-// e o administrativo envia pelo Outlook.
+// Cria acessos ao portal, coloca o convite na fila do envio automático e gera o link de primeiro acesso
+// (ou de nova senha) para quem preferir mandar pelo Outlook. Só o administrativo chama.
+// Nenhum e-mail sai daqui: o convite fica em convites_acesso e o n8n envia (função cobrancas-automaticas).
 //
 // Ações:
-//   { acao: 'criar', nome, email, perfil: 'fornecedor'|'tst'|'engenharia'|'admin', empresas?: uuid[], obras?: uuid[], destino }
-//   { acao: 'link', usuario_id, destino }
+//   { acao: 'criar', nome, email, perfil: 'fornecedor'|'tst'|'engenharia'|'admin', empresas?: uuid[], obras?: uuid[], enviar?: boolean, destino }
+//   { acao: 'enviar', usuario_id, destino }   convite pelo envio automático
+//   { acao: 'link', usuario_id, destino }     link para mandar à mão
 //   { acao: 'editar', usuario_id, nome, email, empresas?: uuid[], obras?: uuid[], destino }
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 
@@ -70,6 +71,7 @@ Deno.serve(async (req) => {
 
   if (corpo.acao === 'criar') return criar(servico, chamador.id, corpo, redirectTo);
   if (corpo.acao === 'link') return gerarLink(servico, chamador.id, corpo, redirectTo);
+  if (corpo.acao === 'enviar') return enviarConvite(servico, chamador.id, corpo);
   if (corpo.acao === 'editar') return editar(servico, chamador.id, corpo);
   return erro(400, 'Ação desconhecida');
 });
@@ -92,7 +94,7 @@ async function criar(servico: Cliente, adminId: string, corpo: Record<string, un
   if ([...empresas, ...obras].some((id) => !UUID.test(id))) return erro(400, 'Empresa ou obra inválida');
 
   const { data: jaExiste } = await servico.from('usuarios').select('id').eq('email', email).maybeSingle();
-  if (jaExiste) return erro(409, 'Já existe um acesso com este e-mail. Use "Gerar link" na lista.');
+  if (jaExiste) return erro(409, 'Já existe um acesso com este e-mail. Use "Enviar acesso" na lista.');
 
   if (perfil === 'fornecedor') {
     // Regra do portal: um acesso por empresa.
@@ -151,7 +153,52 @@ async function criar(servico: Cliente, adminId: string, corpo: Record<string, un
     usuario_id: adminId,
   });
 
-  return resposta(200, { usuario_id: usuarioId, nome, email, perfil, link: convite.properties.action_link, primeiro_acesso: true });
+  let fila: { id: string } | null = null;
+  if (corpo.enviar === true) {
+    const r = await enfileirar(servico, adminId, { id: usuarioId, email }, 'primeiro_acesso');
+    if ('erro' in r) return resposta(200, { usuario_id: usuarioId, nome, email, perfil, link: convite.properties.action_link, primeiro_acesso: true, convite_erro: r.erro });
+    fila = r;
+  }
+
+  return resposta(200, {
+    usuario_id: usuarioId, nome, email, perfil, link: convite.properties.action_link, primeiro_acesso: true, convite_id: fila?.id ?? null,
+  });
+}
+
+// Coloca o convite na fila. Convites anteriores da mesma pessoa deixam de valer.
+async function enfileirar(servico: Cliente, adminId: string, usuario: { id: string; email: string }, tipo: 'primeiro_acesso' | 'nova_senha') {
+  const modelo = tipo === 'primeiro_acesso' ? 'convite_acesso' : 'nova_senha_acesso';
+  const { data: m } = await servico.from('modelos_email').select('ativo').eq('tipo', modelo).maybeSingle();
+  if (!m?.ativo) return { erro: 'O envio automático deste e-mail está desligado em Acessos > E-mails. Use "Gerar link" e mande pelo Outlook.' };
+
+  const agora = new Date().toISOString();
+  await servico.from('convites_acesso').update({ situacao_envio: 'cancelado', substituido_em: agora })
+    .eq('usuario_id', usuario.id).in('situacao_envio', ['aguardando', 'enviando', 'erro']);
+  await servico.from('convites_acesso').update({ substituido_em: agora })
+    .eq('usuario_id', usuario.id).eq('situacao_envio', 'enviado').is('substituido_em', null);
+
+  const { data, error } = await servico.from('convites_acesso')
+    .insert({ usuario_id: usuario.id, tipo, para: usuario.email, pedido_por: adminId })
+    .select('id, tipo, para, pedido_em, situacao_envio')
+    .single();
+  if (error) return { erro: `Não foi possível colocar o convite na fila: ${error.message}` };
+  await servico.from('eventos').insert({
+    tabela: 'usuarios', registro_id: usuario.id, acao: 'convite_pedido', detalhe: { tipo, para: usuario.email }, usuario_id: adminId,
+  });
+  return data as { id: string; tipo: string; para: string; pedido_em: string; situacao_envio: string };
+}
+
+async function enviarConvite(servico: Cliente, adminId: string, corpo: Record<string, unknown>) {
+  const usuarioId = String(corpo.usuario_id ?? '');
+  if (!UUID.test(usuarioId)) return erro(400, 'Acesso inválido');
+  const { data: usuario } = await servico.from('usuarios').select('id, nome, email, ativo').eq('id', usuarioId).maybeSingle();
+  if (!usuario) return erro(404, 'Acesso não encontrado');
+  if (!usuario.ativo) return erro(400, 'Este acesso está desativado. Reative antes de enviar.');
+  const { data: login } = await servico.auth.admin.getUserById(usuarioId);
+  const tipo = login?.user?.last_sign_in_at ? 'nova_senha' : 'primeiro_acesso';
+  const r = await enfileirar(servico, adminId, usuario, tipo);
+  if ('erro' in r) return erro(400, r.erro as string);
+  return resposta(200, { usuario_id: usuarioId, nome: usuario.nome, email: usuario.email, convite: r });
 }
 
 async function gerarLink(servico: Cliente, adminId: string, corpo: Record<string, unknown>, redirectTo: string) {

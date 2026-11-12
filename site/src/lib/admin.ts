@@ -29,14 +29,47 @@ export type Acesso = {
   criado_em: string;
   empresas: { id: string; razao_social: string }[];
   obras: { id: string; nome: string }[];
+  ultimo_login: string | null;
+  convite: ConviteAcesso | null;
+};
+
+export type ConviteAcesso = {
+  id: string;
+  usuario_id: string;
+  tipo: 'primeiro_acesso' | 'nova_senha';
+  para: string;
+  pedido_em: string;
+  situacao_envio: 'aguardando' | 'enviando' | 'enviado' | 'erro' | 'cancelado';
+  enviado_em: string | null;
+  envio_erro: string | null;
+  envio_teste: boolean;
+  envio_para: string | null;
+  expira_em: string | null;
+  usado_em: string | null;
 };
 
 export async function lerAcessos(): Promise<Acesso[]> {
-  const { data, error } = await supabase
-    .from('usuarios')
-    .select('id, nome, email, perfil, ativo, criado_em, usuarios_empresas(empresas(id, razao_social)), tst_obras(obras(id, nome))')
-    .order('nome');
+  const [{ data, error }, { data: logins, error: e2 }, { data: convites, error: e3 }] = await Promise.all([
+    supabase
+      .from('usuarios')
+      .select('id, nome, email, perfil, ativo, criado_em, usuarios_empresas(empresas(id, razao_social)), tst_obras(obras(id, nome))')
+      .order('nome'),
+    supabase.rpc('acessos_ultimo_login'),
+    supabase
+      .from('convites_acesso')
+      .select('id, usuario_id, tipo, para, pedido_em, situacao_envio, enviado_em, envio_erro, envio_teste, envio_para, expira_em, usado_em')
+      .neq('situacao_envio', 'cancelado')
+      .order('pedido_em', { ascending: false }),
+  ]);
   if (error) throw error;
+  if (e2) throw e2;
+  if (e3) throw e3;
+  const ultimoLogin = new Map(((logins ?? []) as { usuario_id: string; ultimo_login: string | null }[]).map((l) => [l.usuario_id, l.ultimo_login]));
+  // Só o convite mais recente de cada pessoa.
+  const convite = new Map<string, ConviteAcesso>();
+  ((convites ?? []) as ConviteAcesso[]).forEach((c) => {
+    if (!convite.has(c.usuario_id)) convite.set(c.usuario_id, c);
+  });
   type Bruto = Omit<Acesso, 'empresas' | 'obras'> & {
     usuarios_empresas: { empresas: { id: string; razao_social: string } | null }[];
     tst_obras: { obras: { id: string; nome: string } | null }[];
@@ -50,7 +83,20 @@ export async function lerAcessos(): Promise<Acesso[]> {
     criado_em: u.criado_em,
     empresas: u.usuarios_empresas.map((x) => x.empresas).filter((x): x is { id: string; razao_social: string } => !!x),
     obras: u.tst_obras.map((x) => x.obras).filter((x): x is { id: string; nome: string } => !!x),
+    ultimo_login: ultimoLogin.get(u.id) ?? null,
+    convite: convite.get(u.id) ?? null,
   }));
+}
+
+// Modo de teste e pausa do envio automático (Acessos > Regras), para avisar antes de enviar.
+export async function lerEnvioAutomatico(): Promise<{ testePara: string; pausado: boolean }> {
+  const { data, error } = await supabase
+    .from('parametros')
+    .select('chave, valor')
+    .in('chave', ['cobranca_automatica_teste_para', 'cobranca_automatica_pausada']);
+  if (error) throw error;
+  const p = new Map((data ?? []).map((x) => [x.chave as string, ((x.valor as string) ?? '').trim()]));
+  return { testePara: p.get('cobranca_automatica_teste_para') ?? '', pausado: (p.get('cobranca_automatica_pausada') ?? '').toLowerCase() === 'sim' };
 }
 
 export type EmpresaOpcao = { id: string; razao_social: string; cnpj: string; temAcesso: boolean };
@@ -81,6 +127,8 @@ export type LinkAcesso = {
   perfil: Perfil;
   link: string;
   primeiro_acesso: boolean;
+  convite_id?: string | null;
+  convite_erro?: string;
 };
 
 async function chamarFuncaoAcesso(corpo: Record<string, unknown>): Promise<LinkAcesso> {
@@ -97,7 +145,7 @@ async function chamarFuncaoAcesso(corpo: Record<string, unknown>): Promise<LinkA
   return data as LinkAcesso;
 }
 
-export function criarAcesso(dados: { nome: string; email: string; perfil: Perfil; empresas: string[]; obras: string[] }) {
+export function criarAcesso(dados: { nome: string; email: string; perfil: Perfil; empresas: string[]; obras: string[]; enviar: boolean }) {
   return chamarFuncaoAcesso({ acao: 'criar', ...dados });
 }
 
@@ -136,6 +184,34 @@ export async function cadastrarEmpresa(dados: {
 
 export function gerarLinkAcesso(usuarioId: string) {
   return chamarFuncaoAcesso({ acao: 'link', usuario_id: usuarioId });
+}
+
+// Convite pelo envio automático: entra na fila e o n8n manda o e-mail.
+export async function enviarAcesso(usuarioId: string) {
+  return (await chamarFuncaoAcesso({ acao: 'enviar', usuario_id: usuarioId })) as unknown as { nome: string; email: string; convite: ConviteAcesso };
+}
+
+// Página /acesso (pública): confere e usa o convite do e-mail.
+export type SituacaoConvite = {
+  situacao: 'valido' | 'ok' | 'usado' | 'vencido' | 'substituido' | 'desativado' | 'invalido';
+  tipo?: 'primeiro_acesso' | 'nova_senha';
+  primeiro_nome?: string;
+  email?: string;
+  link?: string;
+};
+
+export async function consultarConvite(codigo: string, usar: boolean): Promise<SituacaoConvite> {
+  const { data, error } = await supabase.functions.invoke('resgatar-convite', {
+    body: { acao: usar ? 'usar' : 'ver', codigo, destino: enderecoDoSite },
+  });
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      const detalhe = await error.context.json().catch(() => null);
+      throw new Error(detalhe?.erro ?? 'Não foi possível concluir.');
+    }
+    throw error;
+  }
+  return data as SituacaoConvite;
 }
 
 export async function alterarAtivo(usuarioId: string, ativo: boolean) {

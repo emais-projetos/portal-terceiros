@@ -12,7 +12,9 @@ export type TipoModelo =
   | 'vencimento_segundo'
   | 'vencimento_vencido'
   | 'integracao_documentos'
-  | 'aviso_liberacao';
+  | 'aviso_liberacao'
+  | 'convite_acesso'
+  | 'nova_senha_acesso';
 
 export type Modelo = {
   tipo: TipoModelo;
@@ -122,6 +124,16 @@ export const CAMPOS: Record<string, { descricao: string; exemplo: string }> = {
     exemplo: 'Vencem em até 15 dias:\n- João da Silva: ASO, vence em 19/11/2026\n\nVencem em até 30 dias:\n- Documento da empresa: PGR, vence em 05/12/2026',
   },
   '{colaboradores}': { descricao: 'Colaboradores por obra, com os documentos que faltam', exemplo: 'Obra Residencial Jardim\n- Maria de Souza: ASO, NR-35, RG e CPF ou CNH (devolvido: documento ilegível; corrija no portal)' },
+  '{nome}': { descricao: 'Nome de quem recebe o acesso', exemplo: 'Maria de Souza' },
+  '{primeiro_nome}': { descricao: 'Só o primeiro nome', exemplo: 'Maria' },
+  '{motivo}': {
+    descricao: 'Frase sobre o que a pessoa faz no portal, conforme o perfil',
+    exemplo: 'É por ele que a Construtora Exemplo vai cadastrar os colaboradores e enviar a documentação para as obras da Emais.',
+  },
+  '{link}': { descricao: 'Link para criar a senha (sempre vai no e-mail, mesmo se sair do texto)', exemplo: 'https://emais-projetos.github.io/portal-terceiros/acesso?c=…' },
+  '{validade}': { descricao: 'Por quanto tempo o link vale, conforme Regras', exemplo: '7 dias' },
+  '{email}': { descricao: 'E-mail de acesso (o login)', exemplo: 'maria@construtoraexemplo.com.br' },
+  '{endereco_portal}': { descricao: 'Endereço do portal', exemplo: 'https://emais-projetos.github.io/portal-terceiros/' },
   '{link_medicao}': { descricao: 'Link da medição no portal', exemplo: 'https://emais-projetos.github.io/portal-terceiros/medicao' },
   '{link_pendencias}': { descricao: 'Link das pendências no portal', exemplo: 'https://emais-projetos.github.io/portal-terceiros/pendencias' },
   '{assinatura}': { descricao: 'Nome de quem envia (no portal), setor e contato, conforme Regras', exemplo: 'Gente e Gestão | Grupo Emais\ngente10@emais.com' },

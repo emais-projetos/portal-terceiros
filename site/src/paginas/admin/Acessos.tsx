@@ -9,11 +9,44 @@ import { nomesPerfil, useSessao, type Perfil } from '../../lib/sessao';
 import { formatarCnpj } from '../../lib/consultas';
 import { cnpjValido, soDigitos } from '../../lib/formato';
 import {
-  alterarAtivo, cadastrarEmpresa, copiarTexto, criarAcesso, editarAcesso, gerarLinkAcesso, lerAcessos, lerEmpresas, lerObras, linkOutlook,
+  alterarAtivo, cadastrarEmpresa, copiarTexto, criarAcesso, editarAcesso, enviarAcesso, gerarLinkAcesso, lerAcessos, lerEmpresas, lerEnvioAutomatico,
+  lerObras, linkOutlook,
   type Acesso, type EmpresaOpcao, type LinkAcesso, type Obra,
 } from '../../lib/admin';
 
 const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Sao_Paulo' });
+const hora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+
+const FILTROS = [
+  ['todos', 'Todos'],
+  ['nunca', 'Nunca entraram'],
+  ['sem_convite', 'Nunca entraram e sem convite enviado'],
+  ['erro', 'Convite com erro'],
+] as const;
+type Filtro = (typeof FILTROS)[number][0];
+
+// Situação do acesso: o último convite pelo envio automático e se a pessoa já entrou.
+function SituacaoAcesso({ a }: { a: Acesso }) {
+  const c = a.convite;
+  const entrou = a.ultimo_login ? <small className="sub">Último acesso em {dia(a.ultimo_login)}</small> : <small className="sub">Nunca entrou</small>;
+  if (!c) return entrou;
+  const nome = c.tipo === 'primeiro_acesso' ? 'Convite' : 'Nova senha';
+  let selo;
+  if (c.situacao_envio === 'aguardando' || c.situacao_envio === 'enviando') selo = <span className="selo-envio selo-fila">{nome} na fila: sai em até 10 minutos</span>;
+  else if (c.situacao_envio === 'erro') selo = <span className="selo-envio selo-erro">{nome} não saiu: {c.envio_erro}</span>;
+  else if (c.usado_em) selo = <span className="selo-envio selo-ok">{nome} usado em {hora(c.usado_em)}</span>;
+  else if (c.expira_em && new Date(c.expira_em) < new Date()) selo = <span className="selo-envio selo-erro">{nome} vencido em {dia(c.expira_em)}, sem uso</span>;
+  else if (c.envio_teste) selo = <span className="selo-envio selo-teste">{nome} enviado em modo de teste para {c.envio_para} ({hora(c.enviado_em!)})</span>;
+  else selo = <span className="selo-envio selo-ok">{nome} enviado em {hora(c.enviado_em!)}</span>;
+  return (
+    <>
+      {selo}
+      {entrou}
+    </>
+  );
+}
 
 const ABAS = [
   ['usuarios', 'Usuários'],
@@ -33,6 +66,8 @@ export function Acessos() {
   const [ok, setOk] = useState<string | null>(null);
   const [novoAberto, setNovoAberto] = useState(false);
   const [link, setLink] = useState<LinkAcesso | null>(null);
+  const [envio, setEnvio] = useState<Acesso | null>(null);
+  const [filtro, setFiltro] = useState<Filtro>('todos');
   const [editando, setEditando] = useState<Acesso | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [busca, setBusca] = useState('');
@@ -55,16 +90,19 @@ export function Acessos() {
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
     if (!acessos) return [];
-    if (!t) return acessos;
-    return acessos.filter((a) =>
-      [a.nome, a.email, ...a.empresas.map((e) => e.razao_social), ...a.obras.map((o) => o.nome)].some((v) => v.toLowerCase().includes(t)),
-    );
-  }, [acessos, busca]);
+    return acessos.filter((a) => {
+      if (filtro === 'nunca' && (a.ultimo_login || !a.ativo)) return false;
+      if (filtro === 'sem_convite' && (a.ultimo_login || !a.ativo || (a.convite && a.convite.situacao_envio !== 'erro'))) return false;
+      if (filtro === 'erro' && a.convite?.situacao_envio !== 'erro') return false;
+      return !t || [a.nome, a.email, ...a.empresas.map((e) => e.razao_social), ...a.obras.map((o) => o.nome)].some((v) => v.toLowerCase().includes(t));
+    });
+  }, [acessos, busca, filtro]);
 
   const semAcesso = empresas.filter((e) => !e.temAcesso).length;
 
   async function pedirLink(a: Acesso) {
     setErro(null);
+    setEnvio(null);
     setOcupado(a.id);
     try {
       setLink(await gerarLinkAcesso(a.id));
@@ -123,7 +161,16 @@ export function Acessos() {
           <span>Buscar</span>
           <input type="search" placeholder="Nome, e-mail, empresa ou obra" value={busca} onChange={(e) => setBusca(e.target.value)} />
         </label>
+        <label className="campo">
+          <span>Mostrar</span>
+          <select value={filtro} onChange={(e) => setFiltro(e.target.value as Filtro)}>
+            {FILTROS.map(([f, nome]) => (
+              <option key={f} value={f}>{nome}</option>
+            ))}
+          </select>
+        </label>
       </div>
+      {acessos && filtro !== 'todos' && <p className="sub">{filtrados.length} {filtrados.length === 1 ? 'acesso' : 'acessos'}</p>}
 
       {!acessos && !erro && <Carregando />}
       {acessos && (
@@ -134,6 +181,7 @@ export function Acessos() {
                 <th scope="col">Nome</th>
                 <th scope="col">Perfil</th>
                 <th scope="col">Empresas ou obras</th>
+                <th scope="col">Acesso</th>
                 <th scope="col"><span className="sr">Ações</span></th>
               </tr>
             </thead>
@@ -153,12 +201,15 @@ export function Acessos() {
                     {(a.perfil === 'tst' || a.perfil === 'engenharia') && a.obras.map((o) => o.nome).join(', ')}
                     {a.perfil === 'admin' && <span className="sub">Todas</span>}
                   </td>
+                  <td className="quebra">
+                    <SituacaoAcesso a={a} />
+                  </td>
                   <td className="acoes">
                     <button className="botao botao-secundario botao-pequeno" type="button" disabled={ocupado === a.id} onClick={() => setEditando(a)}>
                       Editar
                     </button>
-                    <button className="botao botao-secundario botao-pequeno" type="button" disabled={!a.ativo || ocupado === a.id} onClick={() => pedirLink(a)}>
-                      Gerar link
+                    <button className="botao botao-secundario botao-pequeno" type="button" disabled={!a.ativo || ocupado === a.id} onClick={() => setEnvio(a)}>
+                      Enviar acesso
                     </button>
                     {a.id !== usuario?.id && (
                       <button className="botao botao-discreto botao-pequeno" type="button" disabled={ocupado === a.id} onClick={() => trocarAtivo(a)}>
@@ -170,7 +221,7 @@ export function Acessos() {
               ))}
               {filtrados.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="vazio-linha">Nenhum acesso encontrado.</td>
+                  <td colSpan={5} className="vazio-linha">Nenhum acesso encontrado.</td>
                 </tr>
               )}
             </tbody>
@@ -198,7 +249,21 @@ export function Acessos() {
         aoFechar={() => setNovoAberto(false)}
         aoCriar={async (l) => {
           setNovoAberto(false);
-          setLink(l);
+          if (l.convite_id) setOk(`Acesso de ${l.nome} criado. O convite para ${l.email} sai pelo envio automático em até 10 minutos (dias úteis, das 7h às 19h).`);
+          else {
+            if (l.convite_erro) setErro(`Acesso criado, mas o convite não entrou na fila: ${l.convite_erro}`);
+            setLink(l);
+          }
+          await carregar();
+        }}
+      />
+      <ConfirmarEnvio
+        acesso={envio}
+        aoFechar={() => setEnvio(null)}
+        aoGerarLink={(a) => pedirLink(a)}
+        aoEnviar={async (msg) => {
+          setEnvio(null);
+          setOk(msg);
           await carregar();
         }}
       />
@@ -224,11 +289,13 @@ function NovoAcesso({
   const [email, setEmail] = useState('');
   const [selEmpresas, setSelEmpresas] = useState<string[]>([]);
   const [selObras, setSelObras] = useState<string[]>([]);
+  const [enviarConvite, setEnviarConvite] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     if (aberto) {
+      setEnviarConvite(true);
       setPerfil('fornecedor');
       setNome('');
       setEmail('');
@@ -256,6 +323,7 @@ function NovoAcesso({
         perfil,
         empresas: perfil === 'fornecedor' ? selEmpresas : [],
         obras: perfil === 'tst' || perfil === 'engenharia' ? selObras : [],
+        enviar: enviarConvite,
       });
       aoCriar(l);
     } catch (er) {
@@ -306,11 +374,16 @@ function NovoAcesso({
 
         {perfil === 'admin' && <p className="apoio">O administrativo vê todas as obras e é o único perfil que abre os arquivos enviados.</p>}
 
+        <label className="opcao">
+          <input type="checkbox" checked={enviarConvite} onChange={(e) => setEnviarConvite(e.target.checked)} />
+          <span>Enviar o convite por e-mail pelo envio automático (desmarque para gerar o link e mandar pelo Outlook)</span>
+        </label>
+
         {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
 
         <div className="linha-botoes">
           <button className="botao" type="submit" disabled={!valido || enviando}>
-            {enviando ? 'Criando' : 'Criar acesso e gerar link'}
+            {enviando ? 'Criando' : enviarConvite ? 'Criar acesso e enviar convite' : 'Criar acesso e gerar link'}
           </button>
           <button className="botao botao-discreto" type="button" onClick={aoFechar}>Cancelar</button>
         </div>
@@ -582,7 +655,7 @@ function EditarAcesso({
       });
       aoSalvar(
         r.trocou_email
-          ? `Acesso de ${r.nome} atualizado. O login agora é ${r.email}; a senha continua a mesma. Se a pessoa ainda não entrou, use "Gerar link" para mandar um novo convite.`
+          ? `Acesso de ${r.nome} atualizado. O login agora é ${r.email}; a senha continua a mesma. Se a pessoa ainda não entrou, use "Enviar acesso" para mandar um novo convite.`
           : `Acesso de ${r.nome} atualizado.`,
       );
     } catch (er) {
@@ -666,7 +739,8 @@ function EnvioDoLink({ link, empresas, aoFechar }: { link: LinkAcesso | null; em
     <Dialogo aberto titulo={link.primeiro_acesso ? 'Acesso criado' : 'Link de nova senha'} aoFechar={aoFechar} largura="larga">
       <div className="formulario formulario-largo">
         <p className="apoio">
-          Envie o e-mail abaixo para <strong>{link.email}</strong>. O portal não dispara e-mail sozinho: o envio sai pelo seu Outlook.
+          Envie o e-mail abaixo para <strong>{link.email}</strong> pelo seu Outlook. Este link do Supabase vence em pouco tempo; para um link
+          que dure mais, use Enviar acesso, que manda pelo envio automático.
         </p>
         <div className="previa-email">
           <p><span className="sub">Assunto</span> {assunto}</p>
@@ -680,6 +754,72 @@ function EnvioDoLink({ link, empresas, aoFechar }: { link: LinkAcesso | null; em
         {copiado === 'texto' && <p className="aviso aviso-ok" role="status">Texto copiado.</p>}
         {copiado === 'link' && <p className="aviso aviso-ok" role="status">Link copiado.</p>}
         {copiado === 'falhou' && <p className="aviso aviso-erro" role="alert">O navegador não deixou copiar. Selecione o texto e copie com Ctrl+C.</p>}
+      </div>
+    </Dialogo>
+  );
+}
+
+function ConfirmarEnvio({
+  acesso, aoFechar, aoGerarLink, aoEnviar,
+}: {
+  acesso: Acesso | null;
+  aoFechar: () => void;
+  aoGerarLink: (a: Acesso) => void;
+  aoEnviar: (mensagem: string) => void;
+}) {
+  const [cfg, setCfg] = useState<{ testePara: string; pausado: boolean } | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!acesso) return;
+    setErro(null);
+    setCfg(null);
+    lerEnvioAutomatico().then(setCfg).catch(() => setCfg({ testePara: '', pausado: false }));
+  }, [acesso]);
+
+  if (!acesso) return <Dialogo aberto={false} titulo="" aoFechar={aoFechar}>{null}</Dialogo>;
+  const primeiro = !acesso.ultimo_login;
+  const naFila = acesso.convite && (acesso.convite.situacao_envio === 'aguardando' || acesso.convite.situacao_envio === 'enviando');
+
+  async function enviar() {
+    if (!acesso) return;
+    setErro(null);
+    setEnviando(true);
+    try {
+      const r = await enviarAcesso(acesso.id);
+      aoEnviar(
+        `${r.convite.tipo === 'primeiro_acesso' ? 'Convite' : 'Link de nova senha'} para ${r.email} na fila. ` +
+          (cfg?.testePara ? `Modo de teste ligado: vai para ${cfg.testePara}.` : 'Sai pelo envio automático em até 10 minutos (dias úteis, das 7h às 19h).'),
+      );
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Dialogo aberto titulo={primeiro ? `Enviar convite: ${acesso.nome}` : `Enviar nova senha: ${acesso.nome}`} aoFechar={aoFechar} largura="larga">
+      <div className="formulario formulario-largo">
+        <p className="apoio">
+          {primeiro
+            ? <>Vai para <strong>{acesso.email}</strong> o e-mail de primeiro acesso, com o link para criar a senha.</>
+            : <>Esta pessoa já entrou no portal. Vai para <strong>{acesso.email}</strong> o e-mail com o link para criar uma nova senha.</>}{' '}
+          O texto é o de Acessos &gt; E-mails, e o link vale pelos dias definidos em Acessos &gt; Regras.
+        </p>
+        {naFila && <p className="aviso">Já existe um envio na fila para esta pessoa. Enviar de novo troca o anterior.</p>}
+        {acesso.convite?.situacao_envio === 'enviado' && !acesso.convite.usado_em && (
+          <p className="sub">O link enviado em {hora(acesso.convite.enviado_em!)} deixa de valer quando sair o novo.</p>
+        )}
+        {cfg?.testePara && <p className="aviso">Modo de teste ligado em Acessos &gt; Regras: o e-mail vai para {cfg.testePara}, com o destinatário real no assunto.</p>}
+        {cfg?.pausado && <p className="aviso">O envio automático está pausado em Acessos &gt; Regras. O e-mail fica na fila até voltar.</p>}
+        {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
+        <div className="linha-botoes">
+          <button className="botao" type="button" disabled={enviando || !cfg} onClick={enviar}>{enviando ? 'Enviando' : 'Enviar pelo envio automático'}</button>
+          <button className="botao botao-secundario" type="button" disabled={enviando} onClick={() => aoGerarLink(acesso)}>Gerar link para o Outlook</button>
+          <button className="botao botao-discreto" type="button" onClick={aoFechar}>Cancelar</button>
+        </div>
       </div>
     </Dialogo>
   );
