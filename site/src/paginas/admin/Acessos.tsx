@@ -10,7 +10,7 @@ import { formatarCnpj } from '../../lib/consultas';
 import { cnpjValido, soDigitos } from '../../lib/formato';
 import {
   alterarAtivo, cadastrarEmpresa, copiarTexto, criarAcesso, editarAcesso, enviarAcesso, gerarLinkAcesso, lerAcessos, lerEmpresas, lerEnvioAutomatico,
-  lerObras, linkOutlook,
+  lerObras, ligarEmpresasObras, linkOutlook,
   type Acesso, type EmpresaOpcao, type LinkAcesso, type Obra,
 } from '../../lib/admin';
 
@@ -289,6 +289,7 @@ function NovoAcesso({
   const [email, setEmail] = useState('');
   const [selEmpresas, setSelEmpresas] = useState<string[]>([]);
   const [selObras, setSelObras] = useState<string[]>([]);
+  const [obrasForn, setObrasForn] = useState<string[]>([]);
   const [enviarConvite, setEnviarConvite] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -301,6 +302,7 @@ function NovoAcesso({
       setEmail('');
       setSelEmpresas([]);
       setSelObras([]);
+      setObrasForn([]);
       setErro(null);
     }
   }, [aberto]);
@@ -308,7 +310,7 @@ function NovoAcesso({
   const valido =
     nome.trim().length >= 2 &&
     EMAIL_OK.test(email.trim()) &&
-    (perfil !== 'fornecedor' || selEmpresas.length > 0) &&
+    (perfil !== 'fornecedor' || (selEmpresas.length > 0 && todasComObra(empresas, selEmpresas, obrasForn))) &&
     ((perfil !== 'tst' && perfil !== 'engenharia') || selObras.length > 0);
 
   async function enviar(e: FormEvent) {
@@ -317,6 +319,7 @@ function NovoAcesso({
     setErro(null);
     setEnviando(true);
     try {
+      if (perfil === 'fornecedor') await ligarEmpresasObras(selEmpresas, obrasForn);
       const l = await criarAcesso({
         nome: nome.trim(),
         email: email.trim(),
@@ -369,6 +372,7 @@ function NovoAcesso({
             }}
           />
         )}
+        {perfil === 'fornecedor' && <ObrasDoFornecedor empresas={empresas} selecionadas={selEmpresas} obras={obras} marcadas={obrasForn} aoMudar={setObrasForn} />}
 
         {(perfil === 'tst' || perfil === 'engenharia') && <SeletorObras perfil={perfil} obras={obras} selecionadas={selObras} aoMudar={setSelObras} />}
 
@@ -394,6 +398,53 @@ function NovoAcesso({
 
 function alternar(lista: string[], id: string) {
   return lista.includes(id) ? lista.filter((x) => x !== id) : [...lista, id];
+}
+
+// Cada empresa escolhida precisa atuar em pelo menos uma obra (as que já tem ou as marcadas agora).
+function todasComObra(empresas: EmpresaOpcao[], selecionadas: string[], marcadas: string[]) {
+  if (marcadas.length > 0) return true;
+  return selecionadas.every((id) => (empresas.find((e) => e.id === id)?.obras.length ?? 0) > 0);
+}
+
+// Obras onde o fornecedor vai atuar. As obras em que a empresa já atua aparecem marcadas e não saem por aqui.
+function ObrasDoFornecedor({
+  empresas, selecionadas, obras, marcadas, aoMudar,
+}: {
+  empresas: EmpresaOpcao[];
+  selecionadas: string[];
+  obras: Obra[];
+  marcadas: string[];
+  aoMudar: (l: string[]) => void;
+}) {
+  const escolhidas = empresas.filter((e) => selecionadas.includes(e.id));
+  const faltaObra = escolhidas.length > 0 && !todasComObra(empresas, selecionadas, marcadas);
+  return (
+    <div className="campo">
+      <span>Obras onde vai atuar</span>
+      <small className="dica">
+        Marque uma ou mais. Vale para todas as empresas escolhidas acima. As obras em que a empresa já atua aparecem marcadas.
+      </small>
+      <ul className="lista-marcar lista-curta" aria-label="Obras onde o fornecedor vai atuar">
+        {obras.map((o) => {
+          const jaAtuam = escolhidas.filter((e) => e.obras.includes(o.id));
+          const todas = escolhidas.length > 0 && jaAtuam.length === escolhidas.length;
+          return (
+            <li key={o.id}>
+              <label>
+                <input type="checkbox" disabled={todas} checked={todas || marcadas.includes(o.id)} onChange={() => aoMudar(alternar(marcadas, o.id))} />
+                <span>
+                  {o.nome}
+                  {todas && <small className="sub">já atua</small>}
+                  {!todas && jaAtuam.length > 0 && <small className="sub">já atua: {jaAtuam.map((e) => e.razao_social).join(', ')}</small>}
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      {faltaObra && <small className="campo-erro">Escolha pelo menos uma obra para a empresa.</small>}
+    </div>
+  );
 }
 
 // Lista de empresas para ligar ao acesso. "proprias" são as do próprio acesso (na edição), que podem ficar marcadas.
@@ -619,6 +670,7 @@ function EditarAcesso({
   const [email, setEmail] = useState('');
   const [selEmpresas, setSelEmpresas] = useState<string[]>([]);
   const [selObras, setSelObras] = useState<string[]>([]);
+  const [obrasForn, setObrasForn] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -628,6 +680,7 @@ function EditarAcesso({
     setEmail(acesso.email);
     setSelEmpresas(acesso.empresas.map((e) => e.id));
     setSelObras(acesso.obras.map((o) => o.id));
+    setObrasForn([]);
     setErro(null);
   }, [acesso]);
 
@@ -646,6 +699,7 @@ function EditarAcesso({
     setErro(null);
     setEnviando(true);
     try {
+      if (perfil === 'fornecedor') await ligarEmpresasObras(selEmpresas, obrasForn);
       const r = await editarAcesso({
         usuario_id: acesso.id,
         nome: nome.trim(),
@@ -694,6 +748,7 @@ function EditarAcesso({
             }}
           />
         )}
+        {perfil === 'fornecedor' && <ObrasDoFornecedor empresas={empresas} selecionadas={selEmpresas} obras={obras} marcadas={obrasForn} aoMudar={setObrasForn} />}
         {(perfil === 'tst' || perfil === 'engenharia') && <SeletorObras perfil={perfil} obras={obras} selecionadas={selObras} aoMudar={setSelObras} />}
         {perfil === 'admin' && <p className="dica">O administrativo vê todas as obras.</p>}
 
