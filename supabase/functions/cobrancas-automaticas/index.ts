@@ -816,7 +816,7 @@ function codigoAleatorio() {
 }
 function motivoDoPerfil(perfil, empresas) {
   if (perfil === "fornecedor")
-    return `\xC9 por ele que ${empresas.length === 1 ? `a ${empresas[0]}` : "as suas empresas"} vai cadastrar os colaboradores e enviar a documenta\xE7\xE3o para as obras da Emais.`;
+    return `\xC9 por ele que ${empresas.length === 1 ? `a ${nomeLegivel(empresas[0], true)}` : "as suas empresas"} vai cadastrar os colaboradores e enviar a documenta\xE7\xE3o para as obras da Emais.`;
   if (perfil === "tst") return "\xC9 por ele que voc\xEA vai consultar os colaboradores das suas obras e dar a valida\xE7\xE3o final da seguran\xE7a do trabalho.";
   if (perfil === "engenharia")
     return "\xC9 por ele que voc\xEA vai acompanhar, nas suas obras, a integra\xE7\xE3o dos terceiros, a situa\xE7\xE3o dos documentos e a medi\xE7\xE3o de cada empresa, com quem est\xE1 liberado para pagamento.";
@@ -866,9 +866,10 @@ async function convitesDeAcesso(cfg) {
     const quem = c.pedido_por ? usuario.get(c.pedido_por)?.nome : void 0;
     const assinatura = [quem?.trim(), `${param.get("cobranca_setor") || "Gente e Gest\xE3o"} | Grupo Emais`, param.get("cobranca_contato")].filter(Boolean).join("\n");
     const nome = u.nome.trim();
+    const saudacao = u.perfil === "fornecedor" ? nomeLegivel(nome.replace(/^[\d.\/\s-]+/, ""), true) : nomeLegivel(nome.split(/\s+/).find((p) => /[A-Za-zÀ-ÿ]{2}/.test(p)) ?? nome);
     const valores = {
       "{nome}": nome,
-      "{primeiro_nome}": nome.split(/\s+/)[0],
+      "{primeiro_nome}": saudacao,
       "{motivo}": motivoDoPerfil(u.perfil, empresasDe.get(u.id)?.nomes ?? []),
       "{link}": `${PORTAL}acesso?c=${codigo}`,
       "{validade}": dias === 1 ? "1 dia" : `${dias} dias`,

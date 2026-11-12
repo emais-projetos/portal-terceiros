@@ -15,7 +15,7 @@
 // Os convites de acesso vêm na mesma lista dos avisos de liberação (campo "tipo"), para o fluxo do n8n
 // que já existe enviar os dois sem mudança.
 import { supabase } from './servidor-supabase.ts';
-import { montarFila, type Cobranca } from '../../../site/src/lib/cobrancas.ts';
+import { montarFila, nomeLegivel, type Cobranca } from '../../../site/src/lib/cobrancas.ts';
 
 declare const Deno: { env: { get(nome: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 
@@ -280,7 +280,7 @@ function codigoAleatorio(): string {
 
 function motivoDoPerfil(perfil: string, empresas: string[]): string {
   if (perfil === 'fornecedor')
-    return `É por ele que ${empresas.length === 1 ? `a ${empresas[0]}` : 'as suas empresas'} vai cadastrar os colaboradores e enviar a documentação para as obras da Emais.`;
+    return `É por ele que ${empresas.length === 1 ? `a ${nomeLegivel(empresas[0], true)}` : 'as suas empresas'} vai cadastrar os colaboradores e enviar a documentação para as obras da Emais.`;
   if (perfil === 'tst') return 'É por ele que você vai consultar os colaboradores das suas obras e dar a validação final da segurança do trabalho.';
   if (perfil === 'engenharia')
     return 'É por ele que você vai acompanhar, nas suas obras, a integração dos terceiros, a situação dos documentos e a medição de cada empresa, com quem está liberado para pagamento.';
@@ -345,9 +345,13 @@ async function convitesDeAcesso(cfg: Awaited<ReturnType<typeof parametros>>): Pr
     const quem = c.pedido_por ? (usuario.get(c.pedido_por as string)?.nome as string | undefined) : undefined;
     const assinatura = [quem?.trim(), `${param.get('cobranca_setor') || 'Gente e Gestão'} | Grupo Emais`, param.get('cobranca_contato')].filter(Boolean).join('\n');
     const nome = (u.nome as string).trim();
+    // Acesso de fornecedor costuma ter o nome da empresa: o "Olá" vai com o nome inteiro, sem CNPJ na frente.
+    const saudacao = u.perfil === 'fornecedor'
+      ? nomeLegivel(nome.replace(/^[\d.\/\s-]+/, ''), true)
+      : nomeLegivel(nome.split(/\s+/).find((p) => /[A-Za-zÀ-ÿ]{2}/.test(p)) ?? nome);
     const valores: Record<string, string> = {
       '{nome}': nome,
-      '{primeiro_nome}': nome.split(/\s+/)[0],
+      '{primeiro_nome}': saudacao,
       '{motivo}': motivoDoPerfil(u.perfil as string, empresasDe.get(u.id as string)?.nomes ?? []),
       '{link}': `${PORTAL}acesso?c=${codigo}`,
       '{validade}': dias === 1 ? '1 dia' : `${dias} dias`,

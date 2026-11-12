@@ -50,15 +50,22 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: convite } = await servico
+  const { data: convite, error: erroBusca } = await servico
     .from('convites_acesso')
-    .select('id, usuario_id, tipo, expira_em, usado_em, substituido_em, situacao_envio, usuarios(nome, email, ativo)')
+    .select('id, usuario_id, tipo, expira_em, usado_em, substituido_em, situacao_envio, usuarios!convites_acesso_usuario_id_fkey(nome, email, ativo, perfil)')
     .eq('token_hash', await resumoHash(codigo))
     .maybeSingle();
+  if (erroBusca) return resposta(500, { erro: 'Não foi possível conferir o link agora. Tente de novo em alguns minutos.' });
   if (!convite) return resposta(200, { situacao: 'invalido' });
 
-  const u = convite.usuarios as unknown as { nome: string; email: string; ativo: boolean } | null;
-  const base = { tipo: convite.tipo, primeiro_nome: (u?.nome ?? '').trim().split(/\s+/)[0], email: u ? emailParcial(u.email) : '' };
+  const u = convite.usuarios as unknown as { nome: string; email: string; ativo: boolean; perfil: string } | null;
+  // Acesso de fornecedor costuma ter o nome da empresa: a tela não cumprimenta pelo nome.
+  const primeiro = u && u.perfil !== 'fornecedor' ? (u.nome.trim().split(/\s+/).find((p) => /[A-Za-zÀ-ÿ]{2}/.test(p)) ?? '') : '';
+  const base = {
+    tipo: convite.tipo,
+    primeiro_nome: primeiro ? primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase() : '',
+    email: u ? emailParcial(u.email) : '',
+  };
   let situacao = 'valido';
   if (!u || !u.ativo) situacao = 'desativado';
   else if (convite.usado_em) situacao = 'usado';

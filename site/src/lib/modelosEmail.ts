@@ -125,7 +125,7 @@ export const CAMPOS: Record<string, { descricao: string; exemplo: string }> = {
   },
   '{colaboradores}': { descricao: 'Colaboradores por obra, com os documentos que faltam', exemplo: 'Obra Residencial Jardim\n- Maria de Souza: ASO, NR-35, RG e CPF ou CNH (devolvido: documento ilegível; corrija no portal)' },
   '{nome}': { descricao: 'Nome de quem recebe o acesso', exemplo: 'Maria de Souza' },
-  '{primeiro_nome}': { descricao: 'Só o primeiro nome', exemplo: 'Maria' },
+  '{primeiro_nome}': { descricao: 'Primeiro nome; no acesso de fornecedor, o nome da empresa', exemplo: 'Maria' },
   '{motivo}': {
     descricao: 'Frase sobre o que a pessoa faz no portal, conforme o perfil',
     exemplo: 'É por ele que a Construtora Exemplo vai cadastrar os colaboradores e enviar a documentação para as obras da Emais.',
