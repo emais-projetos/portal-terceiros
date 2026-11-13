@@ -16,7 +16,9 @@ export type TipoModelo =
   | 'convite_acesso'
   | 'nova_senha_acesso'
   | 'ajuda_para_emais'
-  | 'ajuda_resposta';
+  | 'ajuda_resposta'
+  | 'ajuda_automatica'
+  | 'ajuda_automatica_fora';
 
 export type Modelo = {
   tipo: TipoModelo;
@@ -134,6 +136,7 @@ export const CAMPOS: Record<string, { descricao: string; exemplo: string }> = {
   },
   '{link}': { descricao: 'Link do e-mail: no convite, para criar a senha (sempre vai, mesmo se sair do texto); na Ajuda, para abrir o portal', exemplo: 'https://emais-projetos.github.io/portal-terceiros/acesso?c=…' },
   '{de_onde}': { descricao: 'Perfil de quem escreveu, com a empresa ou as obras', exemplo: 'Fornecedor, Construtora Exemplo' },
+  '{horario}': { descricao: 'Horário de atendimento da Ajuda, conforme Regras', exemplo: 'de segunda a sexta, das 8h às 18h' },
   '{mensagens}': { descricao: 'Mensagens ainda não lidas, com a hora', exemplo: '13/11 10:42: Bom dia, como envio o ASO do João?' },
   '{validade}': { descricao: 'Por quanto tempo o link vale, conforme Regras', exemplo: '7 dias' },
   '{email}': { descricao: 'E-mail de acesso (o login)', exemplo: 'maria@construtoraexemplo.com.br' },
