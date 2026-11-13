@@ -6,6 +6,7 @@ import { Moldura } from '../componentes/Moldura';
 export function Entrar() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  const [verSenha, setVerSenha] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -21,8 +22,10 @@ export function Entrar() {
   return (
     <Moldura>
       <form className="formulario" onSubmit={entrar} noValidate>
-        <h2>Entrar</h2>
-        <p className="apoio">Use o e-mail de acesso da sua empresa.</p>
+        <div className="formulario-cabecalho">
+          <h2>Acesso ao sistema</h2>
+          <p className="apoio">Use o e-mail e a senha cadastrados pela Emais.</p>
+        </div>
 
         <label className="campo">
           <span>E-mail</span>
@@ -30,30 +33,47 @@ export function Entrar() {
             type="email"
             autoComplete="email"
             inputMode="email"
+            placeholder="nome@suaempresa.com.br"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
         </label>
 
-        <label className="campo">
-          <span>Senha</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            required
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-          />
-        </label>
+        <div className="campo">
+          <label htmlFor="senha">Senha</label>
+          <div className="campo-senha">
+            <input
+              id="senha"
+              type={verSenha ? 'text' : 'password'}
+              autoComplete="current-password"
+              required
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+            />
+            <button
+              type="button"
+              className="campo-senha-botao"
+              aria-pressed={verSenha}
+              aria-controls="senha"
+              onClick={() => setVerSenha((v) => !v)}
+            >
+              {verSenha ? 'Ocultar' : 'Mostrar'}
+            </button>
+          </div>
+        </div>
 
         {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
 
-        <button className="botao" type="submit" disabled={enviando || !email || !senha}>
+        <button className="botao botao-largo" type="submit" disabled={enviando || !email || !senha}>
           {enviando ? 'Entrando' : 'Entrar'}
         </button>
 
-        <Link className="link" to="/esqueci-senha">Esqueci minha senha</Link>
+        <Link className="link link-centro" to="/esqueci-senha">Esqueci minha senha</Link>
+
+        <p className="formulario-nota">
+          <strong>Primeiro acesso?</strong> Crie sua senha pelo convite enviado ao seu e-mail.
+        </p>
       </form>
     </Moldura>
   );

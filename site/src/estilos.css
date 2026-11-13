@@ -61,60 +61,263 @@ h2 {
   white-space: nowrap;
 }
 
-/* Moldura das telas sem login */
+/* Moldura das telas sem login (entrar, senha, convite): cores e fonte do site emais.com */
 .moldura {
-  display: grid;
-  grid-template-columns: minmax(320px, 5fr) 7fr;
+  --petroleo: #1e756a;
+  --petroleo-escuro: #165a51;
+  --tinta: #2f4858;
+  --suave: #4f6574;
+  --linha: #c3cfdc;
+  --fundo: #f5f8fe;
+  --raio-campo: 10px;
+  --fonte: 'Noto Sans', system-ui, sans-serif;
+  --fonte-titulo: 'Noto Sans', system-ui, sans-serif;
+  --menta: #4ed8b0;
+  display: flex;
   min-height: 100vh;
+  font-family: var(--fonte);
+  color: var(--tinta);
+  background: var(--fundo);
+}
+
+.moldura :focus-visible {
+  outline-color: var(--menta);
 }
 
 .moldura-marca {
   position: relative;
+  flex: 0 1 600px;
+  min-width: 420px;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   gap: 48px;
-  padding: 40px 48px 72px;
+  padding: 48px 56px 78px;
   background: var(--petroleo);
   color: #fff;
   overflow: hidden;
 }
 
-.marca-topo {
+.marca-logo {
+  height: 38px;
+  width: auto;
+  align-self: flex-start;
+}
+
+.marca-texto {
   display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 460px;
+}
+
+.marca-selo {
+  display: inline-flex;
+  align-self: flex-start;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  font-size: 0.8125rem;
   font-weight: 600;
-  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.marca-selo svg,
+.marca-modulos svg {
+  color: var(--menta);
 }
 
 .marca-texto h1 {
-  font-size: clamp(2.6rem, 5.2vw, 4.4rem);
-  max-width: 9ch;
+  font-size: clamp(2.2rem, 3.4vw, 2.9rem);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
 }
 
-.marca-texto p {
-  margin: 20px 0 0;
-  max-width: 30ch;
+.marca-apoio {
+  margin: 0;
   font-size: 1.125rem;
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(255, 255, 255, 0.88);
 }
 
-/* A faixa de sinalização de obra, única peça de destaque visual do portal */
+.marca-modulos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.marca-modulos li {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.9375rem;
+  line-height: 1.35;
+}
+
+.marca-rodape {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+/* Faixa zebrada de sinalização de obra, na base do painel */
 .faixa-obra {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   height: 22px;
-  background: repeating-linear-gradient(-45deg, var(--broto) 0 16px, var(--petroleo-escuro) 16px 32px);
+  background: repeating-linear-gradient(-45deg, var(--menta) 0 16px, #16514a 16px 32px);
 }
 
 .moldura-conteudo {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  gap: 28px;
+  padding: 48px 24px 32px;
+}
+
+.moldura-cartao {
+  width: 100%;
+  max-width: 440px;
+  padding: 40px;
+  border: 1px solid #dfe6f2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(47, 72, 88, 0.1);
+}
+
+.moldura-cartao .formulario {
+  max-width: none;
+  gap: 20px;
+}
+
+.moldura-cartao .formulario h2 {
+  font-size: 1.75rem;
+}
+
+.moldura-cartao .campo {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.moldura-cartao .campo input {
+  height: 48px;
+  font-size: 1rem;
+}
+
+.formulario-cabecalho {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.formulario-cabecalho .apoio {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.campo-senha {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-campo);
+  background: var(--superficie);
+}
+
+.campo-senha:focus-within {
+  outline: 2px solid var(--petroleo);
+  border-color: var(--petroleo);
+}
+
+.moldura-cartao .campo-senha input,
+.moldura-cartao .campo-senha input:focus-visible {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  border: 0;
+  outline: none;
+  background: transparent;
+}
+
+.campo-senha-botao {
+  height: 46px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--raio-campo);
+  background: transparent;
+  color: var(--petroleo);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.botao-largo {
+  width: 100%;
+  height: 50px;
+}
+
+.moldura-cartao .link-centro {
+  align-self: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.formulario-nota {
+  margin: 0;
+  padding-top: 18px;
+  border-top: 1px solid #e6ecf5;
+  font-size: 0.875rem;
+  color: var(--suave);
+}
+
+.formulario-nota strong {
+  color: var(--tinta);
+}
+
+.moldura-suporte {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: 440px;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--suave);
+}
+
+.moldura-suporte strong {
+  color: var(--tinta);
+}
+
+.moldura-suporte a {
+  color: var(--petroleo);
+}
+
+.moldura-copyright {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #5d7181;
 }
 
 .formulario {
@@ -1609,23 +1812,33 @@ a.celula:hover {
   }
 
   .moldura {
-    grid-template-columns: 1fr;
-    min-height: auto;
+    flex-direction: column;
   }
 
   .moldura-marca {
-    gap: 28px;
-    padding: 24px 16px 52px;
+    flex: none;
+    min-width: 0;
+    min-height: auto;
+    gap: 20px;
+    padding: 24px 16px 40px;
+  }
+
+  .marca-logo {
+    height: 28px;
+  }
+
+  .marca-texto {
+    gap: 10px;
   }
 
   .marca-texto h1 {
-    font-size: 2.4rem;
-    max-width: none;
+    font-size: 1.85rem;
   }
 
-  .marca-texto p {
-    margin-top: 10px;
-    font-size: 1rem;
+  .marca-apoio,
+  .marca-modulos,
+  .marca-rodape {
+    display: none;
   }
 
   .faixa-obra {
@@ -1659,7 +1872,14 @@ a.celula:hover {
   }
 
   .moldura-conteudo {
-    padding: 32px 16px 48px;
+    min-height: auto;
+    justify-content: flex-start;
+    gap: 20px;
+    padding: 20px 16px 32px;
+  }
+
+  .moldura-cartao {
+    padding: 24px 20px;
   }
 
   .topo-linha {
