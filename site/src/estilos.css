@@ -92,8 +92,8 @@ h2 {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 48px;
-  padding: 48px 56px 78px;
+  gap: 32px;
+  padding: 40px 56px 64px;
   background: var(--petroleo);
   color: #fff;
   overflow: hidden;
@@ -108,8 +108,8 @@ h2 {
 .marca-texto {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  max-width: 460px;
+  gap: 20px;
+  max-width: 500px;
 }
 
 .marca-selo {
@@ -133,7 +133,7 @@ h2 {
 }
 
 .marca-texto h1 {
-  font-size: clamp(2.2rem, 3.4vw, 2.9rem);
+  font-size: clamp(2rem, 2.8vw, 2.6rem);
   line-height: 1.1;
   letter-spacing: -0.01em;
 }
@@ -148,7 +148,7 @@ h2 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  margin: 8px 0 0;
+  margin: 4px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -156,8 +156,8 @@ h2 {
 .marca-modulos li {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
+  gap: 8px;
+  padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.08);
@@ -172,6 +172,20 @@ h2 {
   margin: 0;
   font-size: 0.875rem;
   color: rgba(255, 255, 255, 0.88);
+}
+
+/* Telas baixas: compacta para a entrada caber inteira sem rolar */
+@media (min-width: 761px) and (max-height: 760px) {
+  .moldura-marca { gap: 20px; padding-top: 28px; padding-bottom: 52px; }
+  .marca-logo { height: 32px; }
+  .marca-texto { gap: 14px; }
+  .marca-texto h1 { font-size: clamp(1.8rem, 2.4vw, 2.2rem); }
+  .marca-apoio { font-size: 1rem; }
+  .marca-modulos li { flex-direction: row; align-items: center; padding: 10px 12px; font-size: 0.875rem; }
+  .moldura-conteudo { gap: 12px; padding-top: 20px; padding-bottom: 16px; }
+  .moldura-cartao { padding: 24px 32px; }
+  .moldura-cartao .formulario { gap: 12px; }
+  .moldura-cartao .formulario h2 { font-size: 1.4rem; }
 }
 
 /* Faixa zebrada de sinalização de obra, na base do painel */
@@ -192,14 +206,14 @@ h2 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 28px;
-  padding: 48px 24px 32px;
+  gap: 18px;
+  padding: 32px 24px 24px;
 }
 
 .moldura-cartao {
   width: 100%;
   max-width: 440px;
-  padding: 40px;
+  padding: 32px 36px;
   border: 1px solid #dfe6f2;
   border-radius: 16px;
   background: #fff;
@@ -208,11 +222,11 @@ h2 {
 
 .moldura-cartao .formulario {
   max-width: none;
-  gap: 20px;
+  gap: 16px;
 }
 
 .moldura-cartao .formulario h2 {
-  font-size: 1.75rem;
+  font-size: 1.6rem;
 }
 
 .moldura-cartao .campo {
@@ -221,7 +235,7 @@ h2 {
 }
 
 .moldura-cartao .campo input {
-  height: 48px;
+  height: 44px;
   font-size: 1rem;
 }
 
@@ -253,14 +267,14 @@ h2 {
 .moldura-cartao .campo-senha input:focus-visible {
   flex: 1;
   min-width: 0;
-  height: 46px;
+  height: 42px;
   border: 0;
   outline: none;
   background: transparent;
 }
 
 .campo-senha-botao {
-  height: 46px;
+  height: 42px;
   padding: 0 14px;
   border: 0;
   border-radius: var(--raio-campo);
@@ -274,7 +288,7 @@ h2 {
 
 .botao-largo {
   width: 100%;
-  height: 50px;
+  height: 46px;
 }
 
 .moldura-cartao .link-centro {
@@ -285,7 +299,7 @@ h2 {
 
 .formulario-nota {
   margin: 0;
-  padding-top: 18px;
+  padding-top: 14px;
   border-top: 1px solid #e6ecf5;
   font-size: 0.875rem;
   color: var(--suave);
@@ -299,7 +313,7 @@ h2 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   max-width: 440px;
   text-align: center;
   font-size: 0.875rem;
