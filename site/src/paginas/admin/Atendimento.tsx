@@ -170,7 +170,7 @@ function Conversas() {
                     className="botao botao-secundario botao-pequeno"
                     onClick={() =>
                       resolverConversa(atual.id, atual.situacao === 'aberta')
-                        .then(carregar)
+                        .then(() => Promise.all([carregar(), lerMensagens(atual.id).then(setMensagens)]))
                         .catch((e) => setErro(mensagemDeErro(e)))
                     }
                   >

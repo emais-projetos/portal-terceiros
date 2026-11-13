@@ -18,7 +18,8 @@ export type TipoModelo =
   | 'ajuda_para_emais'
   | 'ajuda_resposta'
   | 'ajuda_automatica'
-  | 'ajuda_automatica_fora';
+  | 'ajuda_automatica_fora'
+  | 'ajuda_resolvida';
 
 export type Modelo = {
   tipo: TipoModelo;
