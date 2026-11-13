@@ -38,9 +38,12 @@ function LinhaDocumento({ d, ocupado, aoAbrir, aoBaixar, aoAprovar, aoDevolver }
   ocupado: boolean;
   aoAbrir: (a: Arquivo) => void;
   aoBaixar: (a: Arquivo) => void;
-  aoAprovar: () => void;
+  aoAprovar: (vencimento?: string) => void;
   aoDevolver: () => void;
 }) {
+  const [vigencia, setVigencia] = useState('');
+  // Documento sem vencimento próprio (ex.: outro documento): a vigência pode ser informada aqui, ao aprovar.
+  const podeVigencia = d.tipos_documento.regra === 'sem_vencimento' && !d.dispensado && d.tipo_codigo === 'outro_documento';
   const venc = vencimentoDoDocumento(d);
   const dias = venc ? diasAte(venc) : null;
   const ativos = d.arquivos.filter((x) => !x.apagado_em);
@@ -64,7 +67,17 @@ function LinhaDocumento({ d, ocupado, aoAbrir, aoBaixar, aoAprovar, aoDevolver }
         )}
       </td>
       <td>
-        {venc ? data(venc) : <span className="sub">Não vence</span>}
+        {podeVigencia ? (
+          <label className="campo campo-compacto">
+            <span className="sr">Vigência de {d.tipos_documento.nome}</span>
+            <input type="date" value={vigencia} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setVigencia(e.target.value)} />
+            <small className="sub">{vigencia ? 'Vence nesta data' : 'Opcional: em branco, não vence'}</small>
+          </label>
+        ) : venc ? (
+          data(venc)
+        ) : (
+          <span className="sub">Não vence</span>
+        )}
         {dias !== null && dias <= 30 && (
           <small className={dias <= 0 ? 'sub texto-erro' : 'sub texto-alerta'}>{dias <= 0 ? 'já vencido' : `em ${dias} dias`}</small>
         )}
@@ -93,7 +106,7 @@ function LinhaDocumento({ d, ocupado, aoAbrir, aoBaixar, aoAprovar, aoDevolver }
         ))}
       </td>
       <td className="acoes">
-        <button type="button" className="botao botao-pequeno" disabled={ocupado} onClick={aoAprovar}>
+        <button type="button" className="botao botao-pequeno" disabled={ocupado} onClick={() => aoAprovar(podeVigencia ? vigencia : undefined)}>
           Aprovar
         </button>
         <button type="button" className="botao botao-secundario botao-pequeno" disabled={ocupado} onClick={aoDevolver}>
@@ -363,7 +376,13 @@ export function Analise() {
                                   await baixarArquivo(d, a);
                                   await carregar();
                                 })}
-                                aoAprovar={() => executar(d.id, () => aprovarDocumento(d.id), `${d.tipos_documento.nome}${d.colaboradores ? ` de ${d.colaboradores.nome}` : ''} aprovado.`)}
+                                aoAprovar={(vigencia) =>
+                                  executar(
+                                    d.id,
+                                    () => aprovarDocumento(d.id, vigencia),
+                                    `${d.tipos_documento.nome}${d.colaboradores ? ` de ${d.colaboradores.nome}` : ''} aprovado${vigencia ? `, vence em ${data(vigencia)}` : ''}.`,
+                                  )
+                                }
                                 aoDevolver={() => setDevolvendo(d)}
                               />
                             ))}

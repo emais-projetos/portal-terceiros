@@ -265,7 +265,25 @@ export type DocumentoEmAnalise = {
   }[];
 };
 
+// "Outro documento": o nome que aparece é o que o fornecedor escreveu ao incluir (ex.: "Outro documento: treinamento de escavadeira").
 export async function lerFilaAnalise(): Promise<DocumentoEmAnalise[]> {
+  const docs = await lerFilaAnaliseBruta();
+  const outros = [...new Set(docs.filter((d) => d.tipo_codigo === 'outro_documento' && d.colaborador_id).map((d) => d.colaborador_id as string))];
+  if (!outros.length) return docs;
+  const { data, error } = await supabase
+    .from('colaboradores_documentos_extras')
+    .select('colaborador_id, motivo')
+    .eq('tipo_codigo', 'outro_documento')
+    .in('colaborador_id', outros);
+  if (error) throw error;
+  const descricao = new Map((data ?? []).map((x) => [x.colaborador_id as string, ((x.motivo as string) ?? '').trim()]));
+  return docs.map((d) => {
+    const texto = d.tipo_codigo === 'outro_documento' && d.colaborador_id ? descricao.get(d.colaborador_id) : '';
+    return texto ? { ...d, tipos_documento: { ...d.tipos_documento, nome: `${d.tipos_documento.nome}: ${texto}` } } : d;
+  });
+}
+
+async function lerFilaAnaliseBruta(): Promise<DocumentoEmAnalise[]> {
   return lerTudo<DocumentoEmAnalise>((inicio, fim) =>
     supabase
       .from('documentos')
@@ -296,8 +314,8 @@ export function vencimentoDoDocumento(d: Pick<DocumentoEmAnalise, 'data_emissao'
     const [a, m, dia] = d.data_emissao.split('-').map(Number);
     return new Date(Date.UTC(a, m - 1, dia + t.validade_dias)).toISOString().slice(0, 10);
   }
-  if (t.regra === 'vigencia_informada') return d.data_vencimento_informada;
-  return null;
+  // Sem vencimento: só vence se o administrativo informou a vigência na análise (ex.: outro documento).
+  return d.data_vencimento_informada;
 }
 
 export async function abrirArquivo(caminho: string) {
@@ -394,8 +412,8 @@ export function nomeDoZip(rotulo: string): string {
   return `${hoje}_documentos_${limparParaNome(rotulo).replace(/\s+/g, '_')}.zip`;
 }
 
-export async function aprovarDocumento(id: string) {
-  const { error } = await supabase.rpc('aprovar_documento', { p_documento: id });
+export async function aprovarDocumento(id: string, vencimento?: string) {
+  const { error } = await supabase.rpc('aprovar_documento', { p_documento: id, p_vencimento: vencimento || null });
   if (error) throw error;
 }
 
