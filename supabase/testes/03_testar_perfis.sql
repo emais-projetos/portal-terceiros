@@ -363,6 +363,10 @@ begin
   perform teste.bloqueado(t, $q$select registrar_cobranca_medicao(array['$q$ || teste.id('M1') || $q$']::uuid[])$q$);
   perform teste.bloqueado(t, $q$select registrar_download(array['70000000-0000-0000-0000-000000000001']::uuid[])$q$);
   perform teste.bloqueado(t, $q$select registrar_download_medicao(array[gen_random_uuid()])$q$);
+  perform teste.bloqueado(t, $q$select conferir_encerramento_obra('10000000-0000-0000-0000-000000000001')$q$);
+  perform teste.bloqueado(t, $q$select mudar_situacao_obra('10000000-0000-0000-0000-000000000001', 'iniciar')$q$);
+  perform teste.bloqueado(t, $q$select mudar_situacao_obra('10000000-0000-0000-0000-000000000001', 'concluir', current_date, 'teste de encerramento', true)$q$);
+  if teste.linhas($q$update obras set situacao = 'encerrada', ativa = false$q$) > 0 then perform teste.falha(t, 'encerra obra direto na tabela'); end if;
 
   t := 'Fornecedor: funções com dados de outra empresa';
   perform teste.bloqueado(t, $q$select informar_contrato('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', 'x')$q$);
@@ -421,6 +425,8 @@ begin
   perform teste.bloqueado(t, $q$select registrar_download(array['70000000-0000-0000-0000-000000000001']::uuid[])$q$);
   perform teste.bloqueado(t, $q$select resolver_conversa('$q$ || teste.id('CV1') || $q$', true)$q$);
   perform teste.bloqueado(t, $q$select abrir_medicao('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', current_date)$q$);
+  perform teste.bloqueado(t, $q$select mudar_situacao_obra('10000000-0000-0000-0000-000000000001', 'iniciar')$q$);
+  perform teste.bloqueado(t, $q$select conferir_encerramento_obra('10000000-0000-0000-0000-000000000001')$q$);
   perform teste.bloqueado(t, $q$insert into colaboradores (empresa_id, nome) values ('20000000-0000-0000-0000-000000000001', 'INTRUSO')$q$);
   perform teste.bloqueado(t, $q$insert into storage.objects (bucket_id, name) values ('documentos', '20000000-0000-0000-0000-000000000001/x/invasao.pdf')$q$);
   perform teste.igual(t, $q$select 1 from conversas$q$, 0);
@@ -465,6 +471,23 @@ select teste.igual('Admin (controle)', 'select 1 from v_documentos_atuais where 
 select teste.igual('Admin (controle)', 'select 1 from storage.objects', 2);
 select teste.permitido('Admin (controle)', $q$select acessos_ultimo_login()$q$);
 select teste.permitido('Admin (controle)', $q$select resolver_conversa('$q$ || teste.id('CV1') || $q$', true)$q$);
+
+-- Encerramento de obra (admin): em encerramento a obra não recebe ninguém novo; encerrada, sai da gestão.
+select teste.permitido('Admin (controle)', $q$select conferir_encerramento_obra('10000000-0000-0000-0000-000000000001')$q$);
+select mudar_situacao_obra('10000000-0000-0000-0000-000000000001', 'iniciar', null, 'teste');
+select teste.bloqueado('Obra em encerramento', $q$insert into alocacoes (colaborador_id, obra_id) values ('40000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001')$q$);
+select teste.bloqueado('Obra em encerramento', $q$insert into empresas_obras (empresa_id, obra_id) values ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001')$q$);
+select teste.bloqueado('Obra em encerramento', $q$select criar_integracao('10000000-0000-0000-0000-000000000001', current_date, '8h', 'x', 'x', array['50000000-0000-0000-0000-000000000001']::uuid[])$q$);
+select teste.bloqueado('Obra encerrada sem confirmar pendências', $q$select mudar_situacao_obra('10000000-0000-0000-0000-000000000001', 'concluir', current_date, 'teste de encerramento', false)$q$);
+select mudar_situacao_obra('10000000-0000-0000-0000-000000000001', 'concluir', current_date, 'teste de encerramento', true);
+select teste.sair();
+select teste.igual('Obra encerrada: alocações abertas', $q$select 1 from alocacoes where obra_id = '10000000-0000-0000-0000-000000000001' and status <> 'encerrado'$q$, 0);
+select teste.igual('Obra encerrada: empresas ativas', $q$select 1 from empresas_obras where obra_id = '10000000-0000-0000-0000-000000000001' and ativo$q$, 0);
+select teste.entrar(:F1);
+select teste.igual('Obra encerrada some do fornecedor', $q$select 1 from painel_obras() where id = '10000000-0000-0000-0000-000000000001'$q$, 0);
+select teste.bloqueado('Obra encerrada', $q$select pedir_obra('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', null, null)$q$);
+select teste.entrar(:T1);
+select teste.igual('Obra encerrada some do TST', $q$select 1 from painel_obras()$q$, 0);
 select teste.sair();
 
 -- ============================================================================================

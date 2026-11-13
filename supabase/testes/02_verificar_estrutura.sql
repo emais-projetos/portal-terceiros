@@ -10,11 +10,11 @@ tabelas_de_consulta(nome) as (values
 funcoes_revisadas(nome) as (values
   ('abrir_medicao'), ('acessos_ultimo_login'), ('alterar_tipo_documento'), ('aprovar_alocacao'), ('aprovar_documento'),
   ('avaliar_item_medicao'), ('bloquear_colaborador'), ('cadastrar_subcontratada'), ('cancelar_integracao'),
-  ('combinar_prazo_medicao'), ('concluir_conferencia_medicao'), ('concluir_integracao'), ('conferir_colaborador_medicao'),
+  ('combinar_prazo_medicao'), ('concluir_conferencia_medicao'), ('conferir_encerramento_obra'), ('concluir_integracao'), ('conferir_colaborador_medicao'),
   ('corrigir_colaborador'), ('criar_integracao'), ('definir_colaborador_medicao'), ('desligar_colaborador'),
   ('devolver_alocacao_tst'), ('devolver_documento'), ('enviar_aviso_liberacao'), ('enviar_documento'),
   ('enviar_item_medicao'), ('enviar_medicao'), ('enviar_mensagem'), ('enviar_para_analise'), ('gerar_aviso_liberacao'),
-  ('incluir_documento_colaborador'), ('informar_contrato'), ('marcar_conversa_lida'), ('painel_obra'), ('painel_obras'),
+  ('incluir_documento_colaborador'), ('informar_contrato'), ('marcar_conversa_lida'), ('mudar_situacao_obra'), ('painel_obra'), ('painel_obras'),
   ('pedir_obra'), ('reenviar_aviso_liberacao'), ('registrar_cobranca_medicao'), ('registrar_download'),
   ('registrar_download_medicao'), ('registrar_integracao'), ('remover_colaborador_medicao'), ('resolver_conversa'),
   ('responder_pedido_obra'), ('validar_alocacao_tst')

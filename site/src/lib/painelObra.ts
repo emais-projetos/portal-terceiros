@@ -62,10 +62,13 @@ export type TurmaObra = {
 
 export type PainelObra = { obra: string; colaboradores: ColaboradorObra[]; medicoes: MedicaoObra[]; integracoes: TurmaObra[] };
 
-export async function lerObrasDoPainel(): Promise<{ id: string; nome: string }[]> {
+export type SituacaoObra = 'ativa' | 'em_encerramento' | 'encerrada';
+export type ObraDoPainel = { id: string; nome: string; situacao: SituacaoObra };
+
+export async function lerObrasDoPainel(): Promise<ObraDoPainel[]> {
   const { data, error } = await supabase.rpc('painel_obras');
   if (error) throw error;
-  return (data ?? []) as { id: string; nome: string }[];
+  return (data ?? []) as ObraDoPainel[];
 }
 
 export async function lerPainelObra(obraId: string): Promise<PainelObra> {

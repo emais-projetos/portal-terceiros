@@ -132,8 +132,9 @@ export async function ligarEmpresasObras(empresas: string[], obras: string[]) {
 
 export type Obra = { id: string; nome: string };
 
+// Obras que recebem gente nova: as em encerramento e as encerradas ficam de fora.
 export async function lerObras(): Promise<Obra[]> {
-  const { data, error } = await supabase.from('obras').select('id, nome').eq('ativa', true).order('nome');
+  const { data, error } = await supabase.from('obras').select('id, nome').eq('situacao', 'ativa').order('nome');
   if (error) throw error;
   return data ?? [];
 }
@@ -730,12 +731,58 @@ export async function lerAnexos(colaboradorId: string, tipo: string): Promise<{ 
   return (doc?.arquivos ?? []).filter((a) => !a.apagado_em).map((a) => ({ caminho: a.caminho, nome_original: a.nome_original }));
 }
 
-export type ObraCadastro = { id: string; nome: string; ativa: boolean };
+export type ObraCadastro = {
+  id: string;
+  nome: string;
+  ativa: boolean;
+  situacao: 'ativa' | 'em_encerramento' | 'encerrada';
+  encerramento_iniciado_em: string | null;
+  encerrada_em: string | null;
+  encerramento_obs: string | null;
+};
 
 export async function lerObrasCadastro(): Promise<ObraCadastro[]> {
-  const { data, error } = await supabase.from('obras').select('id, nome, ativa').order('nome');
+  const { data, error } = await supabase
+    .from('obras')
+    .select('id, nome, ativa, situacao, encerramento_iniciado_em, encerrada_em, encerramento_obs')
+    .order('nome');
   if (error) throw error;
   return (data ?? []) as ObraCadastro[];
+}
+
+// O que ainda está aberto na obra (conferência antes de encerrar).
+export type ConferenciaEncerramento = {
+  obra: { id: string; nome: string; situacao: ObraCadastro['situacao'] };
+  colaboradores: { alocacao_id: string; colaborador: string; empresa: string; status: string; situacao_colaborador: string }[];
+  empresas: number;
+  documentos_em_analise: number;
+  medicoes: { empresa: string; competencia: string; status: string }[];
+  integracoes: number;
+  pedidos: number;
+};
+
+export async function conferirEncerramento(obraId: string): Promise<ConferenciaEncerramento> {
+  const { data, error } = await supabase.rpc('conferir_encerramento_obra', { p_obra: obraId });
+  if (error) throw error;
+  return data as ConferenciaEncerramento;
+}
+
+export type ResultadoEncerramento = { alocacoes: number; empresas: number; pedidos: number; integracoes: number };
+
+export async function mudarSituacaoObra(
+  obraId: string,
+  acao: 'iniciar' | 'cancelar' | 'concluir' | 'reabrir',
+  extra: { data?: string; observacao?: string; confirmo?: boolean } = {},
+): Promise<ResultadoEncerramento> {
+  const { data, error } = await supabase.rpc('mudar_situacao_obra', {
+    p_obra: obraId,
+    p_acao: acao,
+    p_data: extra.data ?? null,
+    p_observacao: extra.observacao ?? null,
+    p_confirmo: extra.confirmo ?? false,
+  });
+  if (error) throw error;
+  return data as ResultadoEncerramento;
 }
 
 export async function criarObra(nome: string): Promise<string> {

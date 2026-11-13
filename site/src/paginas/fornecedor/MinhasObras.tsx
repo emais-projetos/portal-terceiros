@@ -11,7 +11,7 @@ import { faroisDaObra, listaMeses, ordemCor, type FarolEmpresa, type Tarefa } fr
 
 // Início do fornecedor: a situação da empresa em cada obra, com faróis e o que fazer para ficar verde.
 
-type Linha = FarolEmpresa & { obraId: string; obra: string };
+type Linha = FarolEmpresa & { obraId: string; obra: string; emEncerramento: boolean };
 
 const destino = (t: Tarefa) =>
   t.acao === 'medicao'
@@ -35,7 +35,7 @@ export function MinhasObras() {
       const obras = await lerObrasDoPainel();
       const paineis = await Promise.all(obras.map(async (o) => ({ obra: o, painel: await lerPainelObra(o.id) })));
       const todas = paineis.flatMap(({ obra, painel }) =>
-        faroisDaObra(painel.colaboradores, painel.medicoes).map((f) => ({ ...f, obraId: obra.id, obra: obra.nome })),
+        faroisDaObra(painel.colaboradores, painel.medicoes).map((f) => ({ ...f, obraId: obra.id, obra: obra.nome, emEncerramento: obra.situacao === 'em_encerramento' })),
       );
       todas.sort((a, b) => ordemCor[a.geral] - ordemCor[b.geral] || a.obra.localeCompare(b.obra, 'pt-BR'));
       if (cancelado) return;
@@ -94,7 +94,7 @@ export function MinhasObras() {
                   id={chave}
                   geral={l.geral}
                   titulo={l.obra}
-                  subtitulo={variasEmpresas ? l.empresa : undefined}
+                  subtitulo={[l.emEncerramento ? 'Obra em encerramento: não recebe novos colaboradores' : '', variasEmpresas ? l.empresa : ''].filter(Boolean).join(' · ') || undefined}
                   manchete={l.manchete.replace(/pagamento retido/i, 'Mensal trabalhista a regularizar')}
                   doc={l.doc.cor}
                   int={l.int.cor}

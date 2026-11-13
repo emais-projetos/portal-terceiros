@@ -173,7 +173,7 @@ function limitarItens(linhas: string[], oQue: string): string[] {
 // ---------------------------------------------------------------- Leitura
 
 type Empresa = { id: string; razao_social: string; email_contato: string | null; email_acesso: string | null };
-type Obra = { id: string; nome: string; emails_engenharia: string | null };
+type Obra = { id: string; nome: string; emails_engenharia: string | null; situacao?: string };
 type ItemMed = { medicao_id: string; tipo_codigo: string; status: string; motivo_devolucao: string | null };
 type PendDoc = {
   alocacao_id: string;
@@ -236,7 +236,7 @@ async function lerBase(competencias: string[], regras: Regras): Promise<Base> {
         .range(i, f) as unknown as PromiseLike<{ data: PendDoc[] | null; error: unknown }>,
     ),
     lerTudo<Empresa>((i, f) => supabase.from('empresas').select('id, razao_social, email_contato, email_acesso').order('id').range(i, f) as unknown as PromiseLike<{ data: Empresa[] | null; error: unknown }>),
-    lerTudo<Obra>((i, f) => supabase.from('obras').select('id, nome, emails_engenharia').order('id').range(i, f) as unknown as PromiseLike<{ data: Obra[] | null; error: unknown }>),
+    lerTudo<Obra>((i, f) => supabase.from('obras').select('id, nome, emails_engenharia, situacao').order('id').range(i, f) as unknown as PromiseLike<{ data: Obra[] | null; error: unknown }>),
     lerTudo<{ tipo: string; referencia: string }>((i, f) =>
       supabase.from('cobrancas').select('tipo, referencia').order('id').range(i, f) as unknown as PromiseLike<{ data: { tipo: string; referencia: string }[] | null; error: unknown }>,
     ),
@@ -249,7 +249,11 @@ async function lerBase(competencias: string[], regras: Regras): Promise<Base> {
     supabase.from('parametros').select('chave, valor').in('chave', ['cobranca_setor', 'cobranca_contato']),
     lerModelos(),
   ]);
-  const ids = medicoes.filter((m) => competencias.includes(m.competencia) && m.status !== 'aprovada').map((m) => m.id);
+  // Obra encerrada sai das cobranças (medição, retenção e documentos).
+  const encerradas = new Set(obras.filter((o) => o.situacao === 'encerrada').map((o) => o.id));
+  const medicoesValidas = medicoes.filter((m) => !(m.obra_id && encerradas.has(m.obra_id)));
+  const alocacoesValidas = alocacoes.filter((a) => !encerradas.has(a.obra_id));
+  const ids = medicoesValidas.filter((m) => competencias.includes(m.competencia) && m.status !== 'aprovada').map((m) => m.id);
   const itens: ItemMed[] = [];
   for (let i = 0; i < ids.length; i += 150) {
     const { data: d, error } = await supabase.from('medicoes_itens').select('medicao_id, tipo_codigo, status, motivo_devolucao').in('medicao_id', ids.slice(i, i + 150));
@@ -264,10 +268,10 @@ async function lerBase(competencias: string[], regras: Regras): Promise<Base> {
     if (d.analisado_em && (!devolucoes.has(k) || devolucoes.get(k)! < d.analisado_em)) devolucoes.set(k, d.analisado_em);
   });
   return {
-    medicoes,
+    medicoes: medicoesValidas,
     itens,
     tipos,
-    alocacoes,
+    alocacoes: alocacoesValidas,
     criacao: new Map(criadas.map((a) => [a.id, a.criado_em])),
     devolucoes,
     pendencias,

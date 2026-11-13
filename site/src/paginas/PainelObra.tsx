@@ -11,7 +11,7 @@ import { mensagemDeErro } from '../lib/supabase';
 import { data, diasAte, rotuloStatus } from '../lib/formato';
 import { mesPorExtenso, rotuloStatusMedicao, seloMedicao } from '../lib/medicao';
 import {
-  INICIO_MEDICAO_PORTAL, lerObrasDoPainel, lerPainelObra, mesesDoPainel, pagamentoDe, situacaoIntegracao,
+  INICIO_MEDICAO_PORTAL, type ObraDoPainel, lerObrasDoPainel, lerPainelObra, mesesDoPainel, pagamentoDe, situacaoIntegracao,
   type ColaboradorObra, type MedicaoObra, type PainelObra as Painel, type PendenciaDoc,
 } from '../lib/painelObra';
 
@@ -36,7 +36,7 @@ export function PainelObra() {
   // Os detalhes (pagamento por mês, histórico da medição, documentos e colaboradores) ficam só para o administrativo.
   const comDetalhes = usuario?.perfil === 'admin';
   const [params, setParams] = useSearchParams();
-  const [obras, setObras] = useState<{ id: string; nome: string }[] | null>(null);
+  const [obras, setObras] = useState<ObraDoPainel[] | null>(null);
   const [painel, setPainel] = useState<Painel | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const obraId = params.get('obra') ?? obras?.[0]?.id ?? '';
@@ -65,7 +65,7 @@ export function PainelObra() {
             <span>Obra</span>
             <select value={obraId} onChange={(e) => setParams({ obra: e.target.value })}>
               {obras.map((o) => (
-                <option key={o.id} value={o.id}>{o.nome}</option>
+                <option key={o.id} value={o.id}>{o.nome}{o.situacao === 'em_encerramento' ? ' (em encerramento)' : ''}</option>
               ))}
             </select>
           </label>

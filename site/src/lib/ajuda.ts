@@ -189,8 +189,9 @@ export async function lerContratos(): Promise<Map<string, string | null>> {
   return new Map((data ?? []).map((x) => [`${x.empresa_id}|${x.obra_id}`, (x.numero_contrato as string | null) ?? null]));
 }
 
+// Só as obras que recebem empresas novas (em encerramento não entra ninguém).
 export async function lerObrasAtivas(): Promise<{ id: string; nome: string }[]> {
-  const { data, error } = await supabase.from('obras').select('id, nome').eq('ativa', true).order('nome');
+  const { data, error } = await supabase.from('obras').select('id, nome').eq('situacao', 'ativa').order('nome');
   if (error) throw error;
   return (data ?? []) as { id: string; nome: string }[];
 }
