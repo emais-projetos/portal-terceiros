@@ -13,6 +13,7 @@ import {
 import { documentosDoColaborador, nomeDoDocumento, podeEnviarParaAnalise, travasDaAlocacao, useFornecedor } from '../../lib/useFornecedor';
 import type { AlocacaoResumo } from '../../lib/admin';
 import { ItemPendencia } from './OQueFalta';
+import { ObrasEContratos } from './ObrasEContratos';
 
 const NOVA_FUNCAO = '__nova__';
 
@@ -43,6 +44,7 @@ export function MeusColaboradores() {
   const [busca, setBusca] = useState('');
   const [mostrarDesligados, setMostrarDesligados] = useState(false);
   const [novoAberto, setNovoAberto] = useState(false);
+  const [obrasAberto, setObrasAberto] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
   const aberto = params.get('ver');
 
@@ -78,7 +80,14 @@ export function MeusColaboradores() {
     <Pagina
       titulo="Colaboradores"
       apoio={dados ? `${ativos} ${ativos === 1 ? 'colaborador ativo' : 'colaboradores ativos'}. Clique no nome para ver os documentos e enviar para análise.` : undefined}
-      acoes={dados && dados.empresas.length > 0 ? <button className="botao" type="button" onClick={() => setNovoAberto(true)}>Novo colaborador</button> : undefined}
+      acoes={
+        dados && dados.empresas.length > 0 ? (
+          <>
+            <button className="botao botao-secundario" type="button" onClick={() => setObrasAberto(true)}>Obras e contratos</button>
+            <button className="botao" type="button" onClick={() => setNovoAberto(true)}>Novo colaborador</button>
+          </>
+        ) : undefined
+      }
     >
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
@@ -172,6 +181,7 @@ export function MeusColaboradores() {
               abrir(id);
             }}
           />
+          <ObrasEContratos aberto={obrasAberto} empresas={dados.empresas} aoFechar={() => setObrasAberto(false)} aoMudar={recarregar} />
           <DetalheColaborador
             colaborador={colabAberto}
             forn={forn}
@@ -325,7 +335,7 @@ function NovoColaborador({
           <div className="campo">
             <span>Obras onde vai trabalhar</span>
             {empresa.obras.length === 0 ? (
-              <small className="dica">Sua empresa ainda não está cadastrada em nenhuma obra. Fale com a Emais.</small>
+              <small className="dica">Sua empresa ainda não está cadastrada em nenhuma obra. Peça o acesso em Obras e contratos.</small>
             ) : (
               <ul className="lista-marcar lista-curta">
                 {empresa.obras.map((o) => (

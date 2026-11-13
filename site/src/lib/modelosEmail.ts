@@ -14,7 +14,9 @@ export type TipoModelo =
   | 'integracao_documentos'
   | 'aviso_liberacao'
   | 'convite_acesso'
-  | 'nova_senha_acesso';
+  | 'nova_senha_acesso'
+  | 'ajuda_para_emais'
+  | 'ajuda_resposta';
 
 export type Modelo = {
   tipo: TipoModelo;
@@ -130,7 +132,9 @@ export const CAMPOS: Record<string, { descricao: string; exemplo: string }> = {
     descricao: 'Frase sobre o que a pessoa faz no portal, conforme o perfil',
     exemplo: 'É por ele que a Construtora Exemplo vai cadastrar os colaboradores e enviar a documentação para as obras da Emais.',
   },
-  '{link}': { descricao: 'Link para criar a senha (sempre vai no e-mail, mesmo se sair do texto)', exemplo: 'https://emais-projetos.github.io/portal-terceiros/acesso?c=…' },
+  '{link}': { descricao: 'Link do e-mail: no convite, para criar a senha (sempre vai, mesmo se sair do texto); na Ajuda, para abrir o portal', exemplo: 'https://emais-projetos.github.io/portal-terceiros/acesso?c=…' },
+  '{de_onde}': { descricao: 'Perfil de quem escreveu, com a empresa ou as obras', exemplo: 'Fornecedor, Construtora Exemplo' },
+  '{mensagens}': { descricao: 'Mensagens ainda não lidas, com a hora', exemplo: '13/11 10:42: Bom dia, como envio o ASO do João?' },
   '{validade}': { descricao: 'Por quanto tempo o link vale, conforme Regras', exemplo: '7 dias' },
   '{email}': { descricao: 'E-mail de acesso (o login)', exemplo: 'maria@construtoraexemplo.com.br' },
   '{endereco_portal}': { descricao: 'Endereço do portal', exemplo: 'https://emais-projetos.github.io/portal-terceiros/' },

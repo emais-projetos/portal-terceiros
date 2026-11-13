@@ -90,11 +90,21 @@ export function Acessos() {
   // Obras de cada acesso: as das empresas (fornecedor) ou as ligadas ao TST e à engenharia.
   const obrasDoAcesso = useMemo(() => {
     const nomeObra = new Map(obras.map((o) => [o.id, o.nome]));
-    const obrasDaEmpresa = new Map(empresas.map((e) => [e.id, e.obras]));
+    const empresaPor = new Map(empresas.map((e) => [e.id, e]));
     return new Map(
       (acessos ?? []).map((a) => {
-        const ids = a.perfil === 'fornecedor' ? [...new Set(a.empresas.flatMap((e) => obrasDaEmpresa.get(e.id) ?? []))] : a.obras.map((o) => o.id);
-        const nomes = ids.map((id) => nomeObra.get(id) ?? a.obras.find((o) => o.id === id)?.nome).filter((x): x is string => !!x);
+        const ids = a.perfil === 'fornecedor' ? [...new Set(a.empresas.flatMap((e) => empresaPor.get(e.id)?.obras ?? []))] : a.obras.map((o) => o.id);
+        // Fornecedor: o número do contrato aparece ao lado da obra (quando informado e for de uma empresa só).
+        const contrato = (obraId: string) => {
+          const ns = [...new Set(a.empresas.map((e) => empresaPor.get(e.id)?.contratos[obraId]).filter((x): x is string => !!x))];
+          return ns.length ? ` (contrato ${ns.join(', ')})` : '';
+        };
+        const nomes = ids
+          .map((id) => {
+            const n = nomeObra.get(id) ?? a.obras.find((o) => o.id === id)?.nome;
+            return n ? `${n}${a.perfil === 'fornecedor' ? contrato(id) : ''}` : null;
+          })
+          .filter((x): x is string => !!x);
         return [a.id, nomes.sort((x, y) => x.localeCompare(y, 'pt-BR'))];
       }),
     );

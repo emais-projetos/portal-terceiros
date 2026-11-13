@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Topo, grupoDaPagina } from './Topo';
 import { useSessao } from '../lib/sessao';
+import { AjudaChat } from './AjudaChat';
 
 // Estrutura das telas com login: menu lateral fixo e, à direita, o cabeçalho da página (título, ações e abas),
 // que fica preso no topo ao rolar.
@@ -28,6 +29,7 @@ export function Pagina({ titulo, apoio, acoes, abas, children }: { titulo: strin
         </header>
         <div className="conteudo">{children}</div>
       </main>
+      <AjudaChat />
     </div>
   );
 }

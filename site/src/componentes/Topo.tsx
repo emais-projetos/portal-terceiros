@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useSessao, nomesPerfil, type Perfil } from '../lib/sessao';
 import { contarAguardandoTst, contarEmAnalise } from '../lib/admin';
 import { contarCobrancas } from '../lib/cobrancas';
+import { contarAtendimento } from '../lib/ajuda';
 import { lerRegras } from '../lib/regras';
 
 // Menu lateral fixo: fica parado ao rolar, pode ser recolhido (só ícones) e, no celular, abre por cima da tela.
@@ -61,6 +62,7 @@ const ICONES: Record<string, ReactNode> = {
       <path d="m3 7 9 6 9-6" />
     </>
   ),
+  ajuda: <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-5A8 8 0 1 1 21 12z" />,
   acessos: <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />,
   sair: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />,
   recolher: <path d="m11 17-5-5 5-5M18 17l-5-5 5-5" />,
@@ -92,7 +94,7 @@ type Grupo = { titulo: string | null; itens: Item[] };
 const abaAcessos = (aba: string) => (caminho: string, busca: string) =>
   caminho.startsWith('/acessos') && (new URLSearchParams(busca).get('aba') ?? 'usuarios') === aba;
 
-function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null): Grupo[] {
+function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, atendimento: number | null = null): Grupo[] {
   const paraValidar = (_: string, busca: string) => busca.includes('situacao=tst');
   if (perfil === 'admin')
     return [
@@ -102,6 +104,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
           { to: '/', rotulo: 'Obras', icone: 'obras', end: true },
           { to: '/painel-obra', rotulo: 'Painel da obra', icone: 'painel' },
           { to: '/indicadores', rotulo: 'Indicadores', icone: 'indicadores' },
+          { to: '/atendimento', rotulo: 'Atendimento', icone: 'ajuda', contador: atendimento },
         ],
       },
       {
@@ -202,6 +205,7 @@ export function Topo() {
   const { search, pathname } = useLocation();
   const [cobrancas, setCobrancas] = useState<number | null>(null);
   const [naFila, setNaFila] = useState<number | null>(null);
+  const [atendimento, setAtendimento] = useState<number | null>(null);
   const [recolhido, setRecolhido] = useState(lerRecolhido);
   const [aberto, setAberto] = useState(false); // celular
 
@@ -212,6 +216,15 @@ export function Topo() {
     const t = window.setInterval(() => contar().then(setNaFila).catch(() => undefined), 60000);
     return () => window.clearInterval(t);
   }, [ehAdmin, ehTst]);
+
+  // Conversas da Ajuda sem leitura e pedidos de obra esperando resposta.
+  useEffect(() => {
+    if (!ehAdmin) return;
+    const contar = () => contarAtendimento().then(setAtendimento).catch(() => undefined);
+    contar();
+    const t = window.setInterval(contar, 60000);
+    return () => window.clearInterval(t);
+  }, [ehAdmin, pathname]);
 
   // Prazos da medição usados nas telas (Acessos > Regras).
   useEffect(() => {
@@ -244,7 +257,7 @@ export function Topo() {
     }
   }
 
-  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas);
+  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento);
   const estaAtivo = (i: Item) => (i.ativo ? i.ativo(pathname, search) : undefined);
 
   return (

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useSessao, type Perfil } from './lib/sessao';
 import { Entrar } from './paginas/Entrar';
 import { EsqueciSenha } from './paginas/EsqueciSenha';
+import { Atendimento } from './paginas/admin/Atendimento';
 import { AceitarConvite } from './paginas/AceitarConvite';
 import { NovaSenha } from './paginas/NovaSenha';
 import { Inicio } from './paginas/Inicio';
@@ -46,6 +47,7 @@ export function App() {
       <Route path="/cobrancas" element={<SoAdmin><Cobrancas /></SoAdmin>} />
       <Route path="/indicadores" element={<SoAdmin><Indicadores /></SoAdmin>} />
       <Route path="/acessos" element={<SoAdmin><Acessos /></SoAdmin>} />
+      <Route path="/atendimento" element={<SoAdmin><Atendimento /></SoAdmin>} />
       <Route path="/pendencias" element={<SoPerfil perfil="fornecedor"><OQueFalta /></SoPerfil>} />
       <Route path="/meus-colaboradores" element={<SoPerfil perfil="fornecedor"><MeusColaboradores /></SoPerfil>} />
       <Route path="/documentos-empresa" element={<SoPerfil perfil="fornecedor"><DocumentosEmpresa /></SoPerfil>} />

@@ -100,21 +100,26 @@ export async function lerEnvioAutomatico(): Promise<{ testePara: string; pausado
 }
 
 // obras: onde a empresa atua hoje (empresas_obras ativas).
-export type EmpresaOpcao = { id: string; razao_social: string; cnpj: string; temAcesso: boolean; obras: string[] };
+export type EmpresaOpcao = { id: string; razao_social: string; cnpj: string; temAcesso: boolean; obras: string[]; contratos: Record<string, string> };
 
 export async function lerEmpresas(): Promise<EmpresaOpcao[]> {
   const [{ data: empresas, error: e1 }, { data: vinculos, error: e2 }, { data: atuacao, error: e3 }] = await Promise.all([
     supabase.from('empresas').select('id, razao_social, cnpj').order('razao_social'),
     supabase.from('usuarios_empresas').select('empresa_id'),
-    supabase.from('empresas_obras').select('empresa_id, obra_id').eq('ativo', true),
+    supabase.from('empresas_obras').select('empresa_id, obra_id, numero_contrato').eq('ativo', true),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
   if (e3) throw e3;
   const ocupadas = new Set((vinculos ?? []).map((v) => v.empresa_id as string));
   const obrasDa = new Map<string, string[]>();
-  (atuacao ?? []).forEach((x) => obrasDa.set(x.empresa_id as string, [...(obrasDa.get(x.empresa_id as string) ?? []), x.obra_id as string]));
-  return (empresas ?? []).map((e) => ({ ...e, temAcesso: ocupadas.has(e.id), obras: obrasDa.get(e.id) ?? [] }));
+  const contratosDa = new Map<string, Record<string, string>>();
+  (atuacao ?? []).forEach((x) => {
+    const emp = x.empresa_id as string;
+    obrasDa.set(emp, [...(obrasDa.get(emp) ?? []), x.obra_id as string]);
+    if (x.numero_contrato) contratosDa.set(emp, { ...(contratosDa.get(emp) ?? {}), [x.obra_id as string]: x.numero_contrato as string });
+  });
+  return (empresas ?? []).map((e) => ({ ...e, temAcesso: ocupadas.has(e.id), obras: obrasDa.get(e.id) ?? [], contratos: contratosDa.get(e.id) ?? {} }));
 }
 
 // Liga as empresas às obras onde vão atuar. Só acrescenta: o que já existe fica como está (e volta a valer se estava desligado).
@@ -192,7 +197,7 @@ export async function cadastrarEmpresa(dados: {
     );
     if (e2) throw e2;
   }
-  return { id, razao_social: dados.razao_social, cnpj: dados.cnpj, temAcesso: false, obras: dados.obras };
+  return { id, razao_social: dados.razao_social, cnpj: dados.cnpj, temAcesso: false, obras: dados.obras, contratos: {} };
 }
 
 export function gerarLinkAcesso(usuarioId: string) {

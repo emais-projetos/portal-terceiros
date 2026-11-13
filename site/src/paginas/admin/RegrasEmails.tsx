@@ -12,7 +12,7 @@ import { CAMPOS, exemploDoModelo, lerModelos, lerRevisoes, salvarModelo, type Mo
 const quando = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
 
-const GRUPOS = ['Medição mensal', 'Vencimento de documentos', 'Validade dos documentos', 'Integração', 'Acesso ao portal', 'Envio automático (n8n)', 'Assinatura dos e-mails'];
+const GRUPOS = ['Medição mensal', 'Vencimento de documentos', 'Validade dos documentos', 'Integração', 'Acesso ao portal', 'Ajuda', 'Envio automático (n8n)', 'Assinatura dos e-mails'];
 
 // ---------------------------------------------------------------- Regras
 

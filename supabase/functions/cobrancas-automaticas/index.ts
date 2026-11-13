@@ -768,7 +768,8 @@ async function liberacoes() {
   if (cfg.pausada) return { ...base, itens: [] };
   const avisos = await avisosDeLiberacao(cfg);
   const convites = await convitesDeAcesso(cfg);
-  return { ...base, itens: [...avisos, ...convites] };
+  const ajuda = await avisosDeAjuda(cfg);
+  return { ...base, itens: [...avisos, ...convites, ...ajuda] };
 }
 async function avisosDeLiberacao(cfg) {
   const limite = new Date(Date.now() - 30 * 6e4).toISOString();
@@ -899,6 +900,113 @@ ${valores["{link}"]}`;
   }
   return itens;
 }
+var NOME_PERFIL = { fornecedor: "Fornecedor", tst: "TST da obra", engenharia: "Engenharia da obra", admin: "Administrativo" };
+function horaSaoPaulo(iso) {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)).replace(",", "");
+}
+async function avisosDeAjuda(cfg) {
+  const { data: ps, error: e0 } = await supabase.from("parametros").select("chave, valor").in("chave", ["ajuda_email_emais", "ajuda_minutos_aviso", "cobranca_setor", "cobranca_contato"]);
+  if (e0) throw e0;
+  const param = new Map((ps ?? []).map((x) => [x.chave, (x.valor ?? "").trim()]));
+  const minutos = Math.max(5, Number(param.get("ajuda_minutos_aviso")) || 10);
+  const limite = new Date(Date.now() - minutos * 6e4).toISOString();
+  const { data: ms, error } = await supabase.from("mensagens").select("id, conversa_id, autor_id, da_emais, texto, criado_em, conversas(usuario_id, lida_emais_em, lida_usuario_em)").is("aviso_enviado_em", null).lt("criado_em", limite).order("criado_em").limit(500);
+  if (error) throw error;
+  const lista = ms ?? [];
+  if (!lista.length) return [];
+  const { error: e1 } = await supabase.from("mensagens").update({ aviso_enviado_em: (/* @__PURE__ */ new Date()).toISOString() }).in("id", lista.map((m) => m.id));
+  if (e1) throw e1;
+  const naoLidas = lista.filter((m) => {
+    const lida = m.da_emais ? m.conversas?.lida_usuario_em : m.conversas?.lida_emais_em;
+    return !lida || lida < m.criado_em;
+  });
+  if (!naoLidas.length) return [];
+  const grupos = /* @__PURE__ */ new Map();
+  naoLidas.forEach((m) => {
+    const k = `${m.conversa_id}|${m.da_emais ? "emais" : "usuario"}`;
+    grupos.set(k, [...grupos.get(k) ?? [], m]);
+  });
+  const ids = [...new Set(naoLidas.flatMap((m) => [m.conversas?.usuario_id, m.autor_id]).filter((x) => !!x))];
+  const [{ data: us, error: e2 }, { data: ue, error: e3 }, { data: to, error: e4 }, { data: mods, error: e5 }] = await Promise.all([
+    supabase.from("usuarios").select("id, nome, email, perfil, ativo").in("id", ids),
+    supabase.from("usuarios_empresas").select("usuario_id, empresa_id, empresas(razao_social)").in("usuario_id", ids),
+    supabase.from("tst_obras").select("usuario_id, obras(nome)").in("usuario_id", ids),
+    supabase.from("modelos_email").select("tipo, assunto, corpo, ativo").in("tipo", ["ajuda_para_emais", "ajuda_resposta"])
+  ]);
+  if (e2 || e3 || e4 || e5) throw e2 ?? e3 ?? e4 ?? e5;
+  const usuario = new Map((us ?? []).map((u) => [u.id, u]));
+  const modelo = new Map((mods ?? []).map((m) => [m.tipo, m]));
+  const empresasDe = /* @__PURE__ */ new Map();
+  (ue ?? []).forEach((x) => {
+    const a = empresasDe.get(x.usuario_id) ?? { ids: [], nomes: [] };
+    a.ids.push(x.empresa_id);
+    const n = x.empresas?.razao_social;
+    if (n) a.nomes.push(nomeLegivel(n, true));
+    empresasDe.set(x.usuario_id, a);
+  });
+  const obrasDe = /* @__PURE__ */ new Map();
+  (to ?? []).forEach((x) => {
+    const n = x.obras?.nome;
+    if (n) obrasDe.set(x.usuario_id, [...obrasDe.get(x.usuario_id) ?? [], nomeLegivel(n)]);
+  });
+  const teste = !!cfg.testePara;
+  const itens = [];
+  for (const [k, msgs] of grupos) {
+    const [conversaId, lado] = k.split("|");
+    const u = usuario.get(msgs[0].conversas?.usuario_id ?? "");
+    if (!u) continue;
+    const paraEmais = lado === "usuario";
+    const m = modelo.get(paraEmais ? "ajuda_para_emais" : "ajuda_resposta");
+    if (!m?.ativo) continue;
+    const destino = paraEmais ? param.get("ajuda_email_emais") ?? "" : u.email;
+    if (!destino.includes("@") || !paraEmais && !u.ativo) continue;
+    const empresas = empresasDe.get(u.id)?.nomes ?? [];
+    const obras = obrasDe.get(u.id) ?? [];
+    const deOnde = [NOME_PERFIL[u.perfil] ?? u.perfil, empresas.length > 2 ? `${empresas.length} empresas` : empresas.join(", "), obras.join(", ")].filter(Boolean).join(", ");
+    const autorEmais = !paraEmais ? usuario.get(msgs[msgs.length - 1].autor_id ?? "")?.nome : void 0;
+    const valores = {
+      "{nome}": nomeLegivel(u.nome),
+      "{primeiro_nome}": nomeLegivel(u.nome.trim().split(/\s+/).find((p) => /[A-Za-zÀ-ÿ]{2}/.test(p)) ?? u.nome),
+      "{de_onde}": deOnde,
+      "{mensagens}": msgs.map((x) => `${horaSaoPaulo(x.criado_em)}: ${x.texto}`).join("\n\n"),
+      "{link}": paraEmais ? `${PORTAL}atendimento?c=${conversaId}` : PORTAL,
+      "{assinatura}": [autorEmais?.trim(), `${param.get("cobranca_setor") || "Gente e Gest\xE3o"} | Grupo Emais`, param.get("cobranca_contato")].filter(Boolean).join("\n")
+    };
+    const trocar = (t) => t.replace(/\{[a-z_]+\}/g, (x) => x in valores ? valores[x] : x);
+    const corpo = trocar(m.corpo).split("\n").map((l) => l.replace(/\s+$/, "")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    const assunto = trocar(m.assunto).replace(/\s+/g, " ").trim();
+    itens.push({
+      tipo: "ajuda",
+      id: `${conversaId}|${lado}|${msgs[msgs.length - 1].id}`,
+      obra_id: "",
+      titulo: `Ajuda: ${u.nome}`,
+      para: teste ? cfg.testePara : destino,
+      para_original: destino,
+      assunto: teste ? `[TESTE \xB7 para ${destino}] ${assunto}` : assunto,
+      corpo,
+      empresa_ids: empresasDe.get(u.id)?.ids ?? [],
+      teste
+    });
+  }
+  return itens;
+}
+async function registrarAjuda(item, situacao, erro) {
+  const { error } = await supabase.from("cobrancas_envios").insert({
+    chave: `ajuda|${item.id}`,
+    tipo: "ajuda",
+    titulo: item.titulo,
+    empresa_ids: item.empresa_ids,
+    obra_id: null,
+    para: item.para,
+    para_original: item.para_original,
+    assunto: item.assunto,
+    corpo: item.corpo,
+    situacao,
+    erro: situacao === "erro" ? erro ?? "Erro no envio" : null,
+    teste: item.teste
+  });
+  if (error) throw error;
+}
 async function registrarConvite(item, situacao, erro) {
   const agora = (/* @__PURE__ */ new Date()).toISOString();
   const { error } = await supabase.from("cobrancas_envios").insert({
@@ -922,6 +1030,7 @@ async function registrarConvite(item, situacao, erro) {
 }
 async function registrarLiberacao(item, situacao, erro) {
   if (item.tipo === "convite_acesso") return registrarConvite(item, situacao, erro);
+  if (item.tipo === "ajuda") return registrarAjuda(item, situacao, erro);
   const agora = (/* @__PURE__ */ new Date()).toISOString();
   const { error } = await supabase.from("cobrancas_envios").insert({
     chave: `liberacao|${item.id}`,
