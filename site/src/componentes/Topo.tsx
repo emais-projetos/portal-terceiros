@@ -266,17 +266,20 @@ export function Topo() {
         <button type="button" className="barra-celular-botao" aria-label="Abrir menu" aria-expanded={aberto} onClick={() => setAberto(true)}>
           <Icone nome="menu" tamanho={22} />
         </button>
-        <span className="barra-celular-nome">Portal de Terceiros</span>
+        <span className="barra-celular-nome">
+          <img src={`${import.meta.env.BASE_URL}logo-emais-branco.png`} alt="Emais" />
+          Portal de Terceiros
+        </span>
         {ehAdmin && !!cobrancas && <span className="contador">{cobrancas}</span>}
       </div>
       {aberto && <div className="menu-fundo" aria-hidden="true" onClick={() => setAberto(false)} />}
 
       <aside className={`menu-lateral${recolhido ? ' recolhido' : ''}${aberto ? ' aberto' : ''}`} aria-label="Menu do portal">
         <div className="menu-marca">
-          <img src={`${import.meta.env.BASE_URL}icone.svg`} alt="" width={34} height={34} />
+          <img className="menu-logo" src={`${import.meta.env.BASE_URL}logo-emais-branco.png`} alt="Emais" />
+          <img className="menu-logo-e" src={`${import.meta.env.BASE_URL}logo-emais-e-branco.png`} alt="Emais" />
           <span className="menu-marca-texto">
-            <strong>Portal de Terceiros</strong>
-            <small>Grupo Emais</small>
+            <strong>Portal de<br />Terceiros</strong>
           </span>
           <button type="button" className="menu-fechar" aria-label="Fechar menu" onClick={() => setAberto(false)}>
             <Icone nome="fechar" />

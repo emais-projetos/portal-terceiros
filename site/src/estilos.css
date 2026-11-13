@@ -1,21 +1,21 @@
 :root {
-  --petroleo: #006666;
-  --petroleo-escuro: #004b4b;
-  --broto: #8ed973;
-  --fundo: #f1f5f4;
+  --petroleo: #1e756a;
+  --petroleo-escuro: #165a51;
+  --broto: #4ed8b0;
+  --fundo: #f5f8fe;
   --superficie: #ffffff;
-  --tinta: #1c3232;
-  --suave: #566b69;
-  --linha: #d2dcda;
+  --tinta: #2f4858;
+  --suave: #4f6574;
+  --linha: #d5deea;
   --ambar: #d99a14;
   --analise: #8fb0bf;
   --fornecedor: #c4553f;
   --erro: #a8321f;
   --erro-fundo: #fbeae6;
 
-  --fonte: 'Barlow', system-ui, sans-serif;
-  --fonte-titulo: 'Barlow Semi Condensed', 'Barlow', system-ui, sans-serif;
-  --raio-campo: 6px;
+  --fonte: 'Noto Sans', system-ui, sans-serif;
+  --fonte-titulo: 'Noto Sans', system-ui, sans-serif;
+  --raio-campo: 8px;
 
   color-scheme: light;
   font-family: var(--fonte);
@@ -48,7 +48,7 @@ h2 {
 }
 
 :focus-visible {
-  outline: 3px solid var(--broto);
+  outline: 3px solid var(--petroleo);
   outline-offset: 2px;
 }
 
@@ -390,7 +390,7 @@ h2 {
 }
 
 .botao:disabled {
-  background: #9fb4b2;
+  background: #a9b8c4;
   cursor: not-allowed;
 }
 
@@ -401,7 +401,7 @@ h2 {
 }
 
 .botao-secundario:hover {
-  background: rgba(0, 102, 102, 0.06);
+  background: rgba(30, 117, 106, 0.06);
 }
 
 .botao-discreto {
@@ -411,7 +411,7 @@ h2 {
 }
 
 .botao-discreto:hover {
-  background: rgba(0, 102, 102, 0.08);
+  background: rgba(30, 117, 106, 0.08);
 }
 
 .link {
@@ -471,7 +471,7 @@ h2 {
 
 .menu a.active {
   color: var(--petroleo);
-  border-bottom-color: var(--broto);
+  border-bottom-color: var(--petroleo);
   font-weight: 600;
 }
 
@@ -641,7 +641,7 @@ h2 {
 }
 
 .zero {
-  color: #a3b3b1;
+  color: #a6b4c2;
 }
 
 .col-barra {
@@ -881,7 +881,7 @@ span.sub {
 }
 
 .linha-clicavel:hover {
-  background: #f6f9f8;
+  background: #f7f9fd;
 }
 
 .linha-inativa {
@@ -901,7 +901,7 @@ span.sub {
   font-size: 0.85rem;
   font-weight: 600;
   white-space: nowrap;
-  background: #eef2f1;
+  background: #eef2f8;
   color: var(--tinta);
 }
 
@@ -935,7 +935,7 @@ span.sub {
 
 .selo-encerrado,
 .selo-doc-dispensado {
-  background: #eceeee;
+  background: #eceff3;
   color: var(--suave);
 }
 
@@ -978,7 +978,7 @@ span.sub {
   border-radius: 10px;
   background: var(--superficie);
   color: var(--tinta);
-  box-shadow: 0 18px 50px rgba(0, 40, 40, 0.28);
+  box-shadow: 0 18px 50px rgba(30, 45, 60, 0.28);
 }
 
 .dialogo-larga {
@@ -986,7 +986,7 @@ span.sub {
 }
 
 .dialogo::backdrop {
-  background: rgba(10, 35, 35, 0.45);
+  background: rgba(20, 32, 44, 0.45);
 }
 
 .dialogo-conteudo {
@@ -1073,7 +1073,7 @@ span.sub {
 }
 
 .lista-marcar li label:hover {
-  background: #f6f9f8;
+  background: #f7f9fd;
 }
 
 .lista-marcar input {
@@ -1108,7 +1108,7 @@ span.sub {
   border: 1px solid var(--linha);
   border-left: 4px solid var(--petroleo);
   border-radius: var(--raio-campo);
-  background: #fbfcfc;
+  background: #fbfcfe;
 }
 
 .previa-email p {
@@ -1162,7 +1162,7 @@ span.sub {
   padding: 14px 16px;
   border: 1px solid var(--linha);
   border-radius: var(--raio-campo);
-  background: #fbfcfc;
+  background: #fbfcfe;
 }
 
 .duas-colunas {
@@ -1208,7 +1208,7 @@ span.sub {
 .bloco-destaque {
   padding: 16px 18px;
   border: 1px solid #b9d9d3;
-  border-left: 4px solid var(--broto);
+  border-left: 4px solid var(--petroleo);
   border-radius: 8px;
   background: #f3faf6;
 }
@@ -1286,7 +1286,7 @@ span.sub {
   padding: 14px;
   border: 2px dashed #9fc4bd;
   border-radius: 8px;
-  background: #f6faf9;
+  background: #f7f9fd;
   color: var(--petroleo);
   font-weight: 600;
   cursor: pointer;
@@ -1416,7 +1416,7 @@ span.sub {
 
 .marca-na {
   border: 1px solid var(--linha);
-  background: #eceeee;
+  background: #eceff3;
   color: var(--suave);
 }
 
@@ -1785,7 +1785,7 @@ a.celula:hover {
   font-size: 0.9rem;
   white-space: pre-wrap;
   word-break: break-word;
-  background: #fbfcfc;
+  background: #fbfcfe;
   border-left: 3px solid var(--petroleo);
   border-radius: 4px;
 }
@@ -2148,7 +2148,7 @@ button.celula:hover {
 
 /* Edição de cadastro: treinamentos por colaborador */
 .aviso-info {
-  background: #eef5f4;
+  background: #eef2f8;
   border-color: #b9d9d3;
   color: var(--tinta);
 }
@@ -2225,7 +2225,7 @@ button.celula:hover {
 .farol-verde { background: #1d7a4a; }
 .farol-amarelo { background: #e8b100; box-shadow: inset 0 0 0 2px #b88a00; }
 .farol-vermelho { background: #c23b22; }
-.farol-cinza { background: #c9d3d1; }
+.farol-cinza { background: #c8d2de; }
 
 .selo-farol {
   display: inline-flex;
@@ -2241,7 +2241,7 @@ button.celula:hover {
 .selo-farol-verde { background: #e3f2e9; color: #145c37; }
 .selo-farol-amarelo { background: #fdf3d0; color: #6b4d00; }
 .selo-farol-vermelho { background: #fbe5e0; color: #8f2512; }
-.selo-farol-cinza { background: #eef2f1; color: #4d5f5d; }
+.selo-farol-cinza { background: #eef2f8; color: #4d5f5d; }
 
 .legenda-farois {
   list-style: none;
@@ -2405,7 +2405,7 @@ button.celula:hover {
   justify-content: space-between;
   gap: 10px;
   padding: 12px 14px;
-  border: 1px solid #e3e9e8;
+  border: 1px solid #e3e9f1;
   border-radius: 8px;
 }
 
@@ -2553,7 +2553,7 @@ button.celula:hover {
   justify-content: space-between;
   gap: 10px 16px;
   padding: 10px 14px;
-  border: 1px solid #e3e9e8;
+  border: 1px solid #e3e9f1;
   border-radius: 8px;
 }
 
@@ -2672,15 +2672,17 @@ button.celula:hover {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 18px 12px 14px;
+  padding: 18px 12px 20px;
   background: var(--petroleo-escuro);
   color: #d6e6e3;
 }
-.menu-marca { display: flex; align-items: center; gap: 10px; padding: 2px 8px 16px; }
-.menu-marca img { flex-shrink: 0; border-radius: 8px; }
+.menu-lateral::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: repeating-linear-gradient(-45deg, var(--broto) 0 10px, #10443d 10px 20px); }
+.menu-marca { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
+.menu-logo { height: 26px; width: auto; flex-shrink: 0; }
+.menu-logo-e { display: none; height: 30px; width: auto; }
 .menu-marca-texto { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-.menu-marca-texto strong { font-family: var(--fonte-titulo); font-size: 1.15rem; color: #fff; white-space: nowrap; }
-.menu-marca-texto small { font-size: 0.78rem; color: #9fc4bf; }
+.menu-marca-texto { padding-left: 10px; border-left: 1px solid rgba(255, 255, 255, 0.3); }
+.menu-marca-texto strong { font-size: 0.72rem; font-weight: 600; line-height: 1.25; letter-spacing: 0.06em; text-transform: uppercase; color: #fff; }
 .menu-fechar { display: none; }
 
 .menu-grupos { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin: 0 -4px; padding: 0 4px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.25) transparent; }
@@ -2703,7 +2705,7 @@ button.celula:hover {
 .menu-item-rotulo { flex: 1; min-width: 0; line-height: 1.2; padding: 6px 0; }
 .menu-item.ativo { background: rgba(255, 255, 255, 0.13); color: #fff; font-weight: 600; }
 .menu-item.ativo svg { color: var(--broto); }
-.menu-lateral .contador { color: #1c3232; }
+.menu-lateral .contador { color: #2f4858; }
 .menu-filhos { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 4px 22px; padding-left: 16px; border-left: 1px solid rgba(255, 255, 255, 0.18); }
 .menu-filho { display: flex; align-items: center; min-height: 34px; padding: 0 10px; border-radius: 6px; color: #d6e6e3; text-decoration: none; font-size: 0.93rem; }
 .menu-filho:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
@@ -2711,7 +2713,7 @@ button.celula:hover {
 
 .menu-pe { display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.16); }
 .menu-usuario { display: flex; align-items: center; gap: 10px; padding: 0 4px; }
-.menu-avatar { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; background: var(--petroleo); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; }
+.menu-avatar { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; background: var(--broto); color: #10443d; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; }
 .menu-usuario-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
 .menu-usuario-texto strong { font-size: 0.9rem; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .menu-usuario-texto small { font-size: 0.78rem; color: #9fc4bf; }
@@ -2723,7 +2725,9 @@ button.celula:hover {
 /* Recolhido: só os ícones */
 .menu-lateral.recolhido { width: 72px; padding-inline: 14px; }
 .menu-lateral.recolhido .menu-marca { justify-content: center; padding-inline: 0; }
+.menu-lateral.recolhido .menu-logo-e { display: block; }
 .menu-lateral.recolhido .menu-marca-texto,
+.menu-lateral.recolhido .menu-logo,
 .menu-lateral.recolhido .menu-item-rotulo,
 .menu-lateral.recolhido .menu-filhos,
 .menu-lateral.recolhido .menu-usuario-texto,
@@ -2738,7 +2742,7 @@ button.celula:hover {
 .menu-lateral.recolhido .menu-recolher { justify-content: center; padding: 0; }
 
 /* Cabeçalho da página, preso no topo ao rolar */
-.cabecalho-fixo { position: sticky; top: 0; z-index: 30; background: var(--superficie); border-bottom: 1px solid var(--linha); box-shadow: 0 2px 8px rgba(28, 50, 50, 0.06); }
+.cabecalho-fixo { position: sticky; top: 0; z-index: 30; background: var(--superficie); border-bottom: 1px solid var(--linha); box-shadow: 0 2px 8px rgba(47, 72, 88, 0.06); }
 .cabecalho-interno { max-width: 1120px; margin: 0 auto; padding: 16px 32px 14px; }
 .cabecalho-fixo.com-abas .cabecalho-interno { padding-bottom: 0; }
 .cabecalho-fixo .cabecalho { margin: 0; }
@@ -2759,9 +2763,10 @@ button.celula:hover {
   .pagina { display: block; }
   .barra-celular { position: sticky; top: 0; z-index: 35; display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 8px; background: var(--petroleo-escuro); color: #fff; }
   .barra-celular-botao { width: 44px; height: 44px; border: 0; background: transparent; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-  .barra-celular-nome { flex: 1; font-family: var(--fonte-titulo); font-weight: 700; font-size: 1.1rem; }
-  .barra-celular .contador { margin-right: 8px; color: #1c3232; }
-  .menu-fundo { display: block; position: fixed; inset: 0; z-index: 45; background: rgba(12, 30, 30, 0.45); }
+  .barra-celular-nome { flex: 1; display: flex; align-items: center; gap: 10px; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .barra-celular-nome img { height: 22px; width: auto; }
+  .barra-celular .contador { margin-right: 8px; color: #2f4858; }
+  .menu-fundo { display: block; position: fixed; inset: 0; z-index: 45; background: rgba(20, 32, 44, 0.45); }
   .menu-lateral,
   .menu-lateral.recolhido {
     position: fixed;
@@ -2777,6 +2782,8 @@ button.celula:hover {
     visibility: hidden;
   }
   .menu-lateral.aberto { transform: none; visibility: visible; }
+  .menu-lateral.recolhido .menu-logo { display: block; }
+  .menu-lateral.recolhido .menu-logo-e { display: none; }
   .menu-lateral.recolhido .menu-marca-texto,
   .menu-lateral.recolhido .menu-item-rotulo,
   .menu-lateral.recolhido .menu-usuario-texto { display: flex; }
@@ -2828,14 +2835,14 @@ button.celula:hover {
   position: fixed; right: 20px; bottom: 20px; z-index: 40;
   display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px;
   border: 0; border-radius: 999px; background: var(--petroleo); color: #fff;
-  font: inherit; font-weight: 600; cursor: pointer; box-shadow: 0 8px 24px rgba(0, 40, 40, 0.25);
+  font: inherit; font-weight: 600; cursor: pointer; box-shadow: 0 8px 24px rgba(30, 45, 60, 0.25);
 }
 .ajuda-botao:hover { background: var(--petroleo-escuro); }
 .ajuda-painel {
   position: fixed; right: 20px; bottom: 76px; z-index: 41;
   width: min(400px, calc(100vw - 32px)); height: min(560px, calc(100vh - 110px));
   display: flex; flex-direction: column; gap: 10px; padding: 14px;
-  background: var(--superficie); border-radius: 12px; box-shadow: 0 18px 50px rgba(0, 40, 40, 0.28);
+  background: var(--superficie); border-radius: 12px; box-shadow: 0 18px 50px rgba(30, 45, 60, 0.28);
 }
 .ajuda-cabecalho { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .ajuda-cabecalho div { display: flex; flex-direction: column; gap: 2px; }

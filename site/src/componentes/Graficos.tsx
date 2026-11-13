@@ -4,10 +4,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 // Linhas de grade finas, colunas de até 24px com ponta arredondada, valor no topo só da última coluna
 // e o resto no passar do mouse. Cada gráfico leva uma tabela escondida para leitor de tela.
 
-const COR = '#006666';
-const GRADE = '#e3e9e8';
-const TINTA = '#1c3232';
-const SUAVE = '#566b69';
+const COR = '#1E756A';
+const GRADE = '#e3e9f1';
+const TINTA = '#2f4858';
+const SUAVE = '#4f6574';
 
 function useLargura<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
   const ref = useRef<T>(null);
@@ -89,7 +89,7 @@ export function Colunas({
           const r = Math.min(4, h / 2, larguraColuna / 2);
           return (
             <g key={d.rotulo} onMouseEnter={() => setFoco(i)} onMouseLeave={() => setFoco(null)}>
-              <rect x={cx - banda / 2} y={m.topo} width={banda} height={area.a} fill={foco === i ? '#f1f5f4' : 'transparent'} />
+              <rect x={cx - banda / 2} y={m.topo} width={banda} height={area.a} fill={foco === i ? '#f5f8fe' : 'transparent'} />
               {temValor && h > 0 && (
                 <path
                   d={`M${x},${base} V${topo + r} Q${x},${topo} ${x + r},${topo} H${x + larguraColuna - r} Q${x + larguraColuna},${topo} ${x + larguraColuna},${topo + r} V${base} Z`}
