@@ -1,0 +1,25 @@
+# Teste de segurança no portal publicado, visto de fora (sem login, só com a chave pública do site).
+# Confere cadastro fechado, tabelas e funções sem login, arquivos, link de convite, n8n e chaves no site.
+# Roda depois de cada publicação, todo dia de manhã e quando acionado à mão. Não grava nada.
+name: Testar produção
+
+on:
+  workflow_run:
+    workflows: [Publicar site]
+    types: [completed]
+  schedule:
+    - cron: '23 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: node supabase/testes/testar_producao.mjs
