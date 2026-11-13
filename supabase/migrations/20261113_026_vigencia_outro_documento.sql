@@ -1,7 +1,7 @@
 -- "Outro documento" (e qualquer documento sem vencimento) pode ganhar uma vigência na análise.
 -- O administrativo informa a data ao aprovar; a partir daí o documento entra nos avisos de vencimento como os demais.
 
-create or replace view public.v_documentos_atuais as
+create or replace view public.v_documentos_atuais with (security_invoker = true) as
  WITH atuais AS (
          SELECT DISTINCT ON (d.empresa_id, d.colaborador_id, d.tipo_codigo) d.id,
             d.tipo_codigo,
