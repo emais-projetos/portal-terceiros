@@ -1,4 +1,5 @@
 # Gera o site e publica no GitHub Pages a cada atualização da branch main.
+# Só publica se o teste de segurança passar.
 # Em Settings > Pages, a origem (Source) precisa estar em "GitHub Actions".
 name: Publicar site
 
@@ -17,7 +18,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  seguranca:
+    uses: ./.github/workflows/testar-seguranca.yml
+
   gerar:
+    needs: seguranca
     runs-on: ubuntu-latest
     defaults:
       run:

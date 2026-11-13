@@ -10,7 +10,7 @@ Portal do Grupo Emais para os fornecedores das obras cadastrarem colaboradores e
 | Pasta | O que tem |
 |---|---|
 | `supabase/migrations` | Estrutura do banco, na ordem em que foi aplicada no Supabase |
-| `supabase/testes` | Teste das regras de acesso (quem vê o quê), para rodar num Postgres local |
+| `supabase/testes` | Teste de segurança (quem vê e altera o quê, por perfil). Roda sozinho no GitHub a cada mudança e antes de publicar o site |
 | `site` | O site (React + Vite), publicado no GitHub Pages |
 | `supabase/functions` | Função `gerenciar-acesso`: cria acessos e gera o link de primeiro acesso ou de nova senha |
 | `.github/workflows` | Publicação automática do site a cada atualização da branch `main` |

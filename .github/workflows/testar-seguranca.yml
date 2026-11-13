@@ -1,0 +1,36 @@
+# Teste de segurança: aplica todas as migrações num banco de teste vazio, confere as regras da estrutura
+# e entra como cada perfil (sem login, fornecedor, TST, engenharia, admin) tentando acessar o que não é seu.
+# Roda a cada mudança, toda segunda-feira e antes de publicar o site. Não usa dados nem senhas de produção.
+name: Testar segurança
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+  schedule:
+    - cron: '17 10 * * 1'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: teste
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: teste
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash supabase/testes/rodar.sh
