@@ -39,6 +39,8 @@ export function Inspecoes({
     return d <= 0 ? 'as fotos saem hoje: baixe o PDF' : `as fotos saem em ${d} ${d === 1 ? 'dia' : 'dias'}: baixe o PDF`;
   };
   const [busca, setBusca] = useState('');
+  const [todas, setTodas] = useState(false);
+  const LIMITE = 8;
   const nomeModelo = (c: string) => modelos.find((m) => m.codigo === c)?.nome ?? c.replace('maquina:', '');
 
   const linhas: Linha[] = [
@@ -89,6 +91,7 @@ export function Inspecoes({
 
   return (
     <section className="bloco">
+      <h2 className="bloco-titulo">Inspeções recentes</h2>
       <div className="filtros">
         <div className="chips chips-filtro" role="group" aria-label="Tipo de inspeção">
           {(['todas', 'Alojamento', 'Máquina', ...(canteiro.length ? (['Canteiro'] as const) : [])] as const).map((t) => (
@@ -109,7 +112,7 @@ export function Inspecoes({
         </div>
       ) : (
         <ul className="lista-inspecoes">
-          {linhas.map((l) => (
+          {(todas || busca.trim() ? linhas : linhas.slice(0, LIMITE)).map((l) => (
             <li key={l.chave}>
               <Link to={l.link} className="inspecao-linha">
                 <span className="inspecao-data">
@@ -127,6 +130,11 @@ export function Inspecoes({
             </li>
           ))}
         </ul>
+      )}
+      {!todas && !busca.trim() && linhas.length > LIMITE && (
+        <button type="button" className="botao botao-secundario botao-pequeno ver-todas" onClick={() => setTodas(true)}>
+          Ver todas ({linhas.length})
+        </button>
       )}
     </section>
   );

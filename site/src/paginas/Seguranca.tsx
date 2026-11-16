@@ -14,6 +14,7 @@ import {
 } from '../lib/seguranca';
 import { SeloClassificacao } from './seguranca/comum';
 import { Inspecoes } from './seguranca/Inspecoes';
+import { PainelConformidade } from './seguranca/PainelConformidade';
 import { ListaFormularios } from './seguranca/Formularios';
 import { NovaInspecao } from './seguranca/NovaInspecao';
 
@@ -153,7 +154,10 @@ export function Seguranca() {
       )}
 
       {aba === 'inspecoes' && obra && (alojamentos && maquinas ? (
+        <>
+        <PainelConformidade obraId={obra} alojamentos={alojamentos} maquinas={maquinas} fornecedores={fornecedores} ncs={ncs} />
         <Inspecoes alojamentos={alojamentos} maquinas={maquinas} canteiro={canteiro} modelos={modelos} fornecedores={fornecedores} locadoras={locadoras} podeIniciar={podeEditar} aoIniciar={() => setNova(true)} />
+        </>
       ) : <Carregando />)}
       {aba === 'alojamentos' && obra && (alojamentos ? (
         <Alojamentos lista={alojamentos} ncs={ncs} ctx={ctx} aoSalvar={recarregar} />
