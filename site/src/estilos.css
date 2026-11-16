@@ -3052,3 +3052,69 @@ button.celula:hover {
   .revisao-detalhe { padding-left: 16px; }
   .barra-acoes-fixa .campo-motivo { width: 100%; max-width: none; }
 }
+
+/* ================================================================================================
+   Escala de letras única do portal (16/11): rótulo da seção, título, subtítulo, abas, título de bloco
+   e texto com tamanhos fixos, iguais em todas as telas. Fica no fim do arquivo para valer sobre as
+   regras antigas de cada tela.
+   ================================================================================================ */
+:root {
+  --fs-rotulo: 0.8125rem;   /* 13px: rótulo da seção (acima do título), grupos do menu */
+  --fs-titulo: 1.625rem;    /* 26px: título da página */
+  --fs-subtitulo: 0.9375rem;/* 15px: frase de apoio abaixo do título */
+  --fs-aba: 0.9375rem;      /* 15px: abas */
+  --fs-bloco: 1.0625rem;    /* 17px: título de bloco dentro da página */
+  --fs-texto: 0.9375rem;    /* 15px: texto, tabelas, formulários */
+  --fs-apoio: 0.8125rem;    /* 13px: textos de apoio, legendas, datas secundárias */
+}
+.area { font-size: var(--fs-texto); overflow-x: clip; }
+
+/* Cabeçalho da página */
+.cabecalho-grupo { font-size: var(--fs-rotulo); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--petroleo); margin-bottom: 2px; }
+.cabecalho-fixo h1, .cabecalho h1 { font-size: var(--fs-titulo); line-height: 1.2; margin: 0 0 4px; }
+.apoio, .cabecalho-fixo .apoio { font-size: var(--fs-subtitulo); color: var(--suave); }
+.cabecalho-interno { padding-top: 18px; }
+
+/* Abas: mesmo tamanho em todas as telas; no celular rolam para o lado em vez de alargar a página */
+.abas, .cabecalho-fixo .abas { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.abas::-webkit-scrollbar { display: none; }
+.abas a, .abas-botoes button { font-size: var(--fs-aba); padding: 8px 12px; white-space: nowrap; flex: none; }
+
+/* Blocos, campos e textos */
+.bloco-titulo { font-size: var(--fs-bloco); }
+.detalhe-subtitulo { font-size: var(--fs-texto); }
+.campo > span:first-child { font-size: 0.875rem; font-weight: 600; }
+.campo input, .campo select, .campo textarea { font-size: var(--fs-texto); }
+.tabela { font-size: var(--fs-texto); }
+.sub, .dica, .legenda, .legenda-ficha, .inspecao-data small, .inspecao-local small { font-size: var(--fs-apoio); }
+.chip { font-size: 0.875rem; padding: 5px 12px; }
+.botao { font-size: var(--fs-texto); padding: 10px 16px; }
+.botao-pequeno { font-size: 0.875rem; padding: 6px 12px; }
+.vazio { font-size: var(--fs-texto); }
+.aviso { font-size: var(--fs-texto); }
+
+/* Menu lateral */
+.menu-item { font-size: 0.9375rem; }
+.menu-grupo-titulo { font-size: 0.6875rem; }
+.menu-filho { font-size: 0.875rem; }
+
+/* Inspeções e formulários de campo */
+.inspecao-local strong, .item-inspecao-texto { font-size: var(--fs-texto); }
+.escolha button { font-size: 0.9375rem; }
+
+@media (max-width: 760px) {
+  :root { --fs-titulo: 1.375rem; }
+  .cabecalho-interno { padding: 14px 16px 10px; }
+  .cabecalho-fixo.com-abas .cabecalho-interno { padding-bottom: 0; }
+  .cabecalho-com-acoes { flex-direction: column; align-items: stretch; gap: 10px; }
+  .cabecalho-acoes .botao { width: 100%; }
+  .cabecalho-fixo .abas { margin: 8px -16px 0; padding: 0 8px; }
+  .filtros { gap: 10px; }
+  .filtros .campo { width: 100%; }
+  .filtros .campo select { width: 100%; }
+}
+.filtros { align-items: flex-end; }
+.filtros > .chips { align-self: flex-end; padding-bottom: 6px; }
+.chip { line-height: 1.4; align-self: center; }
+.acoes-coluna { display: flex; flex-direction: column; align-items: stretch; gap: 6px; min-width: 132px; }
+.acoes .acoes-coluna .botao + .botao { margin-left: 0; }

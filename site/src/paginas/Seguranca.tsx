@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Pagina, Mensagem } from '../componentes/Pagina';
 import { Dialogo } from '../componentes/Dialogo';
 import { Carregando } from '../componentes/Carregando';
 import { useSessao } from '../lib/sessao';
 import { mensagemDeErro } from '../lib/supabase';
-import { data } from '../lib/formato';
+import { data, hojeIso } from '../lib/formato';
 import { lerObrasDoPainel, type ObraDoPainel } from '../lib/painelObra';
 import {
-  competencia, lerAlojamentos, lerFornecedoresDaObra, lerLocadoras, lerMaquinas, lerModelos, lerNaoConformidadesDaObra,
+  abrirFicha, competencia, lerAlojamentos, lerFornecedoresDaObra, lerLocadoras, lerMaquinas, lerModelos, lerNaoConformidadesDaObra,
   lerVistoriasCanteiro, salvarAlojamento, salvarLocadora, salvarMaquina, type Alojamento, type VistoriaResumo, type Fornecedor, type Locadora, type Maquina, type Modelo,
   type NaoConformidade, type Responsavel,
 } from '../lib/seguranca';
@@ -268,19 +268,21 @@ function Alojamentos({ lista, ncs, ctx, aoSalvar }: { lista: Alojamento[]; ncs: 
                   <td>
                     <div className="linha-botoes">
                       {a.vistorias.map((v) => (
-                        <Link key={v.id} className="botao botao-discreto botao-pequeno" to={`/seguranca/vistoria/${v.id}`}>
+                        <Link key={v.id} className="botao botao-secundario botao-pequeno" to={`/seguranca/vistoria/${v.id}`} title="Abrir a vistoria">
                           {data(v.data_vistoria)}
                         </Link>
                       ))}
                     </div>
                   </td>
                   <td className="acoes">
-                    <Link className="botao botao-discreto botao-pequeno" to={`/seguranca/alojamento/${a.id}/termos`}>Termos</Link>
-                    {ctx.podeEditar && (
-                      <button type="button" className={`botao botao-pequeno${a.empresa_a_vincular ? '' : ' botao-secundario'}`} onClick={() => setEditando(a)}>
-                        {a.empresa_a_vincular ? 'Vincular' : 'Editar'}
-                      </button>
-                    )}
+                    <div className="acoes-coluna">
+                      <Link className="botao botao-secundario botao-pequeno" to={`/seguranca/alojamento/${a.id}/termos`}>Termos de uso</Link>
+                      {ctx.podeEditar && (
+                        <button type="button" className={`botao botao-pequeno${a.empresa_a_vincular ? ' botao-secundario' : ' botao-discreto'}`} onClick={() => setEditando(a)}>
+                          {a.empresa_a_vincular ? 'Vincular' : 'Editar cadastro'}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -391,6 +393,23 @@ function EditarAlojamento({ alojamento, ctx, aoFechar, aoSalvar }: { alojamento:
 
 function Maquinas({ lista, ctx, aoSalvar }: { lista: Maquina[]; ctx: Contexto; aoSalvar: (m: string) => Promise<void> }) {
   const [editando, setEditando] = useState<Maquina | null>(null);
+  const [abrindo, setAbrindo] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const navegar = useNavigate();
+
+  // "Preencher hoje": abre (ou cria) a ficha do mês e vai direto para o checklist do dia.
+  async function preencherHoje(m: Maquina) {
+    setAbrindo(m.id);
+    setErro(null);
+    try {
+      const hoje = hojeIso();
+      const fichaId = await abrirFicha(m.id, hoje);
+      navegar(`/seguranca/ficha/${fichaId}/dia/${Number(hoje.slice(8, 10))}`);
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+      setAbrindo(null);
+    }
+  }
   const nomeModelo = (c: string) => ctx.modelos.find((m) => m.codigo === c)?.nome ?? c.replace('maquina:', '');
   const ordenada = [...lista].sort(
     (a, b) =>
@@ -403,13 +422,15 @@ function Maquinas({ lista, ctx, aoSalvar }: { lista: Maquina[]; ctx: Contexto; a
 
   return (
     <section className="bloco">
+      <p className="dica">Toque no mês para ver ou editar o checklist. "Editar cadastro" muda só a identificação e de quem é a máquina.</p>
+      {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       <div className="tabela-rolagem">
         <table className="tabela tabela-lista">
           <thead>
             <tr>
               <th scope="col">Máquina</th>
               <th scope="col">Responsável</th>
-              <th scope="col">Fichas mensais</th>
+              <th scope="col">Checklists</th>
               <th scope="col"><span className="sr">Ações</span></th>
             </tr>
           </thead>
@@ -426,19 +447,27 @@ function Maquinas({ lista, ctx, aoSalvar }: { lista: Maquina[]; ctx: Contexto; a
                     {[...m.fichas]
                       .sort((a, b) => b.competencia.localeCompare(a.competencia))
                       .map((f) => (
-                        <Link key={f.id} className="botao botao-discreto botao-pequeno" to={`/seguranca/ficha/${f.id}`}>
+                        <Link key={f.id} className="botao botao-secundario botao-pequeno" to={`/seguranca/ficha/${f.id}`} title="Abrir o checklist do mês">
                           {competencia(f.competencia)}
-                          {f.fechada_em ? ' (fechada)' : ''}
+                          {f.fechada_em ? ' (fechado)' : ''}
                         </Link>
                       ))}
+                    {!m.fichas.length && <span className="sub">sem checklist</span>}
                   </div>
                 </td>
                 <td className="acoes">
-                  {ctx.podeEditar && (
-                    <button type="button" className={`botao botao-pequeno${m.empresa_a_vincular ? '' : ' botao-secundario'}`} onClick={() => setEditando(m)}>
-                      {m.empresa_a_vincular ? 'Vincular' : 'Editar'}
-                    </button>
-                  )}
+                  <div className="acoes-coluna">
+                    {ctx.podeEditar && m.ativo && (
+                      <button type="button" className="botao botao-pequeno" disabled={abrindo === m.id} onClick={() => preencherHoje(m)}>
+                        {abrindo === m.id ? 'Abrindo' : 'Preencher hoje'}
+                      </button>
+                    )}
+                    {ctx.podeEditar && (
+                      <button type="button" className={`botao botao-pequeno${m.empresa_a_vincular ? ' botao-secundario' : ' botao-discreto'}`} onClick={() => setEditando(m)}>
+                        {m.empresa_a_vincular ? 'Vincular' : 'Editar cadastro'}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
