@@ -528,6 +528,9 @@ begin
   perform teste.bloqueado(t, $q$select fechar_ficha_maquina('a4000000-0000-0000-0000-000000000001', '{"operador_nome":"Fulano","tst_nome":"Ciclano"}')$q$);
   perform teste.bloqueado(t, $q$select colaboradores_ativos_empresa('20000000-0000-0000-0000-000000000002')$q$);
   perform teste.bloqueado(t, $q$select seg_fornecedores_obra('10000000-0000-0000-0000-000000000001')$q$);
+  perform teste.bloqueado(t, $q$select abrir_ficha_maquina('a2000000-0000-0000-0000-000000000001', current_date)$q$);
+  perform teste.bloqueado(t, $q$select salvar_dia_ficha('a4000000-0000-0000-0000-000000000001', 1, '{"statuses":["ok","ok"],"operador":"Fulano"}')$q$);
+  perform teste.bloqueado(t, $q$select reabrir_vistoria_seg('a3000000-0000-0000-0000-000000000001', 'corrigir item')$q$);
   perform teste.bloqueado(t, $q$select responder_nao_conformidade('$q$ || teste.id('NC2') || $q$', 'Regularizado conforme pedido', '[]')$q$);
   perform teste.bloqueado(t, $q$select responder_nao_conformidade('$q$ || teste.id('NC1') || $q$', 'Regularizado conforme pedido', '["vistoria/a3000000-0000-0000-0000-000000000002/0/foto.jpg"]')$q$);
   perform teste.bloqueado(t, $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000003/0/x.jpg')$q$);
@@ -551,6 +554,15 @@ begin
   perform teste.bloqueado(t, $q$select fechar_ficha_maquina('a4000000-0000-0000-0000-000000000002', '{"operador_nome":"Fulano","tst_nome":"Ciclano"}')$q$);
   perform teste.bloqueado(t, $q$select colaboradores_ativos_empresa('20000000-0000-0000-0000-000000000002')$q$);
   perform teste.bloqueado(t, $q$select seg_fornecedores_obra('10000000-0000-0000-0000-000000000002')$q$);
+  perform teste.bloqueado(t, $q$select abrir_ficha_maquina('a2000000-0000-0000-0000-000000000002', current_date)$q$);
+  perform teste.bloqueado(t, $q$select salvar_dia_ficha('a4000000-0000-0000-0000-000000000002', 1, '{"statuses":["ok","ok"],"operador":"Fulano"}')$q$);
+  perform teste.bloqueado(t, $q$select reabrir_vistoria_seg('a3000000-0000-0000-0000-000000000002', 'corrigir item')$q$);
+  perform teste.permitido('Segurança: TST (controle)', $q$select abrir_ficha_maquina('a2000000-0000-0000-0000-000000000001', current_date)$q$);
+  perform teste.permitido('Segurança: TST (controle)', $q$select salvar_dia_ficha('a4000000-0000-0000-0000-000000000001', 1, '{"statuses":["ok","nc"],"operador":"Fulano","fotos":["ficha/a4000000-0000-0000-0000-000000000001/01/a.jpg"]}')$q$);
+  perform teste.bloqueado('Segurança: dia da ficha sem todas as respostas', $q$select salvar_dia_ficha('a4000000-0000-0000-0000-000000000001', 1, '{"statuses":["ok",null],"operador":"Fulano"}')$q$);
+  perform teste.bloqueado('Segurança: foto de outra ficha', $q$select salvar_dia_ficha('a4000000-0000-0000-0000-000000000001', 1, '{"statuses":["ok","ok"],"operador":"Fulano","fotos":["ficha/a4000000-0000-0000-0000-000000000002/01/a.jpg"]}')$q$);
+  perform teste.bloqueado('Segurança: dia que ainda não chegou', $q$select salvar_dia_ficha('a4000000-0000-0000-0000-000000000001', extract(day from current_date)::int + 1, '{"statuses":["ok","ok"],"operador":"Fulano"}')$q$);
+  perform teste.permitido('Segurança: TST (controle)', $q$select reabrir_vistoria_seg('a3000000-0000-0000-0000-000000000001', 'corrigir a recomendação')$q$);
   perform teste.igual('Segurança (controle): TST vê os fornecedores da obra dele', $q$select 1 from seg_fornecedores_obra('10000000-0000-0000-0000-000000000001') where id = '20000000-0000-0000-0000-000000000001'$q$, 1);
   perform teste.igual('Segurança: fornecedor de outra obra fora da lista', $q$select 1 from seg_fornecedores_obra('10000000-0000-0000-0000-000000000001') where id = '20000000-0000-0000-0000-000000000002'$q$, 0);
   perform teste.bloqueado(t, $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000002/0/x.jpg')$q$);
@@ -582,6 +594,9 @@ begin
   perform teste.igual('Segurança (controle): engenharia vê as locadoras', 'select 1 from seg_locadoras', 1);
   perform teste.igual('Segurança (controle): engenharia vê os fornecedores da obra dele', $q$select 1 from seg_fornecedores_obra('10000000-0000-0000-0000-000000000001')$q$, 1);
   perform teste.bloqueado(t, $q$select seg_fornecedores_obra('10000000-0000-0000-0000-000000000002')$q$);
+  perform teste.bloqueado(t, $q$select abrir_ficha_maquina('a2000000-0000-0000-0000-000000000001', current_date)$q$);
+  perform teste.bloqueado(t, $q$select salvar_dia_ficha('a4000000-0000-0000-0000-000000000001', 1, '{"statuses":["ok","ok"],"operador":"Fulano"}')$q$);
+  perform teste.bloqueado(t, $q$select reabrir_vistoria_seg('a3000000-0000-0000-0000-000000000001', 'corrigir item')$q$);
   if teste.linhas($q$update seg_maquinas set locadora_id = null$q$) > 0 then perform teste.falha(t, 'altera máquina'); end if;
   perform teste.bloqueado(t, $q$select concluir_vistoria_seg('a3000000-0000-0000-0000-000000000003')$q$);
   if teste.linhas($q$update seg_vistorias set horario = '8h'$q$) > 0 then perform teste.falha(t, 'altera vistoria'); end if;

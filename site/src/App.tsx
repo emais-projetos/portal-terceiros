@@ -22,6 +22,9 @@ import { Indicadores } from './paginas/admin/Indicadores';
 import { Cobrancas } from './paginas/admin/Cobrancas';
 import { PainelObra } from './paginas/PainelObra';
 import { Seguranca } from './paginas/Seguranca';
+import { VistoriaPagina } from './paginas/seguranca/VistoriaPagina';
+import { FichaPagina } from './paginas/seguranca/FichaPagina';
+import { DiaFicha } from './paginas/seguranca/DiaFicha';
 import { Carregando } from './componentes/Carregando';
 
 export function App() {
@@ -42,6 +45,9 @@ export function App() {
       <Route path="/" element={<ComLogin><Inicio /></ComLogin>} />
       <Route path="/painel-obra" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><PainelObra /></SoPerfil>} />
       <Route path="/seguranca" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><Seguranca /></SoPerfil>} />
+      <Route path="/seguranca/vistoria/:id" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><VistoriaPagina /></SoPerfil>} />
+      <Route path="/seguranca/ficha/:id" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><FichaPagina /></SoPerfil>} />
+      <Route path="/seguranca/ficha/:id/dia/:dia" element={<SoPerfil perfil={['admin', 'tst']}><DiaFicha /></SoPerfil>} />
       <Route path="/analise" element={<SoAdmin><Analise /></SoAdmin>} />
       <Route path="/colaboradores" element={<SoPerfil perfil={['admin', 'tst']}><Colaboradores /></SoPerfil>} />
       <Route path="/liberacao" element={<SoAdmin><Liberacao /></SoAdmin>} />

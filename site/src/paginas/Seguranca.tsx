@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Pagina, Mensagem } from '../componentes/Pagina';
 import { Dialogo } from '../componentes/Dialogo';
 import { Carregando } from '../componentes/Carregando';
@@ -8,14 +8,17 @@ import { mensagemDeErro } from '../lib/supabase';
 import { data } from '../lib/formato';
 import { lerObrasDoPainel, type ObraDoPainel } from '../lib/painelObra';
 import {
-  NOMES_STATUS_FICHA, NOMES_STATUS_VISTORIA, competencia, lerAlojamentos, lerFicha, lerFornecedoresDaObra, lerLocadoras,
-  lerMaquinas, lerModelos, lerNaoConformidadesDaObra, lerVistoria, linksDosArquivos, salvarAlojamento, salvarLocadora,
-  salvarMaquina, type Alojamento, type Ficha, type Fornecedor, type Locadora, type Maquina, type Modelo, type NaoConformidade,
-  type Responsavel, type Vistoria,
+  competencia, lerAlojamentos, lerFornecedoresDaObra, lerLocadoras, lerMaquinas, lerModelos, lerNaoConformidadesDaObra,
+  salvarAlojamento, salvarLocadora, salvarMaquina, type Alojamento, type Fornecedor, type Locadora, type Maquina, type Modelo,
+  type NaoConformidade, type Responsavel,
 } from '../lib/seguranca';
+import { SeloClassificacao } from './seguranca/comum';
+import { Inspecoes } from './seguranca/Inspecoes';
+import { NovaInspecao } from './seguranca/NovaInspecao';
 
 const CHAVE_OBRA = 'portal-terceiros:obra-seguranca';
 const ABAS = [
+  ['inspecoes', 'Inspeções'],
   ['alojamentos', 'Alojamentos'],
   ['maquinas', 'Máquinas'],
   ['locadoras', 'Locadoras'],
@@ -33,7 +36,7 @@ export function Seguranca() {
   const { usuario } = useSessao();
   const podeEditar = usuario?.perfil === 'admin' || usuario?.perfil === 'tst';
   const [params, setParams] = useSearchParams();
-  const aba = (ABAS.find(([a]) => a === params.get('aba'))?.[0] ?? 'alojamentos') as Aba;
+  const aba = (ABAS.find(([a]) => a === params.get('aba'))?.[0] ?? 'inspecoes') as Aba;
 
   const [obras, setObras] = useState<ObraDoPainel[] | null>(null);
   const [obra, setObra] = useState('');
@@ -45,6 +48,7 @@ export function Seguranca() {
   const [ncs, setNcs] = useState<NaoConformidade[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [nova, setNova] = useState(false);
 
   useEffect(() => {
     Promise.all([lerObrasDoPainel(), lerModelos(), lerLocadoras()])
@@ -99,11 +103,16 @@ export function Seguranca() {
   return (
     <Pagina
       titulo="Segurança da obra"
-      apoio="Vistorias de alojamento, fichas mensais das máquinas e a quem cada uma pertence."
+      apoio="Vistorias de alojamento, checklist das máquinas e a quem cada uma pertence."
+      acoes={
+        podeEditar && obra && alojamentos && maquinas ? (
+          <button type="button" className="botao" onClick={() => setNova(true)}>Realizar inspeção</button>
+        ) : undefined
+      }
       abas={
         <nav className="abas abas-botoes" aria-label="Segurança da obra">
           {ABAS.map(([a, nome]) => (
-            <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => setParams(a === 'alojamentos' ? {} : { aba: a })}>
+            <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => setParams(a === 'inspecoes' ? {} : { aba: a })}>
               {nome}
             </button>
           ))}
@@ -136,13 +145,31 @@ export function Seguranca() {
         </div>
       )}
 
+      {aba === 'inspecoes' && obra && (alojamentos && maquinas ? (
+        <Inspecoes alojamentos={alojamentos} maquinas={maquinas} modelos={modelos} fornecedores={fornecedores} locadoras={locadoras} podeIniciar={podeEditar} aoIniciar={() => setNova(true)} />
+      ) : <Carregando />)}
       {aba === 'alojamentos' && obra && (alojamentos ? (
-        <Alojamentos lista={alojamentos} ncs={ncs} ctx={ctx} aoSalvar={recarregar} aoErro={setErro} />
+        <Alojamentos lista={alojamentos} ncs={ncs} ctx={ctx} aoSalvar={recarregar} />
       ) : <Carregando />)}
       {aba === 'maquinas' && obra && (maquinas ? (
-        <Maquinas lista={maquinas} ctx={ctx} aoSalvar={recarregar} aoErro={setErro} />
+        <Maquinas lista={maquinas} ctx={ctx} aoSalvar={recarregar} />
       ) : <Carregando />)}
       {aba === 'locadoras' && obras && <Locadoras lista={locadoras} podeEditar={podeEditar} aoSalvar={recarregar} />}
+
+      {obra && alojamentos && maquinas && (
+        <NovaInspecao
+          aberto={nova}
+          obraId={obra}
+          obraNome={obras?.find((o) => o.id === obra)?.nome ?? ''}
+          alojamentos={alojamentos}
+          maquinas={maquinas}
+          modelos={modelos}
+          fornecedores={fornecedores}
+          locadoras={locadoras}
+          tst={usuario?.nome ?? ''}
+          aoFechar={() => setNova(false)}
+        />
+      )}
     </Pagina>
   );
 }
@@ -184,9 +211,8 @@ function OpcoesFornecedor({ fornecedores, atual }: { fornecedores: Fornecedor[];
 
 // ---------------------------------------------------------------- Alojamentos
 
-function Alojamentos({ lista, ncs, ctx, aoSalvar, aoErro }: { lista: Alojamento[]; ncs: NaoConformidade[]; ctx: Contexto; aoSalvar: (m: string) => Promise<void>; aoErro: (m: string) => void }) {
+function Alojamentos({ lista, ncs, ctx, aoSalvar }: { lista: Alojamento[]; ncs: NaoConformidade[]; ctx: Contexto; aoSalvar: (m: string) => Promise<void> }) {
   const [editando, setEditando] = useState<Alojamento | null>(null);
-  const [vistoria, setVistoria] = useState<{ id: string; alojamento: Alojamento } | null>(null);
   const ordenada = [...lista].sort((a, b) => Number(!!b.empresa_a_vincular) - Number(!!a.empresa_a_vincular) || a.nome.localeCompare(b.nome, 'pt-BR'));
   const abertasPorVistoria = useMemo(() => {
     const m = new Map<string, number>();
@@ -234,9 +260,9 @@ function Alojamentos({ lista, ncs, ctx, aoSalvar, aoErro }: { lista: Alojamento[
                   <td>
                     <div className="linha-botoes">
                       {a.vistorias.map((v) => (
-                        <button key={v.id} type="button" className="botao botao-discreto botao-pequeno" onClick={() => setVistoria({ id: v.id, alojamento: a })}>
+                        <Link key={v.id} className="botao botao-discreto botao-pequeno" to={`/seguranca/vistoria/${v.id}`}>
                           {data(v.data_vistoria)}
-                        </button>
+                        </Link>
                       ))}
                     </div>
                   </td>
@@ -263,15 +289,8 @@ function Alojamentos({ lista, ncs, ctx, aoSalvar, aoErro }: { lista: Alojamento[
           await aoSalvar(m);
         }}
       />
-      <VerVistoria alvo={vistoria} ctx={ctx} aoFechar={() => setVistoria(null)} aoErro={aoErro} />
     </section>
   );
-}
-
-function SeloClassificacao({ v }: { v: Pick<Vistoria, 'classificacao' | 'situacao'> }) {
-  if (v.situacao === 'rascunho') return <span className="selo selo-fila">em andamento</span>;
-  const cor = v.classificacao === 'Ótimo' || v.classificacao === 'Bom' ? 'selo-ok' : v.classificacao === 'Regular' ? 'selo-teste' : 'selo-erro';
-  return <span className={`selo ${cor}`}>{v.classificacao}</span>;
 }
 
 function EditarAlojamento({ alojamento, ctx, aoFechar, aoSalvar }: { alojamento: Alojamento | null; ctx: Contexto; aoFechar: () => void; aoSalvar: (m: string) => Promise<void> }) {
@@ -361,129 +380,8 @@ function EditarAlojamento({ alojamento, ctx, aoFechar, aoSalvar }: { alojamento:
   );
 }
 
-function VerVistoria({ alvo, ctx, aoFechar, aoErro }: { alvo: { id: string; alojamento: Alojamento } | null; ctx: Contexto; aoFechar: () => void; aoErro: (m: string) => void }) {
-  const [v, setV] = useState<Vistoria | null>(null);
-  const [links, setLinks] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    setV(null);
-    setLinks({});
-    if (!alvo) return;
-    lerVistoria(alvo.id)
-      .then(async (x) => {
-        setV(x);
-        const caminhos = [
-          ...x.itens.flatMap((i) => i.fotos ?? []),
-          ...x.funcionarios.map((p) => p.assinatura ?? ''),
-          ...x.envolvidos.map((p) => p.assinatura ?? ''),
-        ];
-        if (!x.fotos_excluidas_em) setLinks(await linksDosArquivos(caminhos));
-      })
-      .catch((e) => {
-        aoFechar();
-        aoErro(mensagemDeErro(e as Error));
-      });
-  }, [alvo]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (!alvo) return <Dialogo aberto={false} titulo="" aoFechar={aoFechar}>{null}</Dialogo>;
-  const a = alvo.alojamento;
-
-  return (
-    <Dialogo aberto titulo={`Vistoria de ${a.nome}`} aoFechar={aoFechar} largura="larga">
-      {!v ? (
-        <Carregando />
-      ) : (
-        <div className="vistoria">
-          <dl className="vistoria-dados">
-            <div><dt>Data</dt><dd>{data(v.data_vistoria)}{v.horario ? `, ${v.horario}` : ''}</dd></div>
-            <div><dt>Responsável</dt><dd><NomeResponsavel empresaId={a.empresa_id} aVincular={a.empresa_a_vincular} ctx={ctx} /></dd></div>
-            <div><dt>Moradores</dt><dd>{v.qtd_funcionarios ?? '-'}</dd></div>
-            <div>
-              <dt>Resultado</dt>
-              <dd>
-                <SeloClassificacao v={v} />
-                {v.pontuacao != null && <span className="sub"> {Math.round(v.pontuacao * 100)}% dos itens aplicáveis em ordem</span>}
-              </dd>
-            </div>
-          </dl>
-          {v.situacao === 'concluida' && v.fotos_expiram_em && !v.fotos_excluidas_em && (
-            <p className="dica">As fotos ficam no portal até {data(v.fotos_expiram_em)}. Depois disso só ficam no PDF da vistoria.</p>
-          )}
-          {v.fotos_excluidas_em && <p className="dica">As fotos desta vistoria foram excluídas em {data(v.fotos_excluidas_em)}.</p>}
-
-          <ol className="vistoria-itens">
-            {v.itens.map((i, n) => (
-              <li key={n} className={i.status === 'nao' ? 'vistoria-item-nao' : undefined}>
-                <div className="vistoria-item-linha">
-                  <span>{i.texto}</span>
-                  <span className={`selo ${i.status === 'sim' ? 'selo-ok' : i.status === 'nao' ? 'selo-erro' : 'selo-fila'}`}>
-                    {i.status ? NOMES_STATUS_VISTORIA[i.status] : 'sem resposta'}
-                  </span>
-                </div>
-                {(i.recomendacao || i.prazo) && (
-                  <p className="sub">
-                    {i.recomendacao}
-                    {i.prazo ? `${i.recomendacao ? '. ' : ''}Prazo: ${data(i.prazo)}` : ''}
-                  </p>
-                )}
-                {i.fotos?.length > 0 && <Fotos caminhos={i.fotos} links={links} />}
-              </li>
-            ))}
-          </ol>
-
-          {(v.funcionarios.length > 0 || v.envolvidos.length > 0) && (
-            <div className="duas-colunas">
-              <Assinaturas titulo="Moradores" pessoas={v.funcionarios} links={links} />
-              <Assinaturas titulo="Acompanharam a vistoria" pessoas={v.envolvidos} links={links} />
-            </div>
-          )}
-        </div>
-      )}
-    </Dialogo>
-  );
-}
-
-function Fotos({ caminhos, links }: { caminhos: string[]; links: Record<string, string> }) {
-  return (
-    <div className="fotos-miniaturas">
-      {caminhos.map((c) =>
-        links[c] ? (
-          <a key={c} href={links[c]} target="_blank" rel="noreferrer">
-            <img src={links[c]} alt="Foto do item" loading="lazy" />
-          </a>
-        ) : (
-          <span key={c} className="foto-indisponivel">foto</span>
-        ),
-      )}
-    </div>
-  );
-}
-
-function Assinaturas({ titulo, pessoas, links }: { titulo: string; pessoas: { nome: string; cargo?: string; assinatura: string | null }[]; links: Record<string, string> }) {
-  if (!pessoas.length) return <div />;
-  return (
-    <div>
-      <h3 className="detalhe-subtitulo">{titulo}</h3>
-      <ul className="assinaturas">
-        {pessoas.map((p, i) => (
-          <li key={i}>
-            {p.assinatura && links[p.assinatura] ? <img src={links[p.assinatura]} alt={`Assinatura de ${p.nome}`} /> : <span className="assinatura-vazia" />}
-            <span>
-              {p.nome || 'Sem nome'}
-              {p.cargo && <small className="sub">{p.cargo}</small>}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- Máquinas
-
-function Maquinas({ lista, ctx, aoSalvar, aoErro }: { lista: Maquina[]; ctx: Contexto; aoSalvar: (m: string) => Promise<void>; aoErro: (m: string) => void }) {
+function Maquinas({ lista, ctx, aoSalvar }: { lista: Maquina[]; ctx: Contexto; aoSalvar: (m: string) => Promise<void> }) {
   const [editando, setEditando] = useState<Maquina | null>(null);
-  const [ficha, setFicha] = useState<{ id: string; maquina: Maquina } | null>(null);
   const nomeModelo = (c: string) => ctx.modelos.find((m) => m.codigo === c)?.nome ?? c.replace('maquina:', '');
   const ordenada = [...lista].sort(
     (a, b) =>
@@ -519,10 +417,10 @@ function Maquinas({ lista, ctx, aoSalvar, aoErro }: { lista: Maquina[]; ctx: Con
                     {[...m.fichas]
                       .sort((a, b) => b.competencia.localeCompare(a.competencia))
                       .map((f) => (
-                        <button key={f.id} type="button" className="botao botao-discreto botao-pequeno" onClick={() => setFicha({ id: f.id, maquina: m })}>
+                        <Link key={f.id} className="botao botao-discreto botao-pequeno" to={`/seguranca/ficha/${f.id}`}>
                           {competencia(f.competencia)}
                           {f.fechada_em ? ' (fechada)' : ''}
-                        </button>
+                        </Link>
                       ))}
                   </div>
                 </td>
@@ -549,7 +447,6 @@ function Maquinas({ lista, ctx, aoSalvar, aoErro }: { lista: Maquina[]; ctx: Con
           await aoSalvar(msg);
         }}
       />
-      <VerFicha alvo={ficha} nomeModelo={nomeModelo} ctx={ctx} aoFechar={() => setFicha(null)} aoErro={aoErro} />
     </section>
   );
 }
@@ -687,109 +584,6 @@ function EditarMaquina({ maquina, nomeModelo, ctx, aoFechar, aoSalvar }: { maqui
     </Dialogo>
   );
 }
-
-const SIMBOLO_FICHA = { ok: '✓', nc: '✕', na: '–' } as const;
-
-function VerFicha({ alvo, nomeModelo, ctx, aoFechar, aoErro }: { alvo: { id: string; maquina: Maquina } | null; nomeModelo: (c: string) => string; ctx: Contexto; aoFechar: () => void; aoErro: (m: string) => void }) {
-  const [f, setF] = useState<Ficha | null>(null);
-  const [links, setLinks] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    setF(null);
-    setLinks({});
-    if (!alvo) return;
-    lerFicha(alvo.id)
-      .then(async (x) => {
-        setF(x);
-        setLinks(await linksDosArquivos(Object.values(x.dias).flatMap((d) => d.fotos ?? [])));
-      })
-      .catch((e) => {
-        aoFechar();
-        aoErro(mensagemDeErro(e as Error));
-      });
-  }, [alvo]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (!alvo) return <Dialogo aberto={false} titulo="" aoFechar={aoFechar}>{null}</Dialogo>;
-  const m = alvo.maquina;
-  const dias = f ? Object.keys(f.dias).sort() : [];
-  const ocorrencias = f
-    ? dias.flatMap((d) => {
-        const dia = f.dias[d];
-        const nc = dia.statuses.map((s, i) => (s === 'nc' ? f.itens[i] : null)).filter(Boolean) as string[];
-        return nc.length || dia.observacao || dia.fotos?.length ? [{ d, nc, obs: dia.observacao, fotos: dia.fotos ?? [] }] : [];
-      })
-    : [];
-
-  return (
-    <Dialogo aberto titulo={`${nomeModelo(m.modelo_codigo)} ${m.identificacao}${f ? `, ${competencia(f.competencia)}` : ''}`} aoFechar={aoFechar} largura="larga">
-      {!f ? (
-        <Carregando />
-      ) : (
-        <div className="vistoria">
-          <dl className="vistoria-dados">
-            <div><dt>Responsável</dt><dd><NomeResponsavel empresaId={m.empresa_id} locadoraId={m.locadora_id} aVincular={m.empresa_a_vincular} ctx={ctx} /></dd></div>
-            <div><dt>Dias com checklist</dt><dd>{dias.length}</dd></div>
-            <div>
-              <dt>Fechamento</dt>
-              <dd>{f.fechada_em && f.fechamento ? `Operador ${f.fechamento.operador_nome}, TST ${f.fechamento.tst_nome}` : 'Ficha aberta'}</dd>
-            </div>
-          </dl>
-          {dias.length === 0 ? (
-            <p className="vazio">Nenhum dia preenchido nesta ficha.</p>
-          ) : (
-            <div className="tabela-rolagem">
-              <table className="tabela grade-ficha">
-                <thead>
-                  <tr>
-                    <th scope="col">Item</th>
-                    {dias.map((d) => <th key={d} scope="col">{Number(d)}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {f.itens.map((item, i) => (
-                    <tr key={i}>
-                      <th scope="row">{item}</th>
-                      {dias.map((d) => {
-                        const s = f.dias[d].statuses[i];
-                        return (
-                          <td key={d} className={s ? `ficha-${s}` : undefined} title={s ? NOMES_STATUS_FICHA[s] : 'Sem resposta'}>
-                            {s ? SIMBOLO_FICHA[s] : ''}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                  <tr>
-                    <th scope="row">Operador</th>
-                    {dias.map((d) => <td key={d} className="ficha-operador">{f.dias[d].operador}</td>)}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-          <p className="legenda-ficha">✓ conforme, ✕ não conforme, – não se aplica</p>
-          {ocorrencias.length > 0 && (
-            <>
-              <h3 className="detalhe-subtitulo">Ocorrências</h3>
-              <ul className="ocorrencias">
-                {ocorrencias.map((o) => (
-                  <li key={o.d}>
-                    <strong>Dia {Number(o.d)}</strong>
-                    {o.nc.length > 0 && <span>. Não conforme: {o.nc.join('; ')}</span>}
-                    {o.obs && <p className="sub">{o.obs}</p>}
-                    {o.fotos.length > 0 && <Fotos caminhos={o.fotos} links={links} />}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      )}
-    </Dialogo>
-  );
-}
-
-// ---------------------------------------------------------------- Locadoras
 
 function Locadoras({ lista, podeEditar, aoSalvar }: { lista: Locadora[]; podeEditar: boolean; aoSalvar: (m: string) => Promise<void> }) {
   const [editando, setEditando] = useState<Partial<Locadora> | null>(null);

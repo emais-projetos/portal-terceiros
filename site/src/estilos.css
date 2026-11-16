@@ -2944,3 +2944,71 @@ button.celula:hover {
 .ficha-na { color: var(--suave); }
 .ficha-operador { font-size: 0.75rem; color: var(--suave); writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; max-height: 110px; overflow: hidden; }
 .legenda-ficha { margin: 0; font-size: 0.85rem; color: var(--suave); }
+
+/* Inspeções: lista, formulários (celular primeiro), fotos e assinatura */
+.link-voltar { display: inline-block; margin-bottom: 14px; color: var(--petroleo); font-weight: 600; text-decoration: none; }
+.link-voltar:hover { text-decoration: underline; }
+.grade-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.lista-inspecoes { list-style: none; margin: 0; padding: 0; border: 1px solid var(--linha); border-radius: 10px; background: var(--superficie); overflow: hidden; }
+.lista-inspecoes li + li { border-top: 1px solid var(--linha); }
+.inspecao-linha { display: grid; grid-template-columns: 110px 1fr auto auto; align-items: center; gap: 16px; padding: 12px 16px; color: inherit; text-decoration: none; }
+.inspecao-linha:hover { background: var(--fundo); }
+.inspecao-data { font-weight: 600; display: grid; }
+.inspecao-data small, .inspecao-local small { font-weight: 400; color: var(--suave); font-size: 0.85rem; }
+.inspecao-local { display: grid; min-width: 0; }
+.inspecao-local .texto-alerta { color: #8a5a00; font-weight: 600; }
+.inspecao-abrir { color: var(--petroleo); font-weight: 600; white-space: nowrap; }
+.tipos-inspecao { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.tipo-inspecao { display: grid; gap: 4px; text-align: left; padding: 14px; border: 1.5px solid var(--linha); border-radius: 10px; background: var(--superficie); font: inherit; color: var(--tinta); cursor: pointer; }
+.tipo-inspecao small { color: var(--suave); font-size: 0.82rem; line-height: 1.3; }
+.tipo-inspecao[aria-checked='true'] { border-color: var(--petroleo); background: #e9f4f2; box-shadow: inset 0 0 0 1px var(--petroleo); }
+.tipo-inspecao:disabled { opacity: 0.55; cursor: not-allowed; }
+.form-inspecao { padding-bottom: 90px; }
+.itens-inspecao { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.item-inspecao { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--linha); border-radius: 10px; background: var(--superficie); }
+.item-inspecao-aberto { border-left: 4px solid var(--ambar); }
+.item-inspecao-nao { border-color: #e9b8ad; background: #fff8f6; }
+.item-inspecao-texto { margin: 0; display: flex; gap: 10px; font-weight: 500; }
+.item-inspecao-numero { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--fundo); color: var(--suave); font-size: 0.85rem; font-weight: 700; }
+.escolha { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.escolha button { min-height: 46px; padding: 8px; border: 1.5px solid var(--linha); border-radius: 8px; background: var(--superficie); font: inherit; font-weight: 600; color: var(--tinta); cursor: pointer; }
+.escolha .escolha-sim[aria-checked='true'] { background: #1d7a4a; border-color: #1d7a4a; color: #fff; }
+.escolha .escolha-nao[aria-checked='true'] { background: var(--erro); border-color: var(--erro); color: #fff; }
+.escolha .escolha-na[aria-checked='true'] { background: var(--suave); border-color: var(--suave); color: #fff; }
+.grade-recomendacao { display: grid; grid-template-columns: 1fr 170px; gap: 12px; }
+.campo-fotos { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.campo-fotos .fotos-miniaturas { margin-top: 0; }
+.foto-com-acao { position: relative; display: inline-block; }
+.foto-remover { position: absolute; top: -8px; right: -8px; width: 26px; height: 26px; border-radius: 50%; border: 0; background: var(--tinta); color: #fff; font-size: 1rem; line-height: 1; cursor: pointer; }
+.lista-pessoas { display: grid; gap: 12px; justify-items: start; }
+.lista-pessoas > .pessoa-assina { width: 100%; }
+.pessoa-assina { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--linha); border-radius: 10px; background: var(--superficie); }
+.pessoa-assina-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.assinatura-previa { height: 42px; max-width: 160px; object-fit: contain; border-bottom: 1px solid var(--linha); background: #fff; }
+.barra-acoes-fixa { position: fixed; left: var(--largura-menu, 264px); right: 0; bottom: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 24px; background: var(--superficie); border-top: 1px solid var(--linha); box-shadow: 0 -6px 18px rgba(47, 72, 88, 0.08); }
+.menu-lateral.recolhido ~ .area .barra-acoes-fixa { left: 72px; }
+.quadro-assinatura { width: 100%; height: 220px; border: 1.5px dashed var(--suave); border-radius: 10px; background: #fff; touch-action: none; cursor: crosshair; }
+
+@media (max-width: 760px) {
+  .grade-3 { grid-template-columns: 1fr 1fr; }
+  .grade-3 > :last-child { grid-column: 1 / -1; }
+  .grade-recomendacao { grid-template-columns: 1fr; }
+  .tipos-inspecao { grid-template-columns: 1fr; }
+  .inspecao-linha { grid-template-columns: 1fr auto; gap: 6px 12px; padding: 12px; }
+  .inspecao-data { grid-column: 1 / -1; display: flex; gap: 8px; align-items: baseline; }
+  .inspecao-abrir { display: none; }
+  .barra-acoes-fixa { left: 0; padding: 10px 12px; flex-wrap: wrap; }
+  .barra-acoes-fixa > .sub { width: 100%; }
+  .barra-acoes-fixa .linha-botoes { width: 100%; flex-wrap: nowrap; }
+  .barra-acoes-fixa .linha-botoes .botao { flex: 1; padding: 12px 8px; }
+  .barra-acoes-fixa .linha-botoes .botao-discreto { flex: 0 0 auto; }
+  .quadro-assinatura { height: 200px; }
+}
+/* Com a barra de ações do formulário embaixo, a Ajuda sobe para não cobrir os botões. */
+.pagina:has(.barra-acoes-fixa) .ajuda-botao { bottom: 92px; }
+.pagina:has(.barra-acoes-fixa) .ajuda-painel { bottom: 148px; }
+@media (max-width: 760px) {
+  .barra-acoes-fixa > .sub { display: none; }
+  .pagina:has(.barra-acoes-fixa) .ajuda-botao { bottom: 84px; right: 12px; padding: 10px; }
+  .pagina:has(.barra-acoes-fixa) .ajuda-botao span { display: none; }
+}

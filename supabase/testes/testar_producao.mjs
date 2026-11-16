@@ -87,6 +87,7 @@ const TABELAS = [
 // 3. Sem login, nenhuma função do portal roda (o banco precisa recusar antes de executar).
 // ------------------------------------------------------------------------------------------
 const FUNCOES = {
+  abrir_ficha_maquina: 'p_maquina uuid, p_competencia date',
   abrir_medicao: 'p_empresa uuid, p_obra uuid, p_competencia date',
   acessos_ultimo_login: '',
   alterar_tipo_documento: 'p_codigo text, p_validade_dias integer, p_impeditivo boolean, p_motivo text',
@@ -98,7 +99,9 @@ const FUNCOES = {
   concluir_vistoria_seg: 'p_vistoria uuid',
   fechar_ficha_maquina: 'p_ficha uuid, p_fechamento jsonb',
   notificar_nao_conformidades: 'p_vistoria uuid, p_itens integer[]',
+  reabrir_vistoria_seg: 'p_vistoria uuid, p_motivo text',
   responder_nao_conformidade: 'p_nc uuid, p_resposta text, p_fotos jsonb',
+  salvar_dia_ficha: 'p_ficha uuid, p_dia integer, p_dados jsonb',
   seg_fornecedores_obra: 'p_obra uuid',
   bloquear_colaborador: 'p_colaborador uuid, p_bloquear boolean, p_motivo text',
   cadastrar_subcontratada: 'p_principal uuid, p_cnpj text, p_razao_social text, p_email text, p_obras uuid[]',
