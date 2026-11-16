@@ -267,6 +267,7 @@ function Alojamentos({ lista, ncs, ctx, aoSalvar }: { lista: Alojamento[]; ncs: 
                     </div>
                   </td>
                   <td className="acoes">
+                    <Link className="botao botao-discreto botao-pequeno" to={`/seguranca/alojamento/${a.id}/termos`}>Termos</Link>
                     {ctx.podeEditar && (
                       <button type="button" className={`botao botao-pequeno${a.empresa_a_vincular ? '' : ' botao-secundario'}`} onClick={() => setEditando(a)}>
                         {a.empresa_a_vincular ? 'Vincular' : 'Editar'}

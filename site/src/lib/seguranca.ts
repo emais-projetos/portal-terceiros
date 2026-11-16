@@ -374,3 +374,121 @@ export function notaPrevia(itens: { status: string | null }[]) {
   const f = sim / aplicaveis;
   return { pontuacao: f, classificacao: f <= 0.3 ? 'Péssimo' : f <= 0.5 ? 'Ruim' : f <= 0.7 ? 'Regular' : f < 1 ? 'Bom' : 'Ótimo' };
 }
+
+// ---------------------------------------------------------------- Não conformidades (TST notifica, fornecedor responde, TST avalia)
+
+export type NcCompleta = {
+  id: string;
+  vistoria_id: string;
+  item: number;
+  empresa_id: string;
+  descricao: string;
+  recomendacao: string | null;
+  prazo: string;
+  situacao: 'aberta' | 'respondida' | 'regularizada' | 'reaberta';
+  resposta: string | null;
+  resposta_fotos: string[];
+  respondida_em: string | null;
+  avaliada_em: string | null;
+  motivo_reabertura: string | null;
+  criado_em: string;
+};
+const CAMPOS_NC = 'id, vistoria_id, item, empresa_id, descricao, recomendacao, prazo, situacao, resposta, resposta_fotos, respondida_em, avaliada_em, motivo_reabertura, criado_em';
+
+export const NOMES_SITUACAO_NC = {
+  aberta: 'Aguardando o fornecedor',
+  respondida: 'Respondida, aguardando avaliação',
+  regularizada: 'Regularizada',
+  reaberta: 'Não aceita, aguardando o fornecedor',
+} as const;
+
+export async function lerNcsDaVistoria(vistoriaId: string): Promise<NcCompleta[]> {
+  const { data, error } = await supabase.from('seg_nao_conformidades').select(CAMPOS_NC).eq('vistoria_id', vistoriaId).order('item');
+  if (error) throw error;
+  return (data ?? []) as NcCompleta[];
+}
+
+export async function notificarFornecedor(vistoriaId: string, itens: number[]): Promise<number> {
+  const { data, error } = await supabase.rpc('notificar_nao_conformidades', { p_vistoria: vistoriaId, p_itens: itens });
+  if (error) throw error;
+  return data as number;
+}
+
+export async function avaliarNc(id: string, aprovar: boolean, motivo: string | null) {
+  const { error } = await supabase.rpc('avaliar_nao_conformidade', { p_nc: id, p_aprovar: aprovar, p_motivo: motivo });
+  if (error) throw error;
+}
+
+export async function responderNc(id: string, resposta: string, fotos: string[]) {
+  const { error } = await supabase.rpc('responder_nao_conformidade', { p_nc: id, p_resposta: resposta, p_fotos: fotos });
+  if (error) throw error;
+}
+
+// Fornecedor: alojamentos sob responsabilidade dele (só aparecem as vistorias concluídas) e itens a regularizar.
+export type AlojamentoFornecedor = Pick<Alojamento, 'id' | 'nome' | 'endereco' | 'vistorias'> & { obra: { nome: string } };
+export type NcFornecedor = NcCompleta & { vistoria: { id: string; data_vistoria: string; alojamento: { nome: string } | null; obra: { nome: string } | null } };
+
+export async function lerMeusAlojamentos(): Promise<AlojamentoFornecedor[]> {
+  const { data, error } = await supabase
+    .from('seg_alojamentos')
+    .select('id, nome, endereco, obra:obras(nome), vistorias:seg_vistorias(id, data_vistoria, classificacao, situacao, fotos_expiram_em, fotos_excluidas_em)')
+    .order('nome');
+  if (error) throw error;
+  return ((data ?? []) as unknown as AlojamentoFornecedor[]).map((a) => ({
+    ...a,
+    vistorias: [...a.vistorias].filter((v) => v.situacao === 'concluida').sort((x, y) => y.data_vistoria.localeCompare(x.data_vistoria)),
+  }));
+}
+
+export async function lerMinhasNcs(): Promise<NcFornecedor[]> {
+  const { data, error } = await supabase
+    .from('seg_nao_conformidades')
+    .select(`${CAMPOS_NC}, vistoria:seg_vistorias(id, data_vistoria, alojamento:seg_alojamentos(nome), obra:obras(nome))`)
+    .order('prazo');
+  if (error) throw error;
+  return (data ?? []) as unknown as NcFornecedor[];
+}
+
+export async function contarNcsAbertas(): Promise<number> {
+  const { count, error } = await supabase.from('seg_nao_conformidades').select('id', { count: 'exact', head: true }).in('situacao', ['aberta', 'reaberta']);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+// ---------------------------------------------------------------- Termo de uso do alojamento
+
+export type Termo = {
+  id: string;
+  alojamento_id: string;
+  colaborador_id: string | null;
+  nome: string;
+  funcao: string | null;
+  data_ingresso: string | null;
+  local: string | null;
+  data: string;
+  assinatura: string | null;
+  representante_nome: string | null;
+  representante_assinatura: string | null;
+  versao: number;
+  criado_em: string;
+};
+
+export async function lerTermos(alojamentoId: string): Promise<Termo[]> {
+  const { data, error } = await supabase
+    .from('seg_termos_alojamento')
+    .select('id, alojamento_id, colaborador_id, nome, funcao, data_ingresso, local, data, assinatura, representante_nome, representante_assinatura, versao, criado_em')
+    .eq('alojamento_id', alojamentoId)
+    .order('criado_em', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as Termo[];
+}
+
+export async function criarTermo(t: Omit<Termo, 'id' | 'criado_em'>): Promise<Termo> {
+  const { data, error } = await supabase
+    .from('seg_termos_alojamento')
+    .insert(t)
+    .select('id, alojamento_id, colaborador_id, nome, funcao, data_ingresso, local, data, assinatura, representante_nome, representante_assinatura, versao, criado_em')
+    .single();
+  if (error) throw error;
+  return data as Termo;
+}

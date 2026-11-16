@@ -5,6 +5,7 @@ import { contarAguardandoTst, contarEmAnalise } from '../lib/admin';
 import { contarCobrancas } from '../lib/cobrancas';
 import { contarAtendimento } from '../lib/ajuda';
 import { lerRegras } from '../lib/regras';
+import { contarNcsAbertas } from '../lib/seguranca';
 
 // Menu lateral fixo: fica parado ao rolar, pode ser recolhido (só ícones) e, no celular, abre por cima da tela.
 
@@ -95,7 +96,7 @@ type Grupo = { titulo: string | null; itens: Item[] };
 const abaAcessos = (aba: string) => (caminho: string, busca: string) =>
   caminho.startsWith('/acessos') && (new URLSearchParams(busca).get('aba') ?? 'usuarios') === aba;
 
-function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, atendimento: number | null = null): Grupo[] {
+function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, atendimento: number | null = null, ncs: number | null = null): Grupo[] {
   const paraValidar = (_: string, busca: string) => busca.includes('situacao=tst');
   if (perfil === 'admin')
     return [
@@ -174,6 +175,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
           { to: '/meus-colaboradores', rotulo: 'Colaboradores', icone: 'colaboradores' },
           { to: '/documentos-empresa', rotulo: 'Documentos da empresa', icone: 'documentos' },
           { to: '/medicao', rotulo: 'Mensal trabalhista', icone: 'medicao' },
+          { to: '/alojamentos', rotulo: 'Alojamentos', icone: 'seguranca', contador: ncs },
         ],
       },
     ];
@@ -218,6 +220,7 @@ export function Topo() {
   const [cobrancas, setCobrancas] = useState<number | null>(null);
   const [naFila, setNaFila] = useState<number | null>(null);
   const [atendimento, setAtendimento] = useState<number | null>(null);
+  const [ncs, setNcs] = useState<number | null>(null);
   const [recolhido, setRecolhido] = useState(lerRecolhido);
   const [aberto, setAberto] = useState(false); // celular
 
@@ -237,6 +240,12 @@ export function Topo() {
     const t = window.setInterval(contar, 60000);
     return () => window.clearInterval(t);
   }, [ehAdmin, pathname]);
+
+  // Itens de alojamento a regularizar (fornecedor).
+  useEffect(() => {
+    if (usuario?.perfil !== 'fornecedor') return;
+    contarNcsAbertas().then(setNcs).catch(() => setNcs(null));
+  }, [usuario, pathname]);
 
   // Prazos da medição usados nas telas (Acessos > Regras).
   useEffect(() => {
@@ -269,7 +278,7 @@ export function Topo() {
     }
   }
 
-  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento);
+  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento, ncs);
   const estaAtivo = (i: Item) => (i.ativo ? i.ativo(pathname, search) : undefined);
 
   return (

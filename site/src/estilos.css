@@ -3012,3 +3012,17 @@ button.celula:hover {
   .pagina:has(.barra-acoes-fixa) .ajuda-botao { bottom: 84px; right: 12px; padding: 10px; }
   .pagina:has(.barra-acoes-fixa) .ajuda-botao span { display: none; }
 }
+/* Itens a regularizar (TST e fornecedor) e termo do alojamento */
+.lista-ncs { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.lista-ncs > li { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--linha); border-radius: 10px; background: var(--superficie); }
+.lista-ncs .sub { display: block; margin: 0; }
+.nc-descricao { margin: 0; font-weight: 600; }
+.resposta-fornecedor { display: grid; gap: 4px; padding: 10px 12px; border-left: 3px solid var(--petroleo); background: var(--fundo); border-radius: 0 6px 6px 0; }
+.resposta-fornecedor p { margin: 0; }
+.responder-nc { display: grid; gap: 10px; padding-top: 8px; border-top: 1px dashed var(--linha); justify-items: start; }
+.responder-nc .campo { width: 100%; }
+.texto-termo { max-height: 380px; overflow-y: auto; padding: 14px 18px; border: 1px solid var(--linha); border-radius: 10px; background: var(--superficie); font-size: 0.92rem; }
+.texto-termo h3 { font-size: 0.95rem; margin: 14px 0 6px; }
+.texto-termo ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.texto-termo p { margin: 0 0 8px; }
+.acoes .botao + .botao { margin-left: 6px; }

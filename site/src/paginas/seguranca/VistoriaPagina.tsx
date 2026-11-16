@@ -15,6 +15,7 @@ import {
 } from '../../lib/seguranca';
 import { baixarPdfVistoria } from '../../lib/pdfSeguranca';
 import { Assinaturas, Fotos, SeloClassificacao, Voltar, caminhosDaVistoria, nomeResponsavel } from './comum';
+import { NcsVistoria } from './NcsVistoria';
 
 type Lista = 'funcionarios' | 'envolvidos';
 
@@ -332,7 +333,18 @@ export function VistoriaPagina() {
           </div>
         </div>
       ) : (
-        <LeituraVistoria v={v} links={links} responsavel={responsavel} />
+        <>
+          <LeituraVistoria v={v} links={links} responsavel={responsavel} />
+          {v.situacao === 'concluida' && (
+            <NcsVistoria
+              v={v}
+              empresaId={aloj.empresa_id}
+              empresaNome={responsavel}
+              podeEditar={podeEditar}
+              aoMensagem={(tipo, texto) => (tipo === 'ok' ? (setErro(null), setOk(texto)) : (setOk(null), setErro(texto)))}
+            />
+          )}
+        </>
       )}
 
       <Assinatura

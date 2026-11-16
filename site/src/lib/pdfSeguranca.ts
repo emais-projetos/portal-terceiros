@@ -1,6 +1,7 @@
 import type { jsPDF as JsPDF } from 'jspdf';
 import { data as dataBr } from './formato';
-import { NOMES_STATUS_VISTORIA, competencia, linksDosArquivos, type Ficha, type Pessoa, type Vistoria } from './seguranca';
+import { NOMES_STATUS_VISTORIA, competencia, linksDosArquivos, type Ficha, type Pessoa, type Termo, type Vistoria } from './seguranca';
+import { TERMO } from './termoAlojamento';
 
 // PDF da vistoria de alojamento e da ficha mensal da máquina, com fotos e assinaturas.
 // É o registro que fica depois que as fotos saem do portal (30 dias após a conclusão).
@@ -381,4 +382,51 @@ export async function baixarPdfFicha(fi: Ficha, ctx: { obra: string; maquina: st
   }
   f.rodape(`Checklist ${ctx.maquina} ${ctx.identificacao}, ${competencia(fi.competencia)}`);
   doc.save(`${nomeArquivo([fi.competencia.slice(0, 7).replace('-', ''), 'Checklist', ctx.maquina, ctx.identificacao, ctx.obra])}.pdf`);
+}
+
+export async function baixarPdfTermo(t: Termo, ctx: { obra: string; alojamento: string; empresa: string }) {
+  const [{ jsPDF }, marca, imgs] = await Promise.all([import('jspdf'), logo(), carregarTodas([t.assinatura ?? '', t.representante_assinatura ?? ''].filter(Boolean))]);
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const f = new Folha(doc);
+  cabecalho(f, marca, TERMO.titulo, `Versão ${t.versao}`);
+  quadroDados(f, [
+    ['Obra', ctx.obra],
+    ['Alojamento', ctx.alojamento],
+    ['Empresa', ctx.empresa],
+    ['Colaborador', t.nome],
+    ['Função', t.funcao ?? ''],
+    ['Ingresso no alojamento', t.data_ingresso ? dataBr(t.data_ingresso) : ''],
+  ]);
+  f.texto(TERMO.introducao, f.m, f.util, 9.5);
+  f.y += 3;
+  TERMO.secoes.forEach((sec) => {
+    f.caber(10);
+    f.texto(sec.titulo, f.m, f.util, 10, 'bold');
+    f.y += 1;
+    sec.itens.forEach((it) => {
+      f.caber(5);
+      const topo = f.y;
+      f.texto(it, f.m + 5, f.util - 5, 9);
+      doc.setFillColor(...TINTA);
+      doc.circle(f.m + 1.6, topo + 2.2, 0.6, 'F');
+      f.y += 1;
+    });
+    f.y += 2;
+  });
+  f.texto('Penalidades', f.m, f.util, 10, 'bold');
+  f.y += 1;
+  f.texto(TERMO.penalidade, f.m, f.util, 9);
+  f.y += 3;
+  f.texto('Declaração', f.m, f.util, 10, 'bold');
+  f.y += 1;
+  f.texto(TERMO.declaracao, f.m, f.util, 9);
+  f.y += 4;
+  f.texto(`${t.local ? `${t.local}, ` : ''}${dataBr(t.data)}`, f.m, f.util, 9.5);
+  f.y += 2;
+  assinaturas(f, 'Assinaturas', [
+    { nome: t.nome, cargo: 'Colaborador', assinatura: t.assinatura },
+    { nome: t.representante_nome ?? '', cargo: `Responsável, ${ctx.empresa}`, assinatura: t.representante_assinatura },
+  ], imgs);
+  f.rodape(`Termo de uso do alojamento ${ctx.alojamento}, ${t.nome}`);
+  doc.save(`${nomeArquivo([t.data.replace(/-/g, ''), 'Termo alojamento', t.nome, ctx.alojamento])}.pdf`);
 }
