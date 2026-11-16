@@ -13,6 +13,7 @@ import {
 } from '../../lib/seguranca';
 import { baixarPdfFicha } from '../../lib/pdfSeguranca';
 import { Fotos, Voltar, nomeResponsavel } from './comum';
+import { dataSaidaFotosFicha } from './Inspecoes';
 
 const SIMBOLO = { ok: '✓', nc: '✕', na: '–' } as const;
 
@@ -127,6 +128,11 @@ export function FichaPagina() {
           </div>
         </dl>
 
+        {f.fotos_excluidas_em ? (
+          <p className="dica">As fotos desta ficha foram excluídas em {data(f.fotos_excluidas_em)}. Ficou o checklist com as assinaturas.</p>
+        ) : (
+          <p className="aviso aviso-info">As fotos ficam no portal até {data(dataSaidaFotosFicha(f.competencia))}. Baixe o PDF para guardar a ficha com as fotos.</p>
+        )}
         {dias.length === 0 ? (
           <p className="vazio">Nenhum dia preenchido neste mês.</p>
         ) : (

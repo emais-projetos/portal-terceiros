@@ -10,7 +10,7 @@ import { mensagemDeErro } from '../../lib/supabase';
 import { data, hojeIso, somarDias } from '../../lib/formato';
 import {
   NOMES_STATUS_VISTORIA, colaboradoresAtivos, concluirVistoria, enviarImagem, excluirRascunho, gravarVistoria, lerAlojamento,
-  lerFornecedoresDaObra, lerVistoria, linksDosArquivos, notaPrevia, reabrirVistoria,
+  lerFornecedoresDaObra, lerModelo, lerVistoria, linksDosArquivos, nomeDaObra, notaPrevia, reabrirVistoria,
   type AlojamentoComObra, type ColaboradorAtivo, type Fornecedor, type ItemVistoria, type Pessoa, type Vistoria,
 } from '../../lib/seguranca';
 import { baixarPdfVistoria } from '../../lib/pdfSeguranca';
@@ -28,6 +28,7 @@ export function VistoriaPagina() {
   const [v, setV] = useState<Vistoria | null>(null);
   const atual = useRef<Vistoria | null>(null);
   const [aloj, setAloj] = useState<AlojamentoComObra | null>(null);
+  const [nomeModelo, setNomeModelo] = useState('');
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [links, setLinks] = useState<Record<string, string>>({});
   const [colabs, setColabs] = useState<ColaboradorAtivo[] | null>(null);
@@ -42,7 +43,11 @@ export function VistoriaPagina() {
 
   async function carregar() {
     const x = await lerVistoria(id);
-    const a = await lerAlojamento(x.alojamento_id!);
+    // Canteiro não tem alojamento: o "local" é a própria obra, responsabilidade da Emais.
+    const a: AlojamentoComObra = x.alojamento_id
+      ? await lerAlojamento(x.alojamento_id)
+      : { id: '', obra_id: x.obra_id, nome: 'Canteiro de obras', endereco: null, empresa_id: null, empresa_a_vincular: null, ativo: true, obra: { nome: await nomeDaObra(x.obra_id) } };
+    lerModelo(x.modelo_codigo).then((m) => setNomeModelo(m?.nome ?? '')).catch(() => undefined);
     atual.current = x;
     setV(x);
     setAloj(a);
@@ -127,7 +132,10 @@ export function VistoriaPagina() {
     setErro(null);
     try {
       if (editando && sujo) await gravar(atual.current!);
-      await baixarPdfVistoria(atual.current!, { obra: aloj.obra.nome, alojamento: aloj.nome, endereco: aloj.endereco, responsavel: nomeResponsavel(aloj, fornecedores, []) });
+      await baixarPdfVistoria(atual.current!, {
+        obra: aloj.obra.nome, alojamento: aloj.nome, endereco: aloj.endereco, responsavel: nomeResponsavel(aloj, fornecedores, []),
+        canteiro: !v.alojamento_id, checklist: nomeModelo,
+      });
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
     } finally {
@@ -156,13 +164,14 @@ export function VistoriaPagina() {
       </Pagina>
     );
 
+  const canteiro = !v.alojamento_id;
   const respondidos = v.itens.filter((i) => i.status).length;
   const previa = notaPrevia(v.itens);
   const responsavel = nomeResponsavel(aloj, fornecedores, []);
 
   return (
     <Pagina
-      titulo={`Vistoria de ${aloj.nome}`}
+      titulo={canteiro ? `Vistoria do canteiro${nomeModelo ? `: ${nomeModelo}` : ''}` : `Vistoria de ${aloj.nome}`}
       apoio={`${aloj.obra.nome}. Responsável: ${responsavel}.`}
       acoes={
         <div className="linha-botoes">
@@ -191,7 +200,7 @@ export function VistoriaPagina() {
                 <span>Horário</span>
                 <input type="time" value={v.horario ?? ''} onChange={(e) => atualizar((x) => ({ ...x, horario: e.target.value }))} />
               </label>
-              <label className="campo">
+              {!canteiro && <label className="campo">
                 <span>Moradores no alojamento</span>
                 <input
                   type="number"
@@ -200,13 +209,13 @@ export function VistoriaPagina() {
                   value={v.qtd_funcionarios ?? ''}
                   onChange={(e) => atualizar((x) => ({ ...x, qtd_funcionarios: e.target.value === '' ? null : Number(e.target.value) }))}
                 />
-              </label>
+              </label>}
             </div>
           </section>
 
           <section className="bloco">
             <div className="barra-lista">
-              <h2 className="bloco-titulo">Checklist NR-18</h2>
+              <h2 className="bloco-titulo">{nomeModelo || 'Checklist'}</h2>
               <span className="sub">
                 {respondidos} de {v.itens.length} respondidos{previa ? `. Até aqui: ${previa.classificacao}` : ''}
               </span>
@@ -258,7 +267,7 @@ export function VistoriaPagina() {
             </ol>
           </section>
 
-          <section className="bloco">
+          {!canteiro && <section className="bloco">
             <h2 className="bloco-titulo">Moradores</h2>
             {aloj.empresa_id && colabs && colabs.length > 0 && (
               <>
@@ -303,7 +312,7 @@ export function VistoriaPagina() {
               aoRemover={(i) => atualizar((x) => ({ ...x, funcionarios: x.funcionarios.filter((_, k) => k !== i) }))}
               aoAssinar={(i) => setAssinando({ lista: 'funcionarios', i })}
             />
-          </section>
+          </section>}
 
           <section className="bloco">
             <h2 className="bloco-titulo">Quem acompanhou a vistoria</h2>
@@ -334,8 +343,8 @@ export function VistoriaPagina() {
         </div>
       ) : (
         <>
-          <LeituraVistoria v={v} links={links} responsavel={responsavel} />
-          {v.situacao === 'concluida' && (
+          <LeituraVistoria v={v} links={links} responsavel={responsavel} canteiro={canteiro} />
+          {v.situacao === 'concluida' && !canteiro && (
             <NcsVistoria
               v={v}
               empresaId={aloj.empresa_id}
@@ -437,13 +446,13 @@ function ListaAssinaturas({
   );
 }
 
-export function LeituraVistoria({ v, links, responsavel }: { v: Vistoria; links: Record<string, string>; responsavel: string }) {
+export function LeituraVistoria({ v, links, responsavel, canteiro = false }: { v: Vistoria; links: Record<string, string>; responsavel: string; canteiro?: boolean }) {
   return (
     <div className="vistoria">
       <dl className="vistoria-dados">
         <div><dt>Data</dt><dd>{data(v.data_vistoria)}{v.horario ? `, ${v.horario}` : ''}</dd></div>
         <div><dt>Responsável</dt><dd>{responsavel}</dd></div>
-        <div><dt>Moradores</dt><dd>{v.qtd_funcionarios ?? '-'}</dd></div>
+        {!canteiro && <div><dt>Moradores</dt><dd>{v.qtd_funcionarios ?? '-'}</dd></div>}
         <div>
           <dt>Resultado</dt>
           <dd>
@@ -476,7 +485,7 @@ export function LeituraVistoria({ v, links, responsavel }: { v: Vistoria; links:
         ))}
       </ol>
       <div className="duas-colunas">
-        <Assinaturas titulo="Moradores" pessoas={v.funcionarios} links={links} />
+        {!canteiro && <Assinaturas titulo="Moradores" pessoas={v.funcionarios} links={links} />}
         <Assinaturas titulo="Acompanharam a vistoria" pessoas={v.envolvidos} links={links} />
       </div>
     </div>

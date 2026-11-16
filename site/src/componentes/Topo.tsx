@@ -5,7 +5,7 @@ import { contarAguardandoTst, contarEmAnalise } from '../lib/admin';
 import { contarCobrancas } from '../lib/cobrancas';
 import { contarAtendimento } from '../lib/ajuda';
 import { lerRegras } from '../lib/regras';
-import { contarNcsAbertas } from '../lib/seguranca';
+import { contarNcsAbertas, contarNcsParaAvaliar } from '../lib/seguranca';
 
 // Menu lateral fixo: fica parado ao rolar, pode ser recolhido (só ícones) e, no celular, abre por cima da tela.
 
@@ -97,6 +97,7 @@ const abaAcessos = (aba: string) => (caminho: string, busca: string) =>
   caminho.startsWith('/acessos') && (new URLSearchParams(busca).get('aba') ?? 'usuarios') === aba;
 
 function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, atendimento: number | null = null, ncs: number | null = null): Grupo[] {
+  // Segurança da obra: para o fornecedor, itens a regularizar; para o TST e o administrativo, respostas a avaliar.
   const paraValidar = (_: string, busca: string) => busca.includes('situacao=tst');
   if (perfil === 'admin')
     return [
@@ -105,7 +106,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
         itens: [
           { to: '/', rotulo: 'Obras', icone: 'obras', end: true },
           { to: '/painel-obra', rotulo: 'Painel da obra', icone: 'painel' },
-          { to: '/seguranca', rotulo: 'Segurança da obra', icone: 'seguranca' },
+          { to: '/seguranca', rotulo: 'Segurança da obra', icone: 'seguranca', contador: ncs },
           { to: '/indicadores', rotulo: 'Indicadores', icone: 'indicadores' },
           { to: '/atendimento', rotulo: 'Atendimento', icone: 'ajuda', contador: atendimento },
         ],
@@ -148,7 +149,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
         titulo: 'Segurança do Trabalho',
         itens: [
           { to: '/', rotulo: 'Painel da obra', icone: 'painel', end: true },
-          { to: '/seguranca', rotulo: 'Segurança da obra', icone: 'seguranca' },
+          { to: '/seguranca', rotulo: 'Segurança da obra', icone: 'seguranca', contador: ncs },
           { to: '/colaboradores?situacao=tst', rotulo: 'Para validar', icone: 'analise', contador: naFila, ativo: (c, b) => c === '/colaboradores' && paraValidar(c, b) },
           { to: '/integracoes', rotulo: 'Integração', icone: 'integracao' },
           { to: '/colaboradores', rotulo: 'Colaboradores', icone: 'colaboradores', ativo: (c, b) => c === '/colaboradores' && !paraValidar(c, b) },
@@ -241,10 +242,11 @@ export function Topo() {
     return () => window.clearInterval(t);
   }, [ehAdmin, pathname]);
 
-  // Itens de alojamento a regularizar (fornecedor).
+  // Alojamentos: itens a regularizar (fornecedor) ou respostas esperando avaliação (TST e administrativo).
   useEffect(() => {
-    if (usuario?.perfil !== 'fornecedor') return;
-    contarNcsAbertas().then(setNcs).catch(() => setNcs(null));
+    if (!usuario || usuario.perfil === 'engenharia') return;
+    const contar = usuario.perfil === 'fornecedor' ? contarNcsAbertas : contarNcsParaAvaliar;
+    contar().then(setNcs).catch(() => setNcs(null));
   }, [usuario, pathname]);
 
   // Prazos da medição usados nas telas (Acessos > Regras).

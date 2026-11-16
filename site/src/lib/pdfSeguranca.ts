@@ -227,21 +227,21 @@ function assinaturas(f: Folha, titulo: string, pessoas: Pessoa[], imgs: Record<s
   }
 }
 
-export async function baixarPdfVistoria(v: Vistoria, ctx: { obra: string; alojamento: string; endereco: string | null; responsavel: string }) {
+export async function baixarPdfVistoria(v: Vistoria, ctx: { obra: string; alojamento: string; endereco: string | null; responsavel: string; canteiro?: boolean; checklist?: string }) {
   const caminhos = [...v.itens.flatMap((i) => i.fotos ?? []), ...v.funcionarios.map((p) => p.assinatura ?? ''), ...v.envolvidos.map((p) => p.assinatura ?? '')];
   const [{ jsPDF }, marca, imgs] = await Promise.all([import('jspdf'), logo(), v.fotos_excluidas_em ? Promise.resolve({}) : carregarTodas(caminhos)]);
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const f = new Folha(doc);
-  cabecalho(f, marca, 'Vistoria de alojamento', 'Checklist NR-18');
+  cabecalho(f, marca, ctx.canteiro ? 'Vistoria do canteiro' : 'Vistoria de alojamento', `${ctx.checklist || 'Checklist'}${v.modelo_versao ? `, versão ${v.modelo_versao}` : ''}`);
 
   const aplicaveis = v.itens.filter((i) => i.status === 'sim' || i.status === 'nao').length;
   const conformes = v.itens.filter((i) => i.status === 'sim').length;
   quadroDados(f, [
     ['Obra', ctx.obra],
-    ['Alojamento', ctx.alojamento],
+    [ctx.canteiro ? 'Local' : 'Alojamento', ctx.alojamento],
     ['Responsável', ctx.responsavel],
     ['Data da vistoria', `${dataBr(v.data_vistoria)}${v.horario ? `, ${v.horario}` : ''}`],
-    ['Moradores', v.qtd_funcionarios != null ? String(v.qtd_funcionarios) : '-'],
+    ...(ctx.canteiro ? [] : ([['Moradores', v.qtd_funcionarios != null ? String(v.qtd_funcionarios) : '-']] as [string, string][])),
     ['Resultado', v.situacao === 'concluida' ? `${v.classificacao ?? '-'} (${conformes} de ${aplicaveis} itens em ordem)` : 'Em andamento (não concluída)'],
     ...(ctx.endereco ? ([['Endereço', ctx.endereco]] as [string, string][]) : []),
   ]);
@@ -280,10 +280,10 @@ export async function baixarPdfVistoria(v: Vistoria, ctx: { obra: string; alojam
     f.y += 3;
   });
 
-  assinaturas(f, 'Moradores', v.funcionarios, imgs);
+  if (!ctx.canteiro) assinaturas(f, 'Moradores', v.funcionarios, imgs);
   assinaturas(f, 'Acompanharam a vistoria', v.envolvidos, imgs);
   f.rodape(`Vistoria ${ctx.alojamento}, ${dataBr(v.data_vistoria)}`);
-  doc.save(`${nomeArquivo([v.data_vistoria.replace(/-/g, ''), 'Vistoria alojamento', ctx.alojamento, ctx.obra])}.pdf`);
+  doc.save(`${nomeArquivo([v.data_vistoria.replace(/-/g, ''), ctx.canteiro ? 'Vistoria canteiro' : 'Vistoria alojamento', ctx.canteiro ? '' : ctx.alojamento, ctx.obra].filter(Boolean))}.pdf`);
 }
 
 const SIGLA = { ok: 'C', nc: 'NC', na: 'NA' } as const;
@@ -298,7 +298,7 @@ export async function baixarPdfFicha(fi: Ficha, ctx: { obra: string; maquina: st
   const [{ jsPDF }, { autoTable }, marca, imgs] = await Promise.all([import('jspdf'), import('jspdf-autotable'), logo(), carregarTodas(caminhos)]);
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
   const f = new Folha(doc);
-  cabecalho(f, marca, `Checklist mensal: ${ctx.maquina}`, `Inspeção diária de máquinas e equipamentos, ${competencia(fi.competencia)}`);
+  cabecalho(f, marca, `Checklist mensal: ${ctx.maquina}`, `Inspeção diária de máquinas e equipamentos, ${competencia(fi.competencia)}${fi.modelo_versao ? `, versão ${fi.modelo_versao}` : ''}`);
   quadroDados(
     f,
     [

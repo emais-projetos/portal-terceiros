@@ -50,7 +50,7 @@ export function NcsVistoria({
       const qtd = await notificarFornecedor(v.id, [...marcados]);
       setNotificando(false);
       await carregar();
-      aoMensagem('ok', `${qtd} ${qtd === 1 ? 'item enviado' : 'itens enviados'} para ${empresaNome}. O fornecedor recebe o e-mail e responde pelo portal.`);
+      aoMensagem('ok', `${qtd} ${qtd === 1 ? 'item enviado' : 'itens enviados'} para ${empresaNome}. Os itens aparecem no portal do fornecedor, em Alojamentos, para ele responder.`);
     } catch (e) {
       aoMensagem('erro', mensagemDeErro(e as Error));
     } finally {
@@ -63,7 +63,7 @@ export function NcsVistoria({
       await avaliarNc(n.id, aprovar, m);
       setRecusando(null);
       await carregar();
-      aoMensagem('ok', aprovar ? 'Regularização aceita.' : 'Regularização não aceita. O fornecedor recebe o motivo por e-mail.');
+      aoMensagem('ok', aprovar ? 'Regularização aceita.' : 'Regularização não aceita. O item volta para o fornecedor no portal, com o motivo.');
     } catch (e) {
       aoMensagem('erro', mensagemDeErro(e as Error));
     }
@@ -134,7 +134,7 @@ export function NcsVistoria({
 
       <Dialogo aberto={notificando} titulo={`Notificar ${empresaNome}`} aoFechar={() => setNotificando(false)}>
         <div className="formulario formulario-largo">
-          <p className="dica">O fornecedor recebe um e-mail com os itens marcados e responde cada um pelo portal, com foto do que foi feito.</p>
+          <p className="dica">Os itens marcados aparecem no portal do fornecedor (menu Alojamentos), que responde cada um com foto do que foi feito.</p>
           <ul className="lista-marcar">
             {pendentes.map(({ it, i }) => (
               <li key={i}>

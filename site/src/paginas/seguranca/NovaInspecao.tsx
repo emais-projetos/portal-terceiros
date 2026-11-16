@@ -68,7 +68,8 @@ export function NovaInspecao({
 
   const modelosMaquina = modelos.filter((m) => m.grupo === 'maquina');
   const modeloAlojamento = modelos.find((m) => m.codigo === 'alojamento');
-  const temCanteiro = modelos.some((m) => m.grupo === 'canteiro');
+  const modelosCanteiro = modelos.filter((m) => m.grupo === 'canteiro');
+  const temCanteiro = modelosCanteiro.length > 0;
   const ativosAloj = alojamentos.filter((a) => a.ativo).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   const nomeModelo = (c: string) => modelos.find((m) => m.codigo === c)?.nome ?? c;
   const ativasMaq = maquinas
@@ -82,6 +83,7 @@ export function NovaInspecao({
   const valido =
     !!dia &&
     !!alvo &&
+    (tipo !== 'canteiro' || modelosCanteiro.some((m) => m.codigo === alvo)) &&
     (!novo || (tipo === 'alojamento' ? nome.trim().length > 0 && (resp === 'emais' || (resp === 'fornecedor' && !!empresa)) : !!modelo && identificacao.trim().length > 0 && respOk));
 
   async function responsavel(): Promise<Responsavel> {
@@ -96,7 +98,10 @@ export function NovaInspecao({
     setEnviando(true);
     setErro(null);
     try {
-      if (tipo === 'alojamento') {
+      if (tipo === 'canteiro') {
+        const id = await criarVistoria({ obraId, alojamentoId: null, modelo: modelosCanteiro.find((m) => m.codigo === alvo)!, data: dia, horario: hora, tst });
+        navegar(`/seguranca/vistoria/${id}`);
+      } else if (tipo === 'alojamento') {
         const alojamentoId = novo ? await criarAlojamento({ obraId, nome, endereco, empresaId: resp === 'fornecedor' ? empresa : null }) : alvo;
         const id = await criarVistoria({ obraId, alojamentoId, modelo: modeloAlojamento!, data: dia, horario: hora, tst });
         navegar(`/seguranca/vistoria/${id}`);
@@ -119,9 +124,9 @@ export function NovaInspecao({
 
         <div className="tipos-inspecao" role="radiogroup" aria-label="O que vai ser inspecionado">
           {([
-            ['alojamento', 'Alojamento', 'Vistoria NR-18 com fotos e assinatura dos moradores'],
+            ['alojamento', 'Alojamento', 'Vistoria com fotos e assinatura dos moradores'],
             ['maquina', 'Máquina', 'Checklist do dia, que entra na ficha mensal da máquina'],
-            ['canteiro', 'Canteiro', temCanteiro ? 'Checklist do canteiro de obras' : 'Checklist ainda não cadastrado'],
+            ['canteiro', 'Canteiro', temCanteiro ? 'Checklist do canteiro de obras, com fotos e assinatura' : 'Checklist ainda não cadastrado'],
           ] as const).map(([t, rotulo, sub]) => (
             <button
               key={t}
@@ -132,7 +137,7 @@ export function NovaInspecao({
               className="tipo-inspecao"
               onClick={() => {
                 setTipo(t);
-                setAlvo('');
+                setAlvo(t === 'canteiro' && modelosCanteiro.length === 1 ? modelosCanteiro[0].codigo : '');
                 setResp('');
               }}
             >
@@ -240,13 +245,23 @@ export function NovaInspecao({
           </>
         )}
 
-        {(tipo === 'alojamento' || tipo === 'maquina') && (
+        {tipo === 'canteiro' && modelosCanteiro.length > 1 && (
+          <label className="campo">
+            <span>Checklist</span>
+            <select value={alvo} onChange={(e) => setAlvo(e.target.value)} required>
+              <option value="">Escolha o checklist</option>
+              {modelosCanteiro.map((m) => <option key={m.codigo} value={m.codigo}>{m.nome}</option>)}
+            </select>
+          </label>
+        )}
+
+        {tipo && (
           <div className="grade-2">
             <label className="campo">
               <span>Data</span>
               <input type="date" max={hojeIso()} value={dia} onChange={(e) => setDia(e.target.value)} required />
             </label>
-            {tipo === 'alojamento' && (
+            {tipo !== 'maquina' && (
               <label className="campo">
                 <span>Horário</span>
                 <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />

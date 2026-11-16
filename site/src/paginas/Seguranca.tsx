@@ -9,11 +9,12 @@ import { data } from '../lib/formato';
 import { lerObrasDoPainel, type ObraDoPainel } from '../lib/painelObra';
 import {
   competencia, lerAlojamentos, lerFornecedoresDaObra, lerLocadoras, lerMaquinas, lerModelos, lerNaoConformidadesDaObra,
-  salvarAlojamento, salvarLocadora, salvarMaquina, type Alojamento, type Fornecedor, type Locadora, type Maquina, type Modelo,
+  lerVistoriasCanteiro, salvarAlojamento, salvarLocadora, salvarMaquina, type Alojamento, type VistoriaResumo, type Fornecedor, type Locadora, type Maquina, type Modelo,
   type NaoConformidade, type Responsavel,
 } from '../lib/seguranca';
 import { SeloClassificacao } from './seguranca/comum';
 import { Inspecoes } from './seguranca/Inspecoes';
+import { ListaFormularios } from './seguranca/Formularios';
 import { NovaInspecao } from './seguranca/NovaInspecao';
 
 const CHAVE_OBRA = 'portal-terceiros:obra-seguranca';
@@ -22,6 +23,7 @@ const ABAS = [
   ['alojamentos', 'Alojamentos'],
   ['maquinas', 'Máquinas'],
   ['locadoras', 'Locadoras'],
+  ['formularios', 'Formulários'],
 ] as const;
 type Aba = (typeof ABAS)[number][0];
 
@@ -36,7 +38,10 @@ export function Seguranca() {
   const { usuario } = useSessao();
   const podeEditar = usuario?.perfil === 'admin' || usuario?.perfil === 'tst';
   const [params, setParams] = useSearchParams();
-  const aba = (ABAS.find(([a]) => a === params.get('aba'))?.[0] ?? 'inspecoes') as Aba;
+  const ehAdmin = usuario?.perfil === 'admin';
+  const abas = ABAS.filter(([a]) => a !== 'formularios' || ehAdmin);
+  const aba = (abas.find(([a]) => a === params.get('aba'))?.[0] ?? 'inspecoes') as Aba;
+  const semObra = aba === 'locadoras' || aba === 'formularios';
 
   const [obras, setObras] = useState<ObraDoPainel[] | null>(null);
   const [obra, setObra] = useState('');
@@ -45,6 +50,7 @@ export function Seguranca() {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [alojamentos, setAlojamentos] = useState<Alojamento[] | null>(null);
   const [maquinas, setMaquinas] = useState<Maquina[] | null>(null);
+  const [canteiro, setCanteiro] = useState<VistoriaResumo[]>([]);
   const [ncs, setNcs] = useState<NaoConformidade[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -69,7 +75,8 @@ export function Seguranca() {
 
   async function carregarObra(o: string) {
     try {
-      const [a, m, f] = await Promise.all([lerAlojamentos(o), lerMaquinas(o), lerFornecedoresDaObra(o)]);
+      const [a, m, f, c] = await Promise.all([lerAlojamentos(o), lerMaquinas(o), lerFornecedoresDaObra(o), lerVistoriasCanteiro(o)]);
+      setCanteiro(c);
       setAlojamentos(a);
       setMaquinas(m);
       setFornecedores(f);
@@ -105,13 +112,13 @@ export function Seguranca() {
       titulo="Segurança da obra"
       apoio="Vistorias de alojamento, checklist das máquinas e a quem cada uma pertence."
       acoes={
-        podeEditar && obra && alojamentos && maquinas ? (
+        podeEditar && !semObra && obra && alojamentos && maquinas ? (
           <button type="button" className="botao" onClick={() => setNova(true)}>Realizar inspeção</button>
         ) : undefined
       }
       abas={
         <nav className="abas abas-botoes" aria-label="Segurança da obra">
-          {ABAS.map(([a, nome]) => (
+          {abas.map(([a, nome]) => (
             <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => setParams(a === 'inspecoes' ? {} : { aba: a })}>
               {nome}
             </button>
@@ -123,7 +130,7 @@ export function Seguranca() {
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
       {!obras && !erro && <Carregando />}
 
-      {aba !== 'locadoras' && obras && (
+      {!semObra && obras && (
         <div className="filtros">
           <label className="campo">
             <span>Obra</span>
@@ -134,9 +141,9 @@ export function Seguranca() {
           </label>
         </div>
       )}
-      {aba !== 'locadoras' && obras?.length === 0 && <p className="vazio">Nenhuma obra ligada ao seu acesso.</p>}
+      {!semObra && obras?.length === 0 && <p className="vazio">Nenhuma obra ligada ao seu acesso.</p>}
 
-      {aba !== 'locadoras' && obra && pendentes > 0 && (
+      {!semObra && obra && pendentes > 0 && (
         <div className="aviso aviso-alerta aviso-faixa" role="status">
           <span>
             {pendentes === 1 ? '1 cadastro veio' : `${pendentes} cadastros vieram`} do ObraCheck com uma empresa que não existe no portal.
@@ -146,7 +153,7 @@ export function Seguranca() {
       )}
 
       {aba === 'inspecoes' && obra && (alojamentos && maquinas ? (
-        <Inspecoes alojamentos={alojamentos} maquinas={maquinas} modelos={modelos} fornecedores={fornecedores} locadoras={locadoras} podeIniciar={podeEditar} aoIniciar={() => setNova(true)} />
+        <Inspecoes alojamentos={alojamentos} maquinas={maquinas} canteiro={canteiro} modelos={modelos} fornecedores={fornecedores} locadoras={locadoras} podeIniciar={podeEditar} aoIniciar={() => setNova(true)} />
       ) : <Carregando />)}
       {aba === 'alojamentos' && obra && (alojamentos ? (
         <Alojamentos lista={alojamentos} ncs={ncs} ctx={ctx} aoSalvar={recarregar} />
@@ -155,6 +162,7 @@ export function Seguranca() {
         <Maquinas lista={maquinas} ctx={ctx} aoSalvar={recarregar} />
       ) : <Carregando />)}
       {aba === 'locadoras' && obras && <Locadoras lista={locadoras} podeEditar={podeEditar} aoSalvar={recarregar} />}
+      {aba === 'formularios' && ehAdmin && <ListaFormularios />}
 
       {obra && alojamentos && maquinas && (
         <NovaInspecao

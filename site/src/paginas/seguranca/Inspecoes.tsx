@@ -1,14 +1,14 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { data, hojeIso } from '../../lib/formato';
-import { competencia, type Alojamento, type Fornecedor, type Locadora, type Maquina, type Modelo } from '../../lib/seguranca';
+import { competencia, type Alojamento, type Fornecedor, type Locadora, type Maquina, type Modelo, type VistoriaResumo } from '../../lib/seguranca';
 import { SeloClassificacao, nomeResponsavel } from './comum';
 
 type Linha = {
   chave: string;
   quando: string;
   data: string;
-  tipo: 'Alojamento' | 'Máquina';
+  tipo: 'Alojamento' | 'Máquina' | 'Canteiro';
   local: string;
   detalhe: string;
   responsavel: string;
@@ -19,43 +19,55 @@ type Linha = {
 
 // Todas as inspeções da obra numa lista só, as mais recentes primeiro.
 export function Inspecoes({
-  alojamentos, maquinas, modelos, fornecedores, locadoras, podeIniciar, aoIniciar,
+  alojamentos, maquinas, canteiro, modelos, fornecedores, locadoras, podeIniciar, aoIniciar,
 }: {
   alojamentos: Alojamento[];
   maquinas: Maquina[];
+  canteiro: VistoriaResumo[];
   modelos: Modelo[];
   fornecedores: Fornecedor[];
   locadoras: Locadora[];
   podeIniciar: boolean;
   aoIniciar: () => void;
 }) {
-  const [filtro, setFiltro] = useState<'todas' | 'Alojamento' | 'Máquina'>('todas');
+  const [filtro, setFiltro] = useState<'todas' | 'Alojamento' | 'Máquina' | 'Canteiro'>('todas');
+  const dias = (v: { situacao: string; fotos_expiram_em: string | null; fotos_excluidas_em: string | null }) => {
+    if (v.fotos_excluidas_em) return 'sem fotos (ficou só a avaliação)';
+    if (v.situacao !== 'concluida' || !v.fotos_expiram_em) return undefined;
+    const d = Math.round((Date.parse(v.fotos_expiram_em.slice(0, 10)) - Date.parse(hojeIso())) / 864e5);
+    if (d > 7) return undefined;
+    return d <= 0 ? 'as fotos saem hoje: baixe o PDF' : `as fotos saem em ${d} ${d === 1 ? 'dia' : 'dias'}: baixe o PDF`;
+  };
   const [busca, setBusca] = useState('');
   const nomeModelo = (c: string) => modelos.find((m) => m.codigo === c)?.nome ?? c.replace('maquina:', '');
-  const hoje = hojeIso();
 
   const linhas: Linha[] = [
     ...alojamentos.flatMap((a) =>
-      a.vistorias.map((v) => {
-        const expira = v.situacao === 'concluida' && v.fotos_expiram_em && !v.fotos_excluidas_em ? v.fotos_expiram_em.slice(0, 10) : null;
-        const dias = expira ? Math.round((Date.parse(expira) - Date.parse(hoje)) / 864e5) : null;
-        let aviso: string | undefined;
-        if (v.fotos_excluidas_em) aviso = 'sem fotos (ficou só a avaliação)';
-        else if (dias != null && dias <= 7) aviso = dias <= 0 ? 'as fotos saem hoje: baixe o PDF' : `as fotos saem em ${dias} ${dias === 1 ? 'dia' : 'dias'}: baixe o PDF`;
-        return {
-          chave: v.id,
-          quando: v.data_vistoria,
-          data: data(v.data_vistoria),
-          tipo: 'Alojamento' as const,
-          local: a.nome,
-          detalhe: 'Vistoria NR-18',
-          responsavel: nomeResponsavel(a, fornecedores, locadoras),
-          situacao: <SeloClassificacao v={v} />,
-          link: `/seguranca/vistoria/${v.id}`,
-          aviso,
-        };
-      }),
+      a.vistorias.map((v) => ({
+        chave: v.id,
+        quando: v.data_vistoria,
+        data: data(v.data_vistoria),
+        tipo: 'Alojamento' as const,
+        local: a.nome,
+        detalhe: 'Vistoria de alojamento',
+        responsavel: nomeResponsavel(a, fornecedores, locadoras),
+        situacao: <SeloClassificacao v={v} />,
+        link: `/seguranca/vistoria/${v.id}`,
+        aviso: dias(v),
+      })),
     ),
+    ...canteiro.map((v) => ({
+      chave: v.id,
+      quando: v.data_vistoria,
+      data: data(v.data_vistoria),
+      tipo: 'Canteiro' as const,
+      local: modelos.find((m) => m.codigo === v.modelo_codigo)?.nome ?? 'Canteiro de obras',
+      detalhe: 'Vistoria do canteiro',
+      responsavel: 'Emais',
+      situacao: <SeloClassificacao v={v} />,
+      link: `/seguranca/vistoria/${v.id}`,
+      aviso: dias(v),
+    })),
     ...maquinas.flatMap((m) =>
       m.fichas.map((f) => ({
         chave: f.id,
@@ -67,6 +79,7 @@ export function Inspecoes({
         responsavel: nomeResponsavel(m, fornecedores, locadoras),
         situacao: f.fechada_em ? <span className="selo selo-ok">mês fechado</span> : <span className="selo selo-fila">mês aberto</span>,
         link: `/seguranca/ficha/${f.id}`,
+        aviso: fotosFicha(f.competencia, f.fotos_excluidas_em),
       })),
     ),
   ]
@@ -78,9 +91,9 @@ export function Inspecoes({
     <section className="bloco">
       <div className="filtros">
         <div className="chips chips-filtro" role="group" aria-label="Tipo de inspeção">
-          {(['todas', 'Alojamento', 'Máquina'] as const).map((t) => (
+          {(['todas', 'Alojamento', 'Máquina', ...(canteiro.length ? (['Canteiro'] as const) : [])] as const).map((t) => (
             <button key={t} type="button" className="chip" aria-pressed={filtro === t} onClick={() => setFiltro(t)}>
-              {t === 'todas' ? 'Todas' : t === 'Alojamento' ? 'Alojamentos' : 'Máquinas'}
+              {t === 'todas' ? 'Todas' : t === 'Alojamento' ? 'Alojamentos' : t === 'Máquina' ? 'Máquinas' : 'Canteiro'}
             </button>
           ))}
         </div>
@@ -117,4 +130,20 @@ export function Inspecoes({
       )}
     </section>
   );
+}
+
+// Fotos da ficha saem N dias depois do fim do mês (mesmo prazo das vistorias). Aviso na última semana.
+export function fotosFicha(comp: string, excluidas: string | null, dias = 30): string | undefined {
+  if (excluidas) return 'sem fotos (ficou só o checklist)';
+  const [a, m] = comp.split('-').map(Number);
+  const fim = new Date(Date.UTC(a, m, 0));
+  const sai = new Date(fim.getTime() + dias * 864e5).toISOString().slice(0, 10);
+  const d = Math.round((Date.parse(sai) - Date.parse(hojeIso())) / 864e5);
+  if (d > 7) return undefined;
+  return d <= 0 ? 'as fotos saem hoje: baixe o PDF' : `as fotos saem em ${d} ${d === 1 ? 'dia' : 'dias'}: baixe o PDF`;
+}
+
+export function dataSaidaFotosFicha(comp: string, dias = 30): string {
+  const [a, m] = comp.split('-').map(Number);
+  return new Date(Date.UTC(a, m, 0) + dias * 864e5).toISOString().slice(0, 10);
 }

@@ -48,7 +48,7 @@ export function AlojamentosFornecedor() {
           <section className="bloco">
             <h2 className="bloco-titulo">Itens a regularizar {abertas.length > 0 && <span className="contador">{abertas.length}</span>}</h2>
             {abertas.length === 0 ? (
-              <p className="vazio">Nenhum item pendente. Quando a vistoria apontar algo para regularizar, ele aparece aqui e chega por e-mail.</p>
+              <p className="vazio">Nenhum item pendente. Quando a vistoria apontar algo para regularizar, ele aparece aqui, com o prazo.</p>
             ) : (
               <ul className="lista-ncs">
                 {abertas.map((n) => (

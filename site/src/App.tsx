@@ -26,6 +26,7 @@ import { VistoriaPagina } from './paginas/seguranca/VistoriaPagina';
 import { FichaPagina } from './paginas/seguranca/FichaPagina';
 import { DiaFicha } from './paginas/seguranca/DiaFicha';
 import { TermosAlojamento } from './paginas/seguranca/TermosAlojamento';
+import { FormularioPagina } from './paginas/seguranca/Formularios';
 import { AlojamentosFornecedor, VistoriaFornecedor } from './paginas/fornecedor/Alojamentos';
 import { Carregando } from './componentes/Carregando';
 
@@ -49,6 +50,7 @@ export function App() {
       <Route path="/seguranca" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><Seguranca /></SoPerfil>} />
       <Route path="/seguranca/vistoria/:id" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><VistoriaPagina /></SoPerfil>} />
       <Route path="/seguranca/ficha/:id" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><FichaPagina /></SoPerfil>} />
+      <Route path="/seguranca/formulario/:codigo" element={<SoAdmin><FormularioPagina /></SoAdmin>} />
       <Route path="/seguranca/alojamento/:id/termos" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><TermosAlojamento /></SoPerfil>} />
       <Route path="/alojamentos" element={<SoPerfil perfil="fornecedor"><AlojamentosFornecedor /></SoPerfil>} />
       <Route path="/alojamentos/vistoria/:id" element={<SoPerfil perfil="fornecedor"><VistoriaFornecedor /></SoPerfil>} />
