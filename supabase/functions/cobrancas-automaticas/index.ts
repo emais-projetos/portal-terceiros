@@ -768,16 +768,16 @@ async function resumo(dataRef) {
 async function liberacoes() {
   const cfg = await parametros();
   const base = { pausada: cfg.pausada, modo_teste: !!cfg.testePara, teste_para: cfg.testePara || null };
-  if (cfg.pausada) return { ...base, itens: [] };
-  const avisos = await avisosDeLiberacao(cfg);
-  const convites = await convitesDeAcesso(cfg);
-  const ajuda = await avisosDeAjuda(cfg);
-  const seguranca = await avisosDeSeguranca(cfg);
   try {
     await limparFotosVencidas();
   } catch (e) {
     console.error("Limpeza de fotos da seguran\xE7a:", e.message);
   }
+  if (cfg.pausada) return { ...base, itens: [] };
+  const avisos = await avisosDeLiberacao(cfg);
+  const convites = await convitesDeAcesso(cfg);
+  const ajuda = await avisosDeAjuda(cfg);
+  const seguranca = await avisosDeSeguranca(cfg);
   return { ...base, itens: [...avisos, ...convites, ...ajuda, ...seguranca] };
 }
 async function avisosDeLiberacao(cfg) {

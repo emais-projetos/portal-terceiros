@@ -215,18 +215,18 @@ type ItemLiberacao = {
 async function liberacoes() {
   const cfg = await parametros();
   const base = { pausada: cfg.pausada, modo_teste: !!cfg.testePara, teste_para: cfg.testePara || null };
-  if (cfg.pausada) return { ...base, itens: [] };
-  const avisos = await avisosDeLiberacao(cfg);
-  const convites = await convitesDeAcesso(cfg);
-  const ajuda = await avisosDeAjuda(cfg);
-  const seguranca = await avisosDeSeguranca(cfg);
   // Rotina diária da Segurança da obra: a fila roda várias vezes ao dia, então a exclusão das fotos vencidas
-  // vai junto, sem depender de outro agendamento. Uma falha aqui não segura os e-mails.
+  // vai junto (mesmo com os e-mails pausados), sem depender de outro agendamento. Uma falha aqui não segura os e-mails.
   try {
     await limparFotosVencidas();
   } catch (e) {
     console.error('Limpeza de fotos da segurança:', (e as Error).message);
   }
+  if (cfg.pausada) return { ...base, itens: [] };
+  const avisos = await avisosDeLiberacao(cfg);
+  const convites = await convitesDeAcesso(cfg);
+  const ajuda = await avisosDeAjuda(cfg);
+  const seguranca = await avisosDeSeguranca(cfg);
   return { ...base, itens: [...avisos, ...convites, ...ajuda, ...seguranca] };
 }
 
