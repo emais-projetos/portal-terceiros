@@ -155,7 +155,7 @@ export function Seguranca() {
 
       {aba === 'inspecoes' && obra && (alojamentos && maquinas ? (
         <>
-        <PainelConformidade obraId={obra} alojamentos={alojamentos} maquinas={maquinas} fornecedores={fornecedores} ncs={ncs} />
+        <PainelConformidade obraId={obra} alojamentos={alojamentos} maquinas={maquinas} fornecedores={fornecedores} ncs={ncs} temCanteiro={modelos.some((m) => m.grupo === 'canteiro')} />
         <Inspecoes alojamentos={alojamentos} maquinas={maquinas} canteiro={canteiro} modelos={modelos} fornecedores={fornecedores} locadoras={locadoras} podeIniciar={podeEditar} aoIniciar={() => setNova(true)} />
         </>
       ) : <Carregando />)}

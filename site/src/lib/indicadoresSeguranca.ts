@@ -175,3 +175,40 @@ export function indicadoresMaquinas(fichas: FichaIndicador[], maquinas: Maquina[
     maisReprovadas: [...nc.entries()].map(([texto, qtd]) => ({ texto, qtd })).sort((a, b) => b.qtd - a.qtd).slice(0, 5),
   };
 }
+
+// Metas de Regras > Segurança da obra (padrão 90% alojamento e 85% canteiro).
+export async function lerMetas(): Promise<{ alojamento: number; canteiro: number }> {
+  const { data, error } = await supabase.from('parametros').select('chave, valor').in('chave', ['seg_meta_alojamento', 'seg_meta_canteiro']);
+  if (error) throw error;
+  const p = new Map((data ?? []).map((x) => [x.chave as string, Number(x.valor)]));
+  return { alojamento: p.get('seg_meta_alojamento') || 90, canteiro: p.get('seg_meta_canteiro') || 85 };
+}
+
+// Canteiro: vistorias sem alojamento.
+export function indicadoresCanteiro(vistorias: VistoriaIndicador[], desde: string) {
+  const concluidas = vistorias.filter((v) => v.situacao === 'concluida' && !v.alojamento_id);
+  const total = nova();
+  concluidas.forEach((v) => somarVistoria(total, v));
+  const porMes = new Map<string, Conta & { qtd: number }>();
+  concluidas.forEach((v) => {
+    const k = v.data_vistoria.slice(0, 7);
+    const c = porMes.get(k) ?? { ...nova(), qtd: 0 };
+    somarVistoria(c, v);
+    c.qtd++;
+    porMes.set(k, c);
+  });
+  const naos = new Map<string, number>();
+  concluidas.forEach((v) => v.itens.forEach((i) => i.status === 'nao' && naos.set(i.texto, (naos.get(i.texto) ?? 0) + 1)));
+  const ultima = [...concluidas].sort((a, b) => b.data_vistoria.localeCompare(a.data_vistoria))[0];
+  return {
+    conformidade: pct(total),
+    concluidas: concluidas.length,
+    emAndamento: vistorias.filter((v) => v.situacao === 'rascunho' && !v.alojamento_id).length,
+    ultima: ultima?.data_vistoria ?? null,
+    meses: mesesAte(desde).map((m) => {
+      const c = porMes.get(m);
+      return { mes: m, pct: c ? pct(c) : null, qtd: c?.qtd ?? 0, sim: c?.sim ?? 0, aplicaveis: c?.aplicaveis ?? 0 };
+    }),
+    maisReprovadas: [...naos.entries()].map(([texto, qtd]) => ({ texto, qtd })).sort((a, b) => b.qtd - a.qtd).slice(0, 6),
+  };
+}

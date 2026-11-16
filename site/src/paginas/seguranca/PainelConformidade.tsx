@@ -4,7 +4,7 @@ import { Carregando } from '../../componentes/Carregando';
 import { mensagemDeErro } from '../../lib/supabase';
 import { data, hojeIso } from '../../lib/formato';
 import {
-  classificar, indicadoresAlojamento, indicadoresMaquinas, lerDadosIndicadores, type FichaIndicador, type VistoriaIndicador,
+  classificar, indicadoresAlojamento, indicadoresCanteiro, indicadoresMaquinas, lerDadosIndicadores, lerMetas, type FichaIndicador, type VistoriaIndicador,
 } from '../../lib/indicadoresSeguranca';
 import type { Alojamento, Fornecedor, Maquina, NaoConformidade } from '../../lib/seguranca';
 
@@ -20,8 +20,9 @@ function inicioPeriodo(meses: number) {
 
 // Painel da aba Inspeções: conformidade dos alojamentos (indicador principal) e das máquinas.
 export function PainelConformidade({
-  obraId, alojamentos, maquinas, fornecedores, ncs,
+  obraId, alojamentos, maquinas, fornecedores, ncs, temCanteiro,
 }: {
+  temCanteiro: boolean;
   obraId: string;
   alojamentos: Alojamento[];
   maquinas: Maquina[];
@@ -32,6 +33,11 @@ export function PainelConformidade({
   const desde = inicioPeriodo(meses);
   const [dados, setDados] = useState<{ vistorias: VistoriaIndicador[]; fichas: FichaIndicador[] } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [metas, setMetas] = useState({ alojamento: 90, canteiro: 85 });
+
+  useEffect(() => {
+    lerMetas().then(setMetas).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     setDados(null);
@@ -40,6 +46,7 @@ export function PainelConformidade({
   }, [obraId, desde]);
 
   const aloj = useMemo(() => (dados ? indicadoresAlojamento(dados.vistorias, alojamentos, fornecedores, ncs, desde) : null), [dados, alojamentos, fornecedores, ncs, desde]);
+  const cant = useMemo(() => (dados ? indicadoresCanteiro(dados.vistorias, desde) : null), [dados, desde]);
   const maq = useMemo(() => (dados ? indicadoresMaquinas(dados.fichas, maquinas, desde) : null), [dados, maquinas, desde]);
 
   return (
@@ -54,7 +61,10 @@ export function PainelConformidade({
             <option value={12}>Últimos 12 meses</option>
           </select>
         </label>
-        <p className="dica">Desde {data(desde)}. Conformidade = itens "Sim" sobre os itens aplicáveis ("Não se aplica" fica fora), a mesma regra da nota da vistoria.</p>
+        <p className="dica">
+          Desde {data(desde)}. Conformidade = itens "Sim" sobre os itens aplicáveis ("Não se aplica" fica fora), a mesma regra da nota da vistoria.
+          Metas em Regras: alojamento {metas.alojamento}%, canteiro {metas.canteiro}%.
+        </p>
       </div>
       {erro && <p className="aviso aviso-erro">{erro}</p>}
       {!dados && !erro && <Carregando />}
@@ -66,8 +76,8 @@ export function PainelConformidade({
             <Cartao
               rotulo="Conformidade das vistorias"
               valor={aloj.conformidade === null ? 'Sem vistoria' : porcento(aloj.conformidade)}
-              alerta={aloj.conformidade !== null && aloj.conformidade <= 70}
-              apoio={aloj.conformidade === null ? 'Nenhuma vistoria concluída no período.' : `${classificar(aloj.conformidade)}. Média de ${aloj.concluidas} ${aloj.concluidas === 1 ? 'vistoria concluída' : 'vistorias concluídas'}.`}
+              alerta={aloj.conformidade !== null && aloj.conformidade < metas.alojamento}
+              apoio={aloj.conformidade === null ? `Nenhuma vistoria concluída no período. Meta: ${metas.alojamento}%.` : `Meta: ${metas.alojamento}%. ${classificar(aloj.conformidade)}, média de ${aloj.concluidas} ${aloj.concluidas === 1 ? 'vistoria concluída' : 'vistorias concluídas'}.`}
             />
             <Cartao
               rotulo="Alojamentos vistoriados"
@@ -93,11 +103,13 @@ export function PainelConformidade({
               }))}
               formatar={porcento}
               maximo={100}
+              meta={metas.alojamento}
+              rotuloMeta={`meta ${metas.alojamento}%`}
               vazio="-"
             />
             <Barras
               titulo="Conformidade por alojamento (última vistoria)"
-              dados={aloj.porAlojamento.map((a) => ({ rotulo: a.nome, valor: a.pct, dica: `${classificar(a.pct)}, vistoria de ${data(a.data)}` }))}
+              dados={aloj.porAlojamento.map((a) => ({ rotulo: a.nome, valor: a.pct, dica: `${classificar(a.pct)}, vistoria de ${data(a.data)}${a.pct < metas.alojamento ? ', abaixo da meta' : ''}` }))}
               formatar={porcento}
             />
             <Barras
@@ -114,6 +126,37 @@ export function PainelConformidade({
         </section>
       )}
 
+      {cant && (temCanteiro || cant.concluidas > 0 || cant.emAndamento > 0) && (
+        <section className="bloco">
+          <h2 className="bloco-titulo">Canteiro</h2>
+          <div className="cartoes">
+            <Cartao
+              rotulo="Conformidade das vistorias"
+              valor={cant.conformidade === null ? 'Sem vistoria' : porcento(cant.conformidade)}
+              alerta={cant.conformidade !== null && cant.conformidade < metas.canteiro}
+              apoio={cant.conformidade === null ? `Nenhuma vistoria concluída no período. Meta: ${metas.canteiro}%.` : `Meta: ${metas.canteiro}%. ${classificar(cant.conformidade)}, média de ${cant.concluidas} ${cant.concluidas === 1 ? 'vistoria' : 'vistorias'}.`}
+            />
+            <Cartao rotulo="Última vistoria" valor={cant.ultima ? data(cant.ultima) : 'Nenhuma'} apoio={`${cant.emAndamento} em andamento.`} />
+          </div>
+          <div className="duas-colunas graficos">
+            <Colunas
+              titulo="Conformidade do canteiro por mês"
+              dados={cant.meses.map((m) => ({
+                rotulo: mesCurto(m.mes),
+                valor: m.pct,
+                dica: m.qtd ? `${m.qtd} ${m.qtd === 1 ? 'vistoria' : 'vistorias'}, ${m.sim} de ${m.aplicaveis} itens em ordem` : 'Sem vistoria concluída',
+              }))}
+              formatar={porcento}
+              maximo={100}
+              meta={metas.canteiro}
+              rotuloMeta={`meta ${metas.canteiro}%`}
+              vazio="-"
+            />
+            <Barras titulo='Perguntas com mais "Não"' dados={cant.maisReprovadas.map((p) => ({ rotulo: p.texto, valor: p.qtd }))} formatar={(v) => `${v}x`} />
+          </div>
+        </section>
+      )}
+
       {maq && (
         <section className="bloco">
           <h2 className="bloco-titulo">Máquinas</h2>
@@ -121,7 +164,7 @@ export function PainelConformidade({
             <Cartao
               rotulo="Conformidade dos checklists"
               valor={maq.conformidade === null ? 'Sem checklist' : porcento(maq.conformidade)}
-              alerta={maq.conformidade !== null && maq.conformidade < 95}
+              alerta={maq.naoConformes > 0 && maq.conformidade !== null && maq.conformidade < 100}
               apoio={`${maq.dias} ${maq.dias === 1 ? 'checklist diário' : 'checklists diários'} no período.`}
             />
             <Cartao
