@@ -2910,3 +2910,37 @@ button.celula:hover {
   .passos-encerramento, .conferencia-obra { grid-template-columns: 1fr; }
   .lista-compacta { columns: 1; }
 }
+
+/* ---------------------------------------------------------------- Segurança da obra */
+.opcoes-empilhadas { display: grid; gap: 10px; }
+.opcoes-empilhadas > .campo, .opcoes-empilhadas > .em-linha, .opcoes-empilhadas > .caixa { margin-left: 26px; min-width: 0; }
+.opcoes-empilhadas > .caixa { display: grid; gap: 10px; }
+.opcoes-empilhadas > .caixa .botao-discreto { justify-self: start; }
+.ocorrencias { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ocorrencias li { padding: 10px 12px; border-left: 3px solid var(--erro); background: var(--fundo); border-radius: 0 6px 6px 0; }
+.ocorrencias .sub { display: block; margin: 2px 0 0; }
+.vistoria { display: grid; gap: 16px; }
+.vistoria-dados { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 20px; margin: 0; padding: 14px 16px; background: var(--fundo); border-radius: 8px; }
+.vistoria-dados dt { font-size: 0.8rem; color: var(--suave); text-transform: uppercase; letter-spacing: 0.04em; }
+.vistoria-dados dd { margin: 2px 0 0; font-weight: 600; }
+.vistoria-itens { margin: 0; padding: 0 0 0 22px; display: grid; gap: 4px; }
+.vistoria-itens li { padding: 8px 10px; border-radius: 6px; }
+.vistoria-itens li::marker { color: var(--suave); font-size: 0.9rem; }
+.vistoria-item-nao { background: var(--erro-fundo); }
+.vistoria-item-linha { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.vistoria-itens .sub { display: block; margin-top: 4px; }
+.fotos-miniaturas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.fotos-miniaturas img { width: 96px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid var(--linha); display: block; }
+.foto-indisponivel { display: inline-grid; place-items: center; width: 96px; height: 72px; border-radius: 6px; background: var(--fundo); color: var(--suave); font-size: 0.8rem; }
+.assinaturas { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.assinaturas li { display: flex; align-items: center; gap: 12px; }
+.assinaturas img, .assinatura-vazia { width: 120px; height: 44px; object-fit: contain; background: #fff; border-bottom: 1px solid var(--linha); flex: none; }
+.grade-ficha { font-size: 0.85rem; }
+.grade-ficha th[scope='row'] { min-width: 260px; font-weight: 500; }
+.grade-ficha td { text-align: center; min-width: 30px; padding: 4px 2px; }
+.grade-ficha thead th:not(:first-child) { text-align: center; padding: 4px 2px; }
+.ficha-ok { color: #1d5b33; }
+.ficha-nc { color: var(--erro); background: var(--erro-fundo); font-weight: 700; }
+.ficha-na { color: var(--suave); }
+.ficha-operador { font-size: 0.75rem; color: var(--suave); writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; max-height: 110px; overflow: hidden; }
+.legenda-ficha { margin: 0; font-size: 0.85rem; color: var(--suave); }

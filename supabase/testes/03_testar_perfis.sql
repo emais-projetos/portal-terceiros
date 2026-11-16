@@ -527,6 +527,7 @@ begin
   perform teste.bloqueado(t, $q$select avaliar_nao_conformidade('$q$ || teste.id('NC1') || $q$', true, null)$q$);
   perform teste.bloqueado(t, $q$select fechar_ficha_maquina('a4000000-0000-0000-0000-000000000001', '{"operador_nome":"Fulano","tst_nome":"Ciclano"}')$q$);
   perform teste.bloqueado(t, $q$select colaboradores_ativos_empresa('20000000-0000-0000-0000-000000000002')$q$);
+  perform teste.bloqueado(t, $q$select seg_fornecedores_obra('10000000-0000-0000-0000-000000000001')$q$);
   perform teste.bloqueado(t, $q$select responder_nao_conformidade('$q$ || teste.id('NC2') || $q$', 'Regularizado conforme pedido', '[]')$q$);
   perform teste.bloqueado(t, $q$select responder_nao_conformidade('$q$ || teste.id('NC1') || $q$', 'Regularizado conforme pedido', '["vistoria/a3000000-0000-0000-0000-000000000002/0/foto.jpg"]')$q$);
   perform teste.bloqueado(t, $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000003/0/x.jpg')$q$);
@@ -549,6 +550,9 @@ begin
   perform teste.bloqueado(t, $q$select avaliar_nao_conformidade('$q$ || teste.id('NC2') || $q$', true, null)$q$);
   perform teste.bloqueado(t, $q$select fechar_ficha_maquina('a4000000-0000-0000-0000-000000000002', '{"operador_nome":"Fulano","tst_nome":"Ciclano"}')$q$);
   perform teste.bloqueado(t, $q$select colaboradores_ativos_empresa('20000000-0000-0000-0000-000000000002')$q$);
+  perform teste.bloqueado(t, $q$select seg_fornecedores_obra('10000000-0000-0000-0000-000000000002')$q$);
+  perform teste.igual('Segurança (controle): TST vê os fornecedores da obra dele', $q$select 1 from seg_fornecedores_obra('10000000-0000-0000-0000-000000000001') where id = '20000000-0000-0000-0000-000000000001'$q$, 1);
+  perform teste.igual('Segurança: fornecedor de outra obra fora da lista', $q$select 1 from seg_fornecedores_obra('10000000-0000-0000-0000-000000000001') where id = '20000000-0000-0000-0000-000000000002'$q$, 0);
   perform teste.bloqueado(t, $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000002/0/x.jpg')$q$);
   if teste.linhas($q$update seg_vistorias set itens = '[]' where id = 'a3000000-0000-0000-0000-000000000001'$q$) > 0 then perform teste.falha('Segurança: vistoria concluída travada', 'TST altera vistoria concluída'); end if;
   perform teste.bloqueado('Segurança: concluir com item sem resposta', $q$select concluir_vistoria_seg('a3000000-0000-0000-0000-000000000003')$q$);
@@ -576,6 +580,8 @@ begin
   perform teste.bloqueado(t, $q$insert into seg_alojamentos (obra_id, nome) values ('10000000-0000-0000-0000-000000000001', 'NOVO')$q$);
   perform teste.bloqueado(t, $q$insert into seg_locadoras (nome) values ('NOVA')$q$);
   perform teste.igual('Segurança (controle): engenharia vê as locadoras', 'select 1 from seg_locadoras', 1);
+  perform teste.igual('Segurança (controle): engenharia vê os fornecedores da obra dele', $q$select 1 from seg_fornecedores_obra('10000000-0000-0000-0000-000000000001')$q$, 1);
+  perform teste.bloqueado(t, $q$select seg_fornecedores_obra('10000000-0000-0000-0000-000000000002')$q$);
   if teste.linhas($q$update seg_maquinas set locadora_id = null$q$) > 0 then perform teste.falha(t, 'altera máquina'); end if;
   perform teste.bloqueado(t, $q$select concluir_vistoria_seg('a3000000-0000-0000-0000-000000000003')$q$);
   if teste.linhas($q$update seg_vistorias set horario = '8h'$q$) > 0 then perform teste.falha(t, 'altera vistoria'); end if;

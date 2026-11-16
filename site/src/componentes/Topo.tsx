@@ -63,6 +63,7 @@ const ICONES: Record<string, ReactNode> = {
     </>
   ),
   ajuda: <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-5A8 8 0 1 1 21 12z" />,
+  seguranca: <path d="M3 18h18M5 18v-3a7 7 0 0 1 14 0v3M10 8.3V5h4v3.3M12 5v3" />,
   acessos: <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />,
   sair: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />,
   recolher: <path d="m11 17-5-5 5-5M18 17l-5-5 5-5" />,
@@ -103,6 +104,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
         itens: [
           { to: '/', rotulo: 'Obras', icone: 'obras', end: true },
           { to: '/painel-obra', rotulo: 'Painel da obra', icone: 'painel' },
+          { to: '/seguranca', rotulo: 'Segurança da obra', icone: 'seguranca' },
           { to: '/indicadores', rotulo: 'Indicadores', icone: 'indicadores' },
           { to: '/atendimento', rotulo: 'Atendimento', icone: 'ajuda', contador: atendimento },
         ],
@@ -145,13 +147,23 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
         titulo: 'Segurança do Trabalho',
         itens: [
           { to: '/', rotulo: 'Painel da obra', icone: 'painel', end: true },
+          { to: '/seguranca', rotulo: 'Segurança da obra', icone: 'seguranca' },
           { to: '/colaboradores?situacao=tst', rotulo: 'Para validar', icone: 'analise', contador: naFila, ativo: (c, b) => c === '/colaboradores' && paraValidar(c, b) },
           { to: '/integracoes', rotulo: 'Integração', icone: 'integracao' },
           { to: '/colaboradores', rotulo: 'Colaboradores', icone: 'colaboradores', ativo: (c, b) => c === '/colaboradores' && !paraValidar(c, b) },
         ],
       },
     ];
-  if (perfil === 'engenharia') return [{ titulo: 'Engenharia', itens: [{ to: '/', rotulo: 'Painel da obra', icone: 'painel', end: true }] }];
+  if (perfil === 'engenharia')
+    return [
+      {
+        titulo: 'Engenharia',
+        itens: [
+          { to: '/', rotulo: 'Painel da obra', icone: 'painel', end: true },
+          { to: '/seguranca', rotulo: 'Segurança da obra', icone: 'seguranca' },
+        ],
+      },
+    ];
   if (perfil === 'fornecedor')
     return [
       {
