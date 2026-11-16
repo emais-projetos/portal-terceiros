@@ -1,5 +1,8 @@
 // Empacota fonte.ts com as regras de cobrança do portal num index.ts só, para publicar no Supabase.
 // Uso: node supabase/functions/cobrancas-automaticas/empacotar.mjs  (precisa do esbuild instalado)
+// Publicação: o arquivo gerado passa de 60 KB. No Supabase fica só uma linha que importa este index.ts do GitHub,
+// fixado no commit:  import 'https://raw.githubusercontent.com/emais-projetos/portal-terceiros/<commit>/supabase/functions/cobrancas-automaticas/index.ts';
+// Depois de gerar e fazer o commit, troque o <commit> e publique de novo (verify_jwt desligado: o n8n entra com x-chave-n8n).
 import { build } from 'esbuild';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
