@@ -1,3 +1,5 @@
+// Executada em 16/11/2026 (47 fichas de máquina e 14 vistorias de alojamento). Em produção a função foi trocada
+// por uma que só responde 410, e a chave e as funções de banco temporárias foram apagadas. Fica aqui como registro.
 // Importação única do ObraCheck (artefato + Supabase separado) para a Segurança da obra do portal.
 // Lê as fichas de máquina e as vistorias de alojamento do ObraCheck, sobe fotos e assinaturas para a pasta
 // privada "seguranca" e grava tudo nas tabelas seg_*. Pode rodar mais de uma vez: o que já veio é pulado
@@ -67,12 +69,15 @@ function idDaObra(obras: Mapa, nome: unknown, faltando: Set<string>) {
   if (!id) faltando.add(String(nome ?? '(vazio)'));
   return id ?? null;
 }
-function idDaEmpresa(empresas: Mapa, nome: unknown, faltando: Set<string>) {
-  const texto = chaveTexto(String(nome ?? ''));
-  if (!texto || texto === 'emais') return null;
+// Empresa do ObraCheck -> { id no portal, nome a vincular }. Sem de-para, o nome original fica pendente para o
+// TST ou o administrativo escolher na tela (fornecedor da obra, locadora ou Emais).
+function empresaDe(empresas: Mapa, nome: unknown, faltando: Set<string>) {
+  const original = String(nome ?? '').trim();
+  const texto = chaveTexto(original);
+  if (!texto || texto === 'emais') return { id: null, pendente: null };
   const achado = Object.entries(empresas).find(([k]) => chaveTexto(k) === texto);
-  if (!achado) faltando.add(String(nome));
-  return achado?.[1] ?? null;
+  if (!achado) { faltando.add(original); return { id: null, pendente: original }; }
+  return { id: achado[1] ?? null, pendente: null };
 }
 
 // Mesma regra da planilha NR-18 (e de app.seg_nota no banco).
@@ -111,7 +116,7 @@ async function importarMaquinas(p: Pedido) {
     if (feitas.has(chave)) { puladas++; continue; }
     const d = l.data as Record<string, any>;
     const obraId = idDaObra(p.obras, d.obra ?? l.obra, obrasFaltando);
-    const empresaId = idDaEmpresa(p.empresas, d.empresa, empresasFaltando);
+    const { id: empresaId, pendente } = empresaDe(p.empresas, d.empresa, empresasFaltando);
     const modelo = `maquina:${d.maquinaTipoKey ?? l.maquina_tipo_key}`;
     if (!existe.has(modelo)) throw new Error(`Tipo de máquina desconhecido: ${modelo}`);
     if (!obraId) continue;
@@ -119,14 +124,18 @@ async function importarMaquinas(p: Pedido) {
     if (simular) { importadas++; continue; }
 
     // Máquina (uma por obra + tipo + identificação).
-    let { data: maq } = await portal.from('seg_maquinas').select('id')
+    let { data: maq } = await portal.from('seg_maquinas').select('id, empresa_id, locadora_id, empresa_a_vincular')
       .eq('obra_id', obraId).eq('modelo_codigo', modelo).ilike('identificacao', identificacao).maybeSingle();
     if (!maq) {
-      const r = await portal.from('seg_maquinas').insert({ obra_id: obraId, modelo_codigo: modelo, identificacao, empresa_id: empresaId }).select('id').single();
+      const r = await portal.from('seg_maquinas')
+        .insert({ obra_id: obraId, modelo_codigo: modelo, identificacao, empresa_id: empresaId, empresa_a_vincular: pendente })
+        .select('id, empresa_id, locadora_id, empresa_a_vincular').single();
       if (r.error) throw r.error;
       maq = r.data;
-    } else if (empresaId) {
+    } else if (empresaId && !maq.empresa_id) {
       await portal.from('seg_maquinas').update({ empresa_id: empresaId }).eq('id', maq.id);
+    } else if (pendente && !maq.empresa_id && !maq.locadora_id && !maq.empresa_a_vincular) {
+      await portal.from('seg_maquinas').update({ empresa_a_vincular: pendente }).eq('id', maq.id);
     }
 
     const fichaId = crypto.randomUUID();
@@ -187,19 +196,22 @@ async function importarAlojamentos(p: Pedido) {
     // Vistoria de teste do ObraCheck fica fora (combinado com o Filipe em 16/11).
     if (chaveTexto(String(d.alojamento ?? l.alojamento ?? '')) === 'teste' || chaveTexto(String(d.empresa ?? l.empresa ?? '')) === 'teste') { ignoradas++; continue; }
     const obraId = idDaObra(p.obras, d.obra ?? l.obra, obrasFaltando);
-    const empresaId = idDaEmpresa(p.empresas, d.empresa ?? l.empresa, empresasFaltando);
+    const { id: empresaId, pendente } = empresaDe(p.empresas, d.empresa ?? l.empresa, empresasFaltando);
     if (!obraId) continue;
     if (simular) { importadas++; continue; }
 
     const nome = String(d.alojamento ?? l.alojamento ?? '').trim() || 'Alojamento';
-    let { data: aloj } = await portal.from('seg_alojamentos').select('id, empresa_id').eq('obra_id', obraId).ilike('nome', nome).maybeSingle();
+    let { data: aloj } = await portal.from('seg_alojamentos').select('id, empresa_id, empresa_a_vincular').eq('obra_id', obraId).ilike('nome', nome).maybeSingle();
     if (!aloj) {
-      const r = await portal.from('seg_alojamentos').insert({ obra_id: obraId, nome, endereco: d.endereco || null, empresa_id: empresaId })
-        .select('id, empresa_id').single();
+      const r = await portal.from('seg_alojamentos')
+        .insert({ obra_id: obraId, nome, endereco: d.endereco || null, empresa_id: empresaId, empresa_a_vincular: pendente })
+        .select('id, empresa_id, empresa_a_vincular').single();
       if (r.error) throw r.error;
       aloj = r.data;
     } else if (empresaId && !aloj.empresa_id) {
       await portal.from('seg_alojamentos').update({ empresa_id: empresaId }).eq('id', aloj.id);
+    } else if (pendente && !aloj.empresa_id && !aloj.empresa_a_vincular) {
+      await portal.from('seg_alojamentos').update({ empresa_a_vincular: pendente }).eq('id', aloj.id);
     }
 
     const vistoriaId = crypto.randomUUID();

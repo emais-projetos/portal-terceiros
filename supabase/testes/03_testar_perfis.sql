@@ -234,6 +234,8 @@ insert into seg_vistorias (id, modelo_codigo, obra_id, alojamento_id, data_visto
    '[{"texto":"Limpo?","status":"nao"}]'),
   ('a3000000-0000-0000-0000-000000000003', 'alojamento', :O1, 'a1000000-0000-0000-0000-000000000001', current_date,
    '[{"texto":"Limpo?","status":null}]');
+insert into seg_locadoras (id, nome) values ('a5000000-0000-0000-0000-000000000001', 'LOCADORA TESTE');
+update seg_maquinas set empresa_id = null, empresa_a_vincular = 'Locadora do ObraCheck' where id = 'a2000000-0000-0000-0000-000000000001';
 insert into storage.buckets (id, name, public) values ('seguranca', 'seguranca', false) on conflict (id) do nothing;
 insert into storage.objects (bucket_id, name) values
   ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000001/1/foto.jpg'),
@@ -510,6 +512,8 @@ select teste.igual('Segurança (controle): fornecedor vê o alojamento dele', 's
 select teste.igual('Segurança: fornecedor vê só a vistoria concluída', 'select 1 from seg_vistorias', 1);
 select teste.igual('Segurança (controle): fornecedor vê a não conformidade dele', 'select 1 from seg_nao_conformidades', 1);
 select teste.igual('Segurança: fornecedor não vê máquinas', 'select 1 from seg_maquinas', 0);
+select teste.igual('Segurança: fornecedor não vê locadoras', 'select 1 from seg_locadoras', 0);
+select teste.bloqueado('Segurança: fornecedor', $q$insert into seg_locadoras (nome) values ('INTRUSA')$q$);
 select teste.igual('Segurança (controle): fornecedor vê a foto da vistoria concluída', $q$select 1 from storage.objects where bucket_id = 'seguranca'$q$, 1);
 do $$
 declare t text := 'Segurança: fornecedor';
@@ -552,7 +556,17 @@ begin
   perform teste.permitido('Segurança: TST (controle)', $q$select colaboradores_ativos_empresa('20000000-0000-0000-0000-000000000001')$q$);
   perform teste.permitido('Segurança: TST (controle)', $q$select fechar_ficha_maquina('a4000000-0000-0000-0000-000000000001', '{"operador_nome":"Fulano","tst_nome":"Ciclano"}')$q$);
   perform teste.permitido('Segurança: TST (controle)', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000003/0/x.jpg')$q$);
+  -- Vínculo de máquina e alojamento: só fornecedor ativo na obra.
+  perform teste.bloqueado('Segurança: vincular fornecedor de outra obra', $q$update seg_maquinas set empresa_id = '20000000-0000-0000-0000-000000000002' where id = 'a2000000-0000-0000-0000-000000000001'$q$);
+  perform teste.bloqueado('Segurança: vincular fornecedor de outra obra', $q$update seg_alojamentos set empresa_id = '20000000-0000-0000-0000-000000000002' where id = 'a1000000-0000-0000-0000-000000000001'$q$);
+  perform teste.permitido('Segurança: TST (controle)', $q$insert into seg_locadoras (nome) values ('LOCADORA NOVA')$q$);
+  perform teste.igual('Segurança (controle): TST vê as locadoras', 'select 1 from seg_locadoras', 1);
 end $$;
+-- Vínculo de verdade: escolher a locadora tira a pendência da importação.
+select teste.entrar(:T1);
+update seg_maquinas set locadora_id = 'a5000000-0000-0000-0000-000000000001' where id = 'a2000000-0000-0000-0000-000000000001';
+select teste.igual('Segurança: vínculo tira a pendência', $q$select 1 from seg_maquinas where empresa_a_vincular is not null$q$, 0);
+select teste.igual('Segurança (controle): locadora gravada', $q$select 1 from seg_maquinas where locadora_id is not null$q$, 1);
 
 select teste.entrar(:G1);
 do $$
@@ -560,6 +574,9 @@ declare t text := 'Segurança: engenharia só consulta';
 begin
   perform teste.igual('Segurança (controle): engenharia vê a obra dele', 'select 1 from seg_vistorias', 2);
   perform teste.bloqueado(t, $q$insert into seg_alojamentos (obra_id, nome) values ('10000000-0000-0000-0000-000000000001', 'NOVO')$q$);
+  perform teste.bloqueado(t, $q$insert into seg_locadoras (nome) values ('NOVA')$q$);
+  perform teste.igual('Segurança (controle): engenharia vê as locadoras', 'select 1 from seg_locadoras', 1);
+  if teste.linhas($q$update seg_maquinas set locadora_id = null$q$) > 0 then perform teste.falha(t, 'altera máquina'); end if;
   perform teste.bloqueado(t, $q$select concluir_vistoria_seg('a3000000-0000-0000-0000-000000000003')$q$);
   if teste.linhas($q$update seg_vistorias set horario = '8h'$q$) > 0 then perform teste.falha(t, 'altera vistoria'); end if;
 end $$;
