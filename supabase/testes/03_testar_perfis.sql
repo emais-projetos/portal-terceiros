@@ -219,6 +219,34 @@ select pedir_obra(:E2, :O3, null, null);
 select teste.sair();
 
 -- Ids gerados, para usar nos testes.
+-- Segurança da obra: alojamento e máquina em cada obra; vistoria concluída com item "não" notificada ao fornecedor.
+insert into seg_alojamentos (id, obra_id, nome, empresa_id) values
+  ('a1000000-0000-0000-0000-000000000001', :O1, 'CASA UM', :E1), ('a1000000-0000-0000-0000-000000000002', :O2, 'CASA DOIS', :E2);
+insert into seg_maquinas (id, obra_id, modelo_codigo, identificacao, empresa_id) values
+  ('a2000000-0000-0000-0000-000000000001', :O1, 'maquina:trator', 'TR-01', :E1), ('a2000000-0000-0000-0000-000000000002', :O2, 'maquina:trator', 'TR-02', :E2);
+insert into seg_fichas_maquina (id, maquina_id, competencia, itens) values
+  ('a4000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000001', date_trunc('month', current_date), '["a","b"]'),
+  ('a4000000-0000-0000-0000-000000000002', 'a2000000-0000-0000-0000-000000000002', date_trunc('month', current_date), '["a","b"]');
+insert into seg_vistorias (id, modelo_codigo, obra_id, alojamento_id, data_vistoria, itens) values
+  ('a3000000-0000-0000-0000-000000000001', 'alojamento', :O1, 'a1000000-0000-0000-0000-000000000001', current_date,
+   '[{"texto":"Limpo?","status":"sim"},{"texto":"Chuveiro aterrado?","status":"nao","prazo":"2030-01-10","recomendacao":"Aterrar"},{"texto":"Beliche?","status":"na"}]'),
+  ('a3000000-0000-0000-0000-000000000002', 'alojamento', :O2, 'a1000000-0000-0000-0000-000000000002', current_date,
+   '[{"texto":"Limpo?","status":"nao"}]'),
+  ('a3000000-0000-0000-0000-000000000003', 'alojamento', :O1, 'a1000000-0000-0000-0000-000000000001', current_date,
+   '[{"texto":"Limpo?","status":null}]');
+insert into storage.buckets (id, name, public) values ('seguranca', 'seguranca', false) on conflict (id) do nothing;
+insert into storage.objects (bucket_id, name) values
+  ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000001/1/foto.jpg'),
+  ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000002/0/foto.jpg'),
+  ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000003/0/foto.jpg');
+select teste.entrar(:T1);
+select concluir_vistoria_seg('a3000000-0000-0000-0000-000000000001');
+select notificar_nao_conformidades('a3000000-0000-0000-0000-000000000001', null);
+select teste.entrar(:T2);
+select concluir_vistoria_seg('a3000000-0000-0000-0000-000000000002');
+select notificar_nao_conformidades('a3000000-0000-0000-0000-000000000002', null);
+select teste.sair();
+
 create table teste.ids as
 select 'M1' nome, id from medicoes where empresa_id = :E1
 union all select 'M2', id from medicoes where empresa_id = :E2
@@ -226,7 +254,9 @@ union all select 'CV1', id from conversas where usuario_id = :F1
 union all select 'CV2', id from conversas where usuario_id = :F2
 union all select 'P1', id from pedidos_obra where empresa_id = :E1
 union all select 'P2', id from pedidos_obra where empresa_id = :E2
-union all select 'AV1', id from avisos_liberacao where obra_id = :O1;
+union all select 'AV1', id from avisos_liberacao where obra_id = :O1
+union all select 'NC1', id from seg_nao_conformidades where empresa_id = :E1
+union all select 'NC2', id from seg_nao_conformidades where empresa_id = :E2;
 grant select on teste.ids to anon, authenticated;
 create function teste.id(p text) returns uuid language sql stable as $$ select id from teste.ids where nome = p $$;
 
@@ -262,7 +292,17 @@ create function teste.alvos(p_lado int, p_com_obra boolean) returns jsonb langua
     'pedidos_obra.id', jsonb_build_array(teste.id('P' || p_lado)),
     'integracoes.id', jsonb_build_array(i),
     'usuarios.id', jsonb_build_array(f),
-    'v_alocacoes_resumo.alocacao_id', jsonb_build_array(al)
+    'v_alocacoes_resumo.alocacao_id', jsonb_build_array(al),
+    'alojamento_id', jsonb_build_array(('a1000000-0000-0000-0000-00000000000' || p_lado)::uuid),
+    'seg_alojamentos.id', jsonb_build_array(('a1000000-0000-0000-0000-00000000000' || p_lado)::uuid),
+    'maquina_id', jsonb_build_array(('a2000000-0000-0000-0000-00000000000' || p_lado)::uuid),
+    'seg_maquinas.id', jsonb_build_array(('a2000000-0000-0000-0000-00000000000' || p_lado)::uuid),
+    'seg_fichas_maquina.id', jsonb_build_array(('a4000000-0000-0000-0000-00000000000' || p_lado)::uuid),
+    'vistoria_id', case when p_lado = 1 then jsonb_build_array('a3000000-0000-0000-0000-000000000001'::uuid, 'a3000000-0000-0000-0000-000000000003'::uuid)
+                        else jsonb_build_array('a3000000-0000-0000-0000-000000000002'::uuid) end,
+    'seg_vistorias.id', case when p_lado = 1 then jsonb_build_array('a3000000-0000-0000-0000-000000000001'::uuid, 'a3000000-0000-0000-0000-000000000003'::uuid)
+                        else jsonb_build_array('a3000000-0000-0000-0000-000000000002'::uuid) end,
+    'seg_nao_conformidades.id', jsonb_build_array(teste.id('NC' || p_lado))
   ))
   from (values
     (1, '20000000-0000-0000-0000-000000000001'::uuid, '40000000-0000-0000-0000-000000000001'::uuid, '60000000-0000-0000-0000-000000000001'::uuid,
@@ -321,7 +361,7 @@ begin
   perform teste.bloqueado(t, $q$insert into alocacoes (colaborador_id, obra_id) values ('40000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001')$q$);
   perform teste.bloqueado(t, $q$insert into arquivos (documento_id, caminho, nome_original) values ('60000000-0000-0000-0000-000000000002', 'x', 'x')$q$);
   perform teste.bloqueado(t, $q$insert into storage.objects (bucket_id, name) values ('documentos', '20000000-0000-0000-0000-000000000002/x/invasao.pdf')$q$);
-  perform teste.igual(t, $q$select 1 from storage.objects$q$, 0);
+  perform teste.igual(t, $q$select 1 from storage.objects where bucket_id = 'documentos'$q$, 0);
 
   t := 'Fornecedor: aumentar o próprio acesso';
   perform teste.bloqueado(t, $q$insert into usuarios_empresas values ('c0000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000002')$q$);
@@ -463,12 +503,75 @@ begin
 end $$;
 
 -- ============================================================================================
+-- Segurança da obra: checklists do TST e alojamentos do fornecedor
+-- ============================================================================================
+select teste.entrar(:F1);
+select teste.igual('Segurança (controle): fornecedor vê o alojamento dele', 'select 1 from seg_alojamentos', 1);
+select teste.igual('Segurança: fornecedor vê só a vistoria concluída', 'select 1 from seg_vistorias', 1);
+select teste.igual('Segurança (controle): fornecedor vê a não conformidade dele', 'select 1 from seg_nao_conformidades', 1);
+select teste.igual('Segurança: fornecedor não vê máquinas', 'select 1 from seg_maquinas', 0);
+select teste.igual('Segurança (controle): fornecedor vê a foto da vistoria concluída', $q$select 1 from storage.objects where bucket_id = 'seguranca'$q$, 1);
+do $$
+declare t text := 'Segurança: fornecedor';
+begin
+  perform teste.bloqueado(t, $q$insert into seg_alojamentos (obra_id, nome, empresa_id) values ('10000000-0000-0000-0000-000000000001', 'INTRUSO', '20000000-0000-0000-0000-000000000001')$q$);
+  perform teste.bloqueado(t, $q$insert into seg_vistorias (modelo_codigo, obra_id, alojamento_id, data_vistoria, itens) values ('alojamento', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', current_date, '[]')$q$);
+  if teste.linhas($q$update seg_vistorias set pontuacao = 1, classificacao = 'Ótimo'$q$) > 0 then perform teste.falha(t, 'altera a nota da vistoria'); end if;
+  if teste.linhas($q$update seg_nao_conformidades set situacao = 'regularizada'$q$) > 0 then perform teste.falha(t, 'marca a não conformidade como regularizada'); end if;
+  perform teste.bloqueado(t, $q$select concluir_vistoria_seg('a3000000-0000-0000-0000-000000000003')$q$);
+  perform teste.bloqueado(t, $q$select notificar_nao_conformidades('a3000000-0000-0000-0000-000000000001', null)$q$);
+  perform teste.bloqueado(t, $q$select avaliar_nao_conformidade('$q$ || teste.id('NC1') || $q$', true, null)$q$);
+  perform teste.bloqueado(t, $q$select fechar_ficha_maquina('a4000000-0000-0000-0000-000000000001', '{"operador_nome":"Fulano","tst_nome":"Ciclano"}')$q$);
+  perform teste.bloqueado(t, $q$select colaboradores_ativos_empresa('20000000-0000-0000-0000-000000000002')$q$);
+  perform teste.bloqueado(t, $q$select responder_nao_conformidade('$q$ || teste.id('NC2') || $q$', 'Regularizado conforme pedido', '[]')$q$);
+  perform teste.bloqueado(t, $q$select responder_nao_conformidade('$q$ || teste.id('NC1') || $q$', 'Regularizado conforme pedido', '["vistoria/a3000000-0000-0000-0000-000000000002/0/foto.jpg"]')$q$);
+  perform teste.bloqueado(t, $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000003/0/x.jpg')$q$);
+  perform teste.bloqueado(t, $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'nc/$q$ || teste.id('NC2') || $q$/x.jpg')$q$);
+  perform teste.permitido('Segurança: fornecedor (controle)', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'nc/$q$ || teste.id('NC1') || $q$/x.jpg')$q$);
+end $$;
+-- Resposta de verdade (sem desfazer), para o TST avaliar em seguida.
+select responder_nao_conformidade(teste.id('NC1'), 'Chuveiro aterrado pelo eletricista', jsonb_build_array('nc/' || teste.id('NC1') || '/x.jpg'));
+select teste.bloqueado('Segurança: responder de novo', $q$select responder_nao_conformidade('$q$ || teste.id('NC1') || $q$', 'Outra resposta qualquer', '[]')$q$);
+
+select teste.entrar(:T1);
+select teste.igual('Segurança (controle): TST vê a obra dele', 'select 1 from seg_vistorias', 2);
+do $$
+declare t text := 'Segurança: TST fora da obra';
+begin
+  perform teste.bloqueado(t, $q$insert into seg_alojamentos (obra_id, nome) values ('10000000-0000-0000-0000-000000000002', 'INTRUSO')$q$);
+  perform teste.bloqueado(t, $q$insert into seg_maquinas (obra_id, modelo_codigo, identificacao) values ('10000000-0000-0000-0000-000000000002', 'maquina:trator', 'X')$q$);
+  perform teste.bloqueado(t, $q$insert into seg_vistorias (modelo_codigo, obra_id, alojamento_id, data_vistoria, itens) values ('alojamento', '10000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000002', current_date, '[]')$q$);
+  perform teste.bloqueado(t, $q$insert into seg_vistorias (modelo_codigo, obra_id, alojamento_id, data_vistoria, itens) values ('alojamento', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000002', current_date, '[]')$q$);
+  perform teste.bloqueado(t, $q$select avaliar_nao_conformidade('$q$ || teste.id('NC2') || $q$', true, null)$q$);
+  perform teste.bloqueado(t, $q$select fechar_ficha_maquina('a4000000-0000-0000-0000-000000000002', '{"operador_nome":"Fulano","tst_nome":"Ciclano"}')$q$);
+  perform teste.bloqueado(t, $q$select colaboradores_ativos_empresa('20000000-0000-0000-0000-000000000002')$q$);
+  perform teste.bloqueado(t, $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000002/0/x.jpg')$q$);
+  if teste.linhas($q$update seg_vistorias set itens = '[]' where id = 'a3000000-0000-0000-0000-000000000001'$q$) > 0 then perform teste.falha('Segurança: vistoria concluída travada', 'TST altera vistoria concluída'); end if;
+  perform teste.bloqueado('Segurança: concluir com item sem resposta', $q$select concluir_vistoria_seg('a3000000-0000-0000-0000-000000000003')$q$);
+  perform teste.permitido('Segurança: TST (controle)', $q$select avaliar_nao_conformidade('$q$ || teste.id('NC1') || $q$', false, 'Falta a foto do aterramento')$q$);
+  perform teste.permitido('Segurança: TST (controle)', $q$select colaboradores_ativos_empresa('20000000-0000-0000-0000-000000000001')$q$);
+  perform teste.permitido('Segurança: TST (controle)', $q$select fechar_ficha_maquina('a4000000-0000-0000-0000-000000000001', '{"operador_nome":"Fulano","tst_nome":"Ciclano"}')$q$);
+  perform teste.permitido('Segurança: TST (controle)', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000003/0/x.jpg')$q$);
+end $$;
+
+select teste.entrar(:G1);
+do $$
+declare t text := 'Segurança: engenharia só consulta';
+begin
+  perform teste.igual('Segurança (controle): engenharia vê a obra dele', 'select 1 from seg_vistorias', 2);
+  perform teste.bloqueado(t, $q$insert into seg_alojamentos (obra_id, nome) values ('10000000-0000-0000-0000-000000000001', 'NOVO')$q$);
+  perform teste.bloqueado(t, $q$select concluir_vistoria_seg('a3000000-0000-0000-0000-000000000003')$q$);
+  if teste.linhas($q$update seg_vistorias set horario = '8h'$q$) > 0 then perform teste.falha(t, 'altera vistoria'); end if;
+end $$;
+select teste.sair();
+
+-- ============================================================================================
 -- 5. Admin (controle): vê tudo e usa as funções do administrativo
 -- ============================================================================================
 select teste.entrar(:A);
 select teste.igual('Admin (controle)', 'select 1 from colaboradores', 2);
 select teste.igual('Admin (controle)', 'select 1 from v_documentos_atuais where id in (''60000000-0000-0000-0000-000000000001'', ''60000000-0000-0000-0000-000000000002'')', 2);
-select teste.igual('Admin (controle)', 'select 1 from storage.objects', 2);
+select teste.igual('Admin (controle)', $q$select 1 from storage.objects where bucket_id = 'documentos'$q$, 2);
 select teste.permitido('Admin (controle)', $q$select acessos_ultimo_login()$q$);
 select teste.permitido('Admin (controle)', $q$select resolver_conversa('$q$ || teste.id('CV1') || $q$', true)$q$);
 

@@ -3,12 +3,14 @@
 with
 -- Tabelas de consulta que qualquer pessoa logada pode ler inteiras (não têm dado de fornecedor nem de colaborador).
 tabelas_de_consulta(nome) as (values
-  ('funcoes'), ('funcoes_documentos'), ('modelos_documento'), ('obras'), ('parametros'), ('tipos_documento'), ('tipos_medicao')
+  ('funcoes'), ('funcoes_documentos'), ('modelos_documento'), ('obras'), ('parametros'), ('seg_modelos'), ('tipos_documento'), ('tipos_medicao')
 ),
 -- Funções que o site chama e que já estão cobertas pelo teste por perfil (03_testar_perfis.sql).
 -- Função nova no schema public precisa ser revisada e entrar aqui e no teste.
 funcoes_revisadas(nome) as (values
   ('abrir_medicao'), ('acessos_ultimo_login'), ('alterar_tipo_documento'), ('aprovar_alocacao'), ('aprovar_documento'),
+  ('avaliar_nao_conformidade'), ('colaboradores_ativos_empresa'), ('concluir_vistoria_seg'), ('fechar_ficha_maquina'),
+  ('notificar_nao_conformidades'), ('responder_nao_conformidade'),
   ('avaliar_item_medicao'), ('bloquear_colaborador'), ('cadastrar_subcontratada'), ('cancelar_integracao'),
   ('combinar_prazo_medicao'), ('concluir_conferencia_medicao'), ('conferir_encerramento_obra'), ('concluir_integracao'), ('conferir_colaborador_medicao'),
   ('corrigir_colaborador'), ('criar_integracao'), ('definir_colaborador_medicao'), ('desligar_colaborador'),
