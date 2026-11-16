@@ -3,7 +3,10 @@
 // privada "seguranca" e grava tudo nas tabelas seg_*. Pode rodar mais de uma vez: o que já veio é pulado
 // (origem_chave = chave do registro no ObraCheck).
 //
-// Chamada: POST com o cabeçalho x-chave-importacao (segredo IMPORTACAO_OBRACHECK) e o corpo:
+// Chamada: POST com o cabeçalho x-chave-importacao e o corpo abaixo. A chave e a chave pública do ObraCheck ficam
+// no cofre (vault) do banco e são lidas pela função public.importacao_obracheck_chaves(), que só a service role chama.
+// A função de banco, os segredos e esta edge function são temporários: saem depois da importação.
+// Corpo:
 //   { "obras": { "<obra no ObraCheck>": "<id da obra no portal>" },
 //     "empresas": { "<empresa no ObraCheck>": "<id da empresa no portal>" | null },   (null ou ausente = Emais)
 //     "simular": true | false, "parte": "maquinas" | "alojamentos", "inicio": 0, "quantidade": 10 }
@@ -24,8 +27,10 @@ const resposta = (status: number, corpo: unknown) =>
 
 const chaveTexto = (s: string | null | undefined) => (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
+let OBRACHECK_ANON = '';
+
 async function lerObraCheck(tabela: string, inicio: number, quantidade: number) {
-  const chave = Deno.env.get('OBRACHECK_ANON')!;
+  const chave = OBRACHECK_ANON;
   const r = await fetch(`${OBRACHECK_URL}/rest/v1/${tabela}?select=*&order=record_key&offset=${inicio}&limit=${quantidade}`, {
     headers: { apikey: chave, Authorization: `Bearer ${chave}` },
   });
@@ -34,7 +39,7 @@ async function lerObraCheck(tabela: string, inicio: number, quantidade: number) 
 }
 
 async function contarObraCheck(tabela: string) {
-  const chave = Deno.env.get('OBRACHECK_ANON')!;
+  const chave = OBRACHECK_ANON;
   const r = await fetch(`${OBRACHECK_URL}/rest/v1/${tabela}?select=record_key`, {
     headers: { apikey: chave, Authorization: `Bearer ${chave}`, Prefer: 'count=exact', Range: '0-0' },
   });
@@ -172,12 +177,15 @@ async function importarAlojamentos(p: Pedido) {
   const textos = (modelo?.itens ?? []) as string[];
   let importadas = 0;
   let puladas = 0;
+  let ignoradas = 0;
   let fotos = 0;
 
   for (const l of linhas) {
     const chave = String(l.record_key);
     if (feitas.has(chave)) { puladas++; continue; }
     const d = l.data as Record<string, any>;
+    // Vistoria de teste do ObraCheck fica fora (combinado com o Filipe em 16/11).
+    if (chaveTexto(String(d.alojamento ?? l.alojamento ?? '')) === 'teste' || chaveTexto(String(d.empresa ?? l.empresa ?? '')) === 'teste') { ignoradas++; continue; }
     const obraId = idDaObra(p.obras, d.obra ?? l.obra, obrasFaltando);
     const empresaId = idDaEmpresa(p.empresas, d.empresa ?? l.empresa, empresasFaltando);
     if (!obraId) continue;
@@ -240,13 +248,15 @@ async function importarAlojamentos(p: Pedido) {
     if (r.error) throw new Error(`Vistoria ${chave}: ${r.error.message}`);
     importadas++;
   }
-  return { parte: 'alojamentos', lidas: linhas.length, importadas, puladas, fotos, obras_sem_de_para: [...obrasFaltando], empresas_sem_de_para: [...empresasFaltando] };
+  return { parte: 'alojamentos', lidas: linhas.length, importadas, puladas, ignoradas, fotos, obras_sem_de_para: [...obrasFaltando], empresas_sem_de_para: [...empresasFaltando] };
 }
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return resposta(405, { erro: 'Use POST' });
-  const segredo = Deno.env.get('IMPORTACAO_OBRACHECK');
+  const { data: chaves } = await portal.rpc('importacao_obracheck_chaves');
+  const segredo = (chaves as { chave?: string } | null)?.chave;
   if (!segredo || req.headers.get('x-chave-importacao') !== segredo) return resposta(401, { erro: 'Não autorizado' });
+  OBRACHECK_ANON = (chaves as { obracheck?: string }).obracheck ?? '';
   let p: Pedido;
   try {
     p = await req.json();
