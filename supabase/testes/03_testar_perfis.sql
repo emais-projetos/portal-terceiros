@@ -514,6 +514,9 @@ select teste.igual('Segurança (controle): fornecedor vê a não conformidade de
 select teste.igual('Segurança: fornecedor não vê máquinas', 'select 1 from seg_maquinas', 0);
 select teste.igual('Segurança: fornecedor não vê locadoras', 'select 1 from seg_locadoras', 0);
 select teste.bloqueado('Segurança: fornecedor', $q$insert into seg_locadoras (nome) values ('INTRUSA')$q$);
+select teste.igual('Segurança: fornecedor não vê termos', 'select 1 from seg_termos_alojamento', 0);
+select teste.bloqueado('Segurança: fornecedor', $q$insert into seg_termos_alojamento (alojamento_id, colaborador_id, nome, representante_nome, assinatura, representante_assinatura) values ('a1000000-0000-0000-0000-000000000001', null, 'Fulano de Tal', 'Responsavel', 'termo/a1000000-0000-0000-0000-000000000001/a.png', 'termo/a1000000-0000-0000-0000-000000000001/b.png')$q$);
+select teste.bloqueado('Segurança: fornecedor', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'termo/a1000000-0000-0000-0000-000000000001/x.png')$q$);
 select teste.igual('Segurança (controle): fornecedor vê a foto da vistoria concluída', $q$select 1 from storage.objects where bucket_id = 'seguranca'$q$, 1);
 do $$
 declare t text := 'Segurança: fornecedor';
@@ -576,6 +579,12 @@ begin
   perform teste.bloqueado('Segurança: vincular fornecedor de outra obra', $q$update seg_maquinas set empresa_id = '20000000-0000-0000-0000-000000000002' where id = 'a2000000-0000-0000-0000-000000000001'$q$);
   perform teste.bloqueado('Segurança: vincular fornecedor de outra obra', $q$update seg_alojamentos set empresa_id = '20000000-0000-0000-0000-000000000002' where id = 'a1000000-0000-0000-0000-000000000001'$q$);
   perform teste.permitido('Segurança: TST (controle)', $q$insert into seg_locadoras (nome) values ('LOCADORA NOVA')$q$);
+  perform teste.permitido('Segurança: TST (controle)', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'termo/a1000000-0000-0000-0000-000000000001/x.png')$q$);
+  perform teste.bloqueado('Segurança: termo de alojamento de outra obra', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'termo/a1000000-0000-0000-0000-000000000002/x.png')$q$);
+  perform teste.permitido('Segurança: TST (controle)', $q$insert into seg_termos_alojamento (alojamento_id, colaborador_id, nome, representante_nome, assinatura, representante_assinatura) values ('a1000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'Fulano de Tal', 'Responsavel', 'termo/a1000000-0000-0000-0000-000000000001/a.png', 'termo/a1000000-0000-0000-0000-000000000001/b.png')$q$);
+  perform teste.bloqueado('Segurança: termo com assinatura de outro alojamento', $q$insert into seg_termos_alojamento (alojamento_id, colaborador_id, nome, representante_nome, assinatura, representante_assinatura) values ('a1000000-0000-0000-0000-000000000001', null, 'Fulano de Tal', 'Responsavel', 'termo/a1000000-0000-0000-0000-000000000002/a.png', 'termo/a1000000-0000-0000-0000-000000000002/b.png')$q$);
+  perform teste.bloqueado('Segurança: termo com colaborador de outro fornecedor', $q$insert into seg_termos_alojamento (alojamento_id, colaborador_id, nome, representante_nome, assinatura, representante_assinatura) values ('a1000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000002', 'Fulano de Tal', 'Responsavel', 'termo/a1000000-0000-0000-0000-000000000001/a.png', 'termo/a1000000-0000-0000-0000-000000000001/b.png')$q$);
+  perform teste.bloqueado('Segurança: termo sem assinatura', $q$insert into seg_termos_alojamento (alojamento_id, nome, representante_nome) values ('a1000000-0000-0000-0000-000000000001', 'Fulano de Tal', 'Responsavel')$q$);
   perform teste.igual('Segurança (controle): TST vê as locadoras', 'select 1 from seg_locadoras', 1);
 end $$;
 -- Vínculo de verdade: escolher a locadora tira a pendência da importação.
