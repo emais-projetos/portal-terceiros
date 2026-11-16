@@ -16,7 +16,6 @@
 // que já existe enviar os dois sem mudança.
 import { supabase } from './servidor-supabase.ts';
 import { montarFila, nomeLegivel, type Cobranca } from '../../../site/src/lib/cobrancas.ts';
-import { data } from '../../../site/src/lib/formato.ts';
 
 declare const Deno: { env: { get(nome: string): string | undefined }; serve(h: (r: Request) => Response | Promise<Response>): void };
 
@@ -199,7 +198,7 @@ async function resumo(dataRef: string) {
 // ---------------------------------------------------------------- Aviso de liberação
 
 type ItemLiberacao = {
-  tipo?: 'aviso_liberacao' | 'convite_acesso' | 'ajuda' | 'seguranca';
+  tipo?: 'aviso_liberacao' | 'convite_acesso' | 'ajuda';
   id: string;
   obra_id: string;
   titulo: string;
@@ -226,8 +225,7 @@ async function liberacoes() {
   const avisos = await avisosDeLiberacao(cfg);
   const convites = await convitesDeAcesso(cfg);
   const ajuda = await avisosDeAjuda(cfg);
-  const seguranca = await avisosDeSeguranca(cfg);
-  return { ...base, itens: [...avisos, ...convites, ...ajuda, ...seguranca] };
+  return { ...base, itens: [...avisos, ...convites, ...ajuda] };
 }
 
 async function avisosDeLiberacao(cfg: Awaited<ReturnType<typeof parametros>>): Promise<ItemLiberacao[]> {
@@ -558,7 +556,6 @@ async function registrarConvite(item: ItemLiberacao, situacao: 'enviada' | 'erro
 }
 
 async function registrarLiberacao(item: ItemLiberacao, situacao: 'enviada' | 'erro', erro?: string) {
-  if (item.tipo === 'seguranca') return registrarSeguranca(item, situacao, erro);
   if (item.tipo === 'convite_acesso') return registrarConvite(item, situacao, erro);
   if (item.tipo === 'ajuda') return registrarAjuda(item, situacao, erro);
   const agora = new Date().toISOString();
@@ -591,168 +588,64 @@ async function registrarLiberacao(item: ItemLiberacao, situacao: 'enviada' | 'er
 
 // ---------------------------------------------------------------- Segurança da obra
 
-type AvisoSeg = { id: string; tipo: 'vistoria_pdf' | 'nao_conformidade' | 'nc_reaberta'; vistoria_id: string; empresa_id: string | null; usuario_id: string | null };
-
-// Avisos da Segurança da obra: PDF da vistoria para o TST, itens a regularizar e regularização não aceita para o fornecedor.
-async function avisosDeSeguranca(cfg: Awaited<ReturnType<typeof parametros>>): Promise<ItemLiberacao[]> {
-  const limite = new Date(Date.now() - 30 * 60000).toISOString();
-  const { data: fila, error } = await supabase
-    .from('seg_avisos')
-    .select('id, tipo, vistoria_id, empresa_id, usuario_id')
-    .or(`situacao_envio.eq.aguardando,and(situacao_envio.eq.enviando,envio_iniciado_em.lt."${limite}")`)
-    .order('criado_em')
-    .limit(25);
-  if (error) throw error;
-  const avisos = (fila ?? []) as AvisoSeg[];
-  if (!avisos.length) return [];
-  const { error: e0 } = await supabase.from('seg_avisos').update({ situacao_envio: 'enviando', envio_iniciado_em: new Date().toISOString() }).in('id', avisos.map((a) => a.id));
-  if (e0) throw e0;
-
-  const vistIds = [...new Set(avisos.map((a) => a.vistoria_id))];
-  const [{ data: vs, error: e1 }, { data: ncs, error: e2 }, { data: mods, error: e3 }, { data: ps, error: e4 }] = await Promise.all([
-    supabase.from('seg_vistorias').select('id, obra_id, alojamento_id, data_vistoria, classificacao, situacao, fotos_expiram_em, obras(nome), seg_alojamentos(nome)').in('id', vistIds),
-    supabase.from('seg_nao_conformidades').select('vistoria_id, empresa_id, item, descricao, recomendacao, prazo, situacao, motivo_reabertura').in('vistoria_id', vistIds).order('item'),
-    supabase.from('modelos_email').select('tipo, assunto, corpo, ativo').in('tipo', ['seg_vistoria_pdf', 'seg_nao_conformidade', 'seg_nc_reaberta']),
-    supabase.from('parametros').select('chave, valor').in('chave', ['cobranca_setor', 'cobranca_contato']),
-  ]);
-  if (e1 || e2 || e3 || e4) throw e1 ?? e2 ?? e3 ?? e4;
-  type V = { id: string; obra_id: string; data_vistoria: string; classificacao: string | null; situacao: string; fotos_expiram_em: string | null; obras: { nome: string } | null; seg_alojamentos: { nome: string } | null };
-  const vistoria = new Map(((vs ?? []) as unknown as V[]).map((v) => [v.id, v]));
-  const modelo = new Map((mods ?? []).map((m) => [m.tipo as string, m]));
-  const param = new Map((ps ?? []).map((x) => [x.chave as string, ((x.valor as string) ?? '').trim()]));
-
-  const usuIds = [...new Set(avisos.map((a) => a.usuario_id).filter((x): x is string => !!x))];
-  const empIds = [...new Set(avisos.map((a) => a.empresa_id).filter((x): x is string => !!x))];
-  const [{ data: us, error: e5 }, { data: es, error: e6 }] = await Promise.all([
-    usuIds.length ? supabase.from('usuarios').select('id, nome, email, ativo').in('id', usuIds) : Promise.resolve({ data: [], error: null }),
-    empIds.length ? supabase.from('empresas').select('id, razao_social, email_contato, email_acesso').in('id', empIds) : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (e5 || e6) throw e5 ?? e6;
-  const usuario = new Map((us ?? []).map((u) => [u.id as string, u]));
-  const empresa = new Map((es ?? []).map((e) => [e.id as string, e]));
-
-  const teste = !!cfg.testePara;
-  const itens: ItemLiberacao[] = [];
-  const descartar: { id: string; erro: string; situacao: 'cancelado' | 'erro' }[] = [];
-  const assinatura = [`Segurança do Trabalho | Grupo Emais`, param.get('cobranca_contato')].filter(Boolean).join('\n');
-
-  for (const a of avisos) {
-    const v = vistoria.get(a.vistoria_id);
-    const m = modelo.get(a.tipo === 'vistoria_pdf' ? 'seg_vistoria_pdf' : a.tipo === 'nao_conformidade' ? 'seg_nao_conformidade' : 'seg_nc_reaberta');
-    if (!v || v.situacao !== 'concluida') { descartar.push({ id: a.id, erro: 'Vistoria reaberta ou excluída', situacao: 'cancelado' }); continue; }
-    if (!m?.ativo) { descartar.push({ id: a.id, erro: 'Modelo de e-mail desativado', situacao: 'cancelado' }); continue; }
-    const local = v.seg_alojamentos?.nome ?? 'alojamento';
-    const obra = nomeLegivel(v.obras?.nome ?? '');
-    let destino = '';
-    const valores: Record<string, string> = {
-      '{local}': local,
-      '{obra}': obra,
-      '{data_vistoria}': data(v.data_vistoria),
-      '{classificacao}': v.classificacao ?? '',
-      '{assinatura}': assinatura,
-    };
-    if (a.tipo === 'vistoria_pdf') {
-      const u = usuario.get(a.usuario_id ?? '');
-      if (!u?.ativo) { descartar.push({ id: a.id, erro: 'TST sem acesso ativo', situacao: 'cancelado' }); continue; }
-      destino = (u.email as string) ?? '';
-      valores['{primeiro_nome}'] = nomeLegivel((u.nome as string).trim().split(/\s+/)[0] ?? '');
-      valores['{data_exclusao}'] = v.fotos_expiram_em ? data(v.fotos_expiram_em) : '';
-      valores['{link}'] = `${PORTAL}seguranca/vistoria/${v.id}`;
-    } else {
-      const e = empresa.get(a.empresa_id ?? '');
-      destino = ((e?.email_contato as string | null) ?? (e?.email_acesso as string | null) ?? '').trim();
-      const situacoes = a.tipo === 'nao_conformidade' ? ['aberta'] : ['reaberta'];
-      const lista = (ncs ?? []).filter((n) => n.vistoria_id === v.id && n.empresa_id === a.empresa_id && situacoes.includes(n.situacao as string));
-      if (!lista.length) { descartar.push({ id: a.id, erro: 'Nenhum item pendente para avisar', situacao: 'cancelado' }); continue; }
-      valores['{empresa}'] = nomeLegivel((e?.razao_social as string) ?? '', true);
-      valores['{itens}'] = lista
-        .map((n) => {
-          const partes = [`- ${n.descricao}`];
-          if (n.recomendacao) partes.push(`  O que fazer: ${n.recomendacao}`);
-          if (a.tipo === 'nc_reaberta' && n.motivo_reabertura) partes.push(`  Por que não foi aceito: ${n.motivo_reabertura}`);
-          partes.push(`  Prazo: ${data(n.prazo as string)}`);
-          return partes.join('\n');
-        })
-        .join('\n\n');
-      valores['{link}'] = `${PORTAL}alojamentos`;
-    }
-    if (!destino.includes('@')) { descartar.push({ id: a.id, erro: 'Sem e-mail de destino', situacao: 'erro' }); continue; }
-    const trocar = (t: string) => t.replace(/\{[a-z_]+\}/g, (x) => (x in valores ? valores[x] : x));
-    const corpo = trocar(m.corpo as string).split('\n').map((l) => l.replace(/\s+$/, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim();
-    const assunto = trocar(m.assunto as string).replace(/\s+/g, ' ').trim();
-    itens.push({
-      tipo: 'seguranca',
-      id: a.id,
-      obra_id: v.obra_id,
-      titulo: `Segurança: ${local}`,
-      para: teste ? cfg.testePara : destino,
-      para_original: destino,
-      assunto: teste ? `[TESTE · para ${destino}] ${assunto}` : assunto,
-      corpo,
-      empresa_ids: a.empresa_id ? [a.empresa_id] : [],
-      teste,
-    });
-  }
-  for (const d of descartar) {
-    const { error: e7 } = await supabase.from('seg_avisos').update({ situacao_envio: d.situacao, erro: d.erro }).eq('id', d.id);
-    if (e7) throw e7;
-  }
-  return itens;
-}
-
-async function registrarSeguranca(item: ItemLiberacao, situacao: 'enviada' | 'erro', erro?: string) {
-  const { error } = await supabase.from('cobrancas_envios').insert({
-    chave: `seguranca|${item.id}`,
-    tipo: 'seguranca',
-    titulo: item.titulo,
-    empresa_ids: item.empresa_ids,
-    obra_id: item.obra_id || null,
-    para: item.para,
-    para_original: item.para_original,
-    assunto: item.assunto,
-    corpo: item.corpo,
-    situacao,
-    erro: situacao === 'erro' ? (erro ?? 'Erro no envio') : null,
-    teste: item.teste,
-  });
-  if (error) throw error;
-  const mudanca =
-    situacao === 'enviada'
-      ? { situacao_envio: 'enviado', enviado_em: new Date().toISOString(), para: item.para, erro: null }
-      : { situacao_envio: 'erro', erro: erro ?? 'Erro no envio' };
-  const { error: e2 } = await supabase.from('seg_avisos').update(mudanca).eq('id', item.id);
-  if (e2) throw e2;
-}
-
-// Fotos das vistorias concluídas há mais de N dias (Regras > Segurança da obra) saem da base.
-// Ficam a avaliação e as assinaturas; o registro completo é o PDF que o TST baixou.
+// Fotos da Segurança da obra saem da base depois do prazo de Regras > Segurança da obra (seg_dias_fotos):
+// vistoria, N dias depois de concluída; ficha de máquina, N dias depois do fim do mês. Ficam as respostas e as
+// assinaturas; o registro completo é o PDF baixado pelo TST. Os avisos são só no portal.
 async function limparFotosVencidas() {
-  const { data, error } = await supabase
+  const { data: p, error: e0 } = await supabase.from('parametros').select('valor').eq('chave', 'seg_dias_fotos').maybeSingle();
+  if (e0) throw e0;
+  const dias = Math.max(7, Number(p?.valor) || 30);
+  const pasta = supabase.storage.from('seguranca');
+
+  // Arquivos das subpastas (vistoria/<id>/<item>/..., ficha/<id>/<dia>/...), menos as assinaturas.
+  async function fotosDaPasta(raiz: string) {
+    const { data: itens, error } = await pasta.list(raiz, { limit: 1000 });
+    if (error) throw error;
+    const caminhos: string[] = [];
+    for (const sub of (itens ?? []).filter((x) => !x.id)) {
+      const { data: arqs, error: e } = await pasta.list(`${raiz}/${sub.name}`, { limit: 1000 });
+      if (e) throw e;
+      (arqs ?? []).filter((x) => x.id && !x.name.startsWith('assinatura')).forEach((x) => caminhos.push(`${raiz}/${sub.name}/${x.name}`));
+    }
+    return caminhos;
+  }
+  async function apagar(caminhos: string[]) {
+    for (let i = 0; i < caminhos.length; i += 100) {
+      const { error } = await pasta.remove(caminhos.slice(i, i + 100));
+      if (error) throw error;
+    }
+  }
+
+  const { data: vs, error: e1 } = await supabase
     .from('seg_vistorias')
     .select('id, itens')
     .eq('situacao', 'concluida')
     .is('fotos_excluidas_em', null)
     .lt('fotos_expiram_em', new Date().toISOString())
     .limit(10);
-  if (error) throw error;
-  const pasta = supabase.storage.from('seguranca');
-  for (const v of data ?? []) {
-    // As fotos ficam em vistoria/<id>/<item>/...; as assinaturas, na raiz da pasta da vistoria.
-    const { data: raiz, error: e1 } = await pasta.list(`vistoria/${v.id}`, { limit: 1000 });
-    if (e1) throw e1;
-    const caminhos: string[] = [];
-    for (const sub of (raiz ?? []).filter((x) => !x.id)) {
-      const { data: arqs, error: e2 } = await pasta.list(`vistoria/${v.id}/${sub.name}`, { limit: 1000 });
-      if (e2) throw e2;
-      (arqs ?? []).filter((x) => x.id).forEach((x) => caminhos.push(`vistoria/${v.id}/${sub.name}/${x.name}`));
-    }
-    for (let i = 0; i < caminhos.length; i += 100) {
-      const { error: e3 } = await pasta.remove(caminhos.slice(i, i + 100));
-      if (e3) throw e3;
-    }
+  if (e1) throw e1;
+  for (const v of vs ?? []) {
+    await apagar(await fotosDaPasta(`vistoria/${v.id}`));
     const itens = ((v.itens ?? []) as Record<string, unknown>[]).map((it) => ({ ...it, fotos: [] }));
-    const { error: e4 } = await supabase.from('seg_vistorias').update({ fotos_excluidas_em: new Date().toISOString(), itens }).eq('id', v.id);
-    if (e4) throw e4;
+    const { error } = await supabase.from('seg_vistorias').update({ fotos_excluidas_em: new Date().toISOString(), itens }).eq('id', v.id);
+    if (error) throw error;
+  }
+
+  // Ficha do mês M perde as fotos N dias depois do fim de M: competência anterior ao mês de (hoje - N dias).
+  const corte = new Date(Date.now() - dias * 864e5);
+  const limiteMes = `${corte.getUTCFullYear()}-${String(corte.getUTCMonth() + 1).padStart(2, '0')}-01`;
+  const { data: fs, error: e2 } = await supabase
+    .from('seg_fichas_maquina')
+    .select('id, dias')
+    .is('fotos_excluidas_em', null)
+    .lt('competencia', limiteMes)
+    .limit(10);
+  if (e2) throw e2;
+  for (const f of fs ?? []) {
+    await apagar(await fotosDaPasta(`ficha/${f.id}`));
+    const diasFicha = Object.fromEntries(Object.entries((f.dias ?? {}) as Record<string, Record<string, unknown>>).map(([k, d]) => [k, { ...d, fotos: [] }]));
+    const { error } = await supabase.from('seg_fichas_maquina').update({ fotos_excluidas_em: new Date().toISOString(), dias: diasFicha }).eq('id', f.id);
+    if (error) throw error;
   }
 }
 

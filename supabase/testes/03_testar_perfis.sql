@@ -515,6 +515,8 @@ select teste.igual('Segurança: fornecedor não vê máquinas', 'select 1 from s
 select teste.igual('Segurança: fornecedor não vê locadoras', 'select 1 from seg_locadoras', 0);
 select teste.bloqueado('Segurança: fornecedor', $q$insert into seg_locadoras (nome) values ('INTRUSA')$q$);
 select teste.igual('Segurança: fornecedor não vê termos', 'select 1 from seg_termos_alojamento', 0);
+select teste.igual('Segurança: fornecedor não vê revisões de formulário', 'select 1 from seg_modelos_revisoes', 0);
+select teste.bloqueado('Segurança: fornecedor', $q$select salvar_modelo_seg('alojamento', 'alojamento', 'Alojamento', '["X?"]', true, 'teste de invasão')$q$);
 select teste.bloqueado('Segurança: fornecedor', $q$insert into seg_termos_alojamento (alojamento_id, colaborador_id, nome, representante_nome, assinatura, representante_assinatura) values ('a1000000-0000-0000-0000-000000000001', null, 'Fulano de Tal', 'Responsavel', 'termo/a1000000-0000-0000-0000-000000000001/a.png', 'termo/a1000000-0000-0000-0000-000000000001/b.png')$q$);
 select teste.bloqueado('Segurança: fornecedor', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'termo/a1000000-0000-0000-0000-000000000001/x.png')$q$);
 select teste.igual('Segurança (controle): fornecedor vê a foto da vistoria concluída', $q$select 1 from storage.objects where bucket_id = 'seguranca'$q$, 1);
@@ -579,6 +581,9 @@ begin
   perform teste.bloqueado('Segurança: vincular fornecedor de outra obra', $q$update seg_maquinas set empresa_id = '20000000-0000-0000-0000-000000000002' where id = 'a2000000-0000-0000-0000-000000000001'$q$);
   perform teste.bloqueado('Segurança: vincular fornecedor de outra obra', $q$update seg_alojamentos set empresa_id = '20000000-0000-0000-0000-000000000002' where id = 'a1000000-0000-0000-0000-000000000001'$q$);
   perform teste.permitido('Segurança: TST (controle)', $q$insert into seg_locadoras (nome) values ('LOCADORA NOVA')$q$);
+  perform teste.bloqueado('Segurança: TST não revisa formulário', $q$select salvar_modelo_seg('alojamento', 'alojamento', 'Alojamento', '["X?"]', true, 'teste de invasão')$q$);
+  if teste.linhas($q$update seg_modelos set itens = '["X"]'$q$) > 0 then perform teste.falha('Segurança: formulário só muda pela revisão', 'TST altera seg_modelos direto'); end if;
+  if teste.qtd('select 1 from seg_modelos_revisoes') = 0 then perform teste.falha('Segurança (controle): TST vê o histórico dos formulários', 'nenhuma revisão visível'); end if;
   perform teste.permitido('Segurança: TST (controle)', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'termo/a1000000-0000-0000-0000-000000000001/x.png')$q$);
   perform teste.bloqueado('Segurança: termo de alojamento de outra obra', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'termo/a1000000-0000-0000-0000-000000000002/x.png')$q$);
   perform teste.permitido('Segurança: TST (controle)', $q$insert into seg_termos_alojamento (alojamento_id, colaborador_id, nome, representante_nome, assinatura, representante_assinatura) values ('a1000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'Fulano de Tal', 'Responsavel', 'termo/a1000000-0000-0000-0000-000000000001/a.png', 'termo/a1000000-0000-0000-0000-000000000001/b.png')$q$);
@@ -620,6 +625,11 @@ select teste.igual('Admin (controle)', 'select 1 from colaboradores', 2);
 select teste.igual('Admin (controle)', 'select 1 from v_documentos_atuais where id in (''60000000-0000-0000-0000-000000000001'', ''60000000-0000-0000-0000-000000000002'')', 2);
 select teste.igual('Admin (controle)', $q$select 1 from storage.objects where bucket_id = 'documentos'$q$, 2);
 select teste.permitido('Admin (controle)', $q$select acessos_ultimo_login()$q$);
+select teste.permitido('Admin (controle)', $q$select salvar_modelo_seg('alojamento', null, 'Alojamento (NR-18)', '["Pergunta nova?", "Outra pergunta?"]', true, 'Revisão de teste')$q$);
+select teste.permitido('Admin (controle)', $q$select salvar_modelo_seg(null, 'canteiro', 'Canteiro de obras', '["Área sinalizada?"]', true, 'Formulário novo')$q$);
+select teste.bloqueado('Segurança: revisão sem mudança', $q$select salvar_modelo_seg(codigo, grupo, nome, itens, ativo, 'Sem mudança nenhuma') from seg_modelos where codigo = 'alojamento'$q$);
+select teste.bloqueado('Segurança: perguntas repetidas', $q$select salvar_modelo_seg('alojamento', null, 'Alojamento', '["A?", "a?"]', true, 'Revisão repetida')$q$);
+select teste.bloqueado('Segurança: revisão sem motivo', $q$select salvar_modelo_seg('alojamento', null, 'Alojamento', '["A?"]', true, '')$q$);
 select teste.permitido('Admin (controle)', $q$select resolver_conversa('$q$ || teste.id('CV1') || $q$', true)$q$);
 
 -- Encerramento de obra (admin): em encerramento a obra não recebe ninguém novo; encerrada, sai da gestão.
