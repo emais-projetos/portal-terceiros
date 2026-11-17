@@ -28,8 +28,10 @@ export type DadosLista = {
   obra: string;
   data: string; // AAAA-MM-DD
   instrutor: string;
-  empresas: { empresa: string; participantes: { nome: string; funcao: string | null }[] }[];
+  empresas: { empresa: string; participantes: Linha[] }[];
 };
+
+type Linha = { nome: string; funcao: string | null; assinatura?: string | null };
 
 type Trecho = { t: string; b: boolean; i: boolean };
 
@@ -155,7 +157,7 @@ function folha(
   logo: string | null,
   dados: DadosLista,
   empresa: string,
-  linhas: { nome: string; funcao: string | null }[],
+  linhas: Linha[],
   pagina: number,
   total: number,
 ) {
@@ -254,6 +256,20 @@ function folha(
     const funcao = (l.funcao ?? '').toUpperCase();
     doc.setFontSize(caber(doc, funcao, 47.5, 9));
     doc.text(funcao, 97.2, topo + 4.4);
+    // Assinatura feita na tela: cabe na célula mantendo a proporção.
+    if (l.assinatura) {
+      try {
+        const p = doc.getImageProperties(l.assinatura);
+        const maxL = 196.0 - 145.9 - 2;
+        const maxA = alturaLinha - 0.8;
+        const escala = Math.min(maxL / p.width, maxA / p.height);
+        const w = p.width * escala;
+        const h = p.height * escala;
+        doc.addImage(l.assinatura, 'PNG', 145.9 + 1 + (maxL - w) / 2, topo + 0.4 + (maxA - h) / 2, w, h);
+      } catch {
+        // imagem inválida: a linha fica em branco para assinar no papel
+      }
+    }
   }
 
   // Instrutor
@@ -271,7 +287,7 @@ export function gerarListaPresenca(JsPDFClasse: typeof JsPDF, modelo: ModeloList
   const porPagina = Math.max(1, modelo.conteudo.linhas_por_pagina);
   let primeira = true;
   dados.empresas.forEach((e) => {
-    const blocos: { nome: string; funcao: string | null }[][] = [];
+    const blocos: Linha[][] = [];
     for (let k = 0; k < Math.max(1, e.participantes.length); k += porPagina) blocos.push(e.participantes.slice(k, k + porPagina));
     blocos.forEach((bloco, n) => {
       if (!primeira) doc.addPage();

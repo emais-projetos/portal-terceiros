@@ -3123,3 +3123,18 @@ button.celula:hover {
 .link-forte { color: var(--petroleo); font-weight: 600; text-decoration: none; white-space: nowrap; }
 .link-forte:hover { text-decoration: underline; }
 .faixa-alojamento { margin-bottom: 12px; }
+
+/* Integração: presença com assinatura na tela */
+.lista-assinar { list-style: none; margin: 0; padding: 0; border: 1px solid var(--linha); border-radius: var(--raio-campo); max-height: 60vh; overflow-y: auto; }
+.lista-assinar li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--linha); }
+.lista-assinar li:first-child { border-top: 0; }
+.lista-assinar li.ausente { background: #fbf6f4; }
+.assinar-nome { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; min-width: 0; }
+.assinar-nome input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
+.assinar-nome small { display: block; }
+.assinar-acao { display: flex; align-items: center; gap: 8px; flex: none; }
+.assinatura-miniatura { height: 40px; max-width: 140px; object-fit: contain; border-bottom: 1px solid var(--linha); }
+@media (max-width: 560px) {
+  .lista-assinar li { flex-direction: column; align-items: stretch; }
+  .assinar-acao { justify-content: flex-end; }
+}

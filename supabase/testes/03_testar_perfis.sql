@@ -489,6 +489,50 @@ begin
   perform teste.permitido('Engenharia: funções liberadas', $q$select painel_obra('10000000-0000-0000-0000-000000000001')$q$);
 end $$;
 
+-- --------------------------------------------------------------------------------------------
+-- Integração: assinatura na tela, lista assinada e ausente volta para a pendência
+-- --------------------------------------------------------------------------------------------
+select teste.entrar(:F1);
+select teste.bloqueado('Integração: fornecedor assina', $q$select assinar_integracao('80000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', null)$q$);
+select teste.bloqueado('Integração: fornecedor guarda lista', $q$select salvar_lista_integracao('80000000-0000-0000-0000-000000000001', 'x')$q$);
+select teste.bloqueado('Integração: fornecedor envia arquivo', $q$insert into storage.objects (bucket_id, name) values ('integracoes', '80000000-0000-0000-0000-000000000001/50000000-0000-0000-0000-000000000001-1.png')$q$);
+select teste.igual('Integração: fornecedor lê arquivo', $q$select 1 from storage.objects where bucket_id = 'integracoes'$q$, 0);
+select teste.entrar(:G1);
+select teste.bloqueado('Integração: engenharia assina', $q$select assinar_integracao('80000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', null)$q$);
+select teste.entrar(:T1);
+select teste.bloqueado('Integração: TST assina em outra obra', $q$select assinar_integracao('80000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000002', null)$q$);
+select teste.bloqueado('Integração: TST envia arquivo de outra obra', $q$insert into storage.objects (bucket_id, name) values ('integracoes', '80000000-0000-0000-0000-000000000002/50000000-0000-0000-0000-000000000002-1.png')$q$);
+select teste.bloqueado('Integração: assinatura com arquivo de outra turma', $q$select assinar_integracao('80000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000002/50000000-0000-0000-0000-000000000002-1.png')$q$);
+select teste.bloqueado('Integração: assinatura sem arquivo enviado', $q$select assinar_integracao('80000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000001/50000000-0000-0000-0000-000000000001-9.png')$q$);
+select teste.bloqueado('Integração: lista antes de concluir', $q$select salvar_lista_integracao('80000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000001/lista-de-presenca-1.pdf')$q$);
+select (criar_integracao('10000000-0000-0000-0000-000000000001', current_date, '8h', 'sala', 'Tst Um', array['50000000-0000-0000-0000-000000000001']::uuid[])).id as "TI" \gset
+insert into storage.objects (bucket_id, name) values ('integracoes', :'TI' || '/50000000-0000-0000-0000-000000000001-1.png');
+select assinar_integracao(:'TI', '50000000-0000-0000-0000-000000000001', :'TI' || '/50000000-0000-0000-0000-000000000001-1.png');
+select teste.igual('Integração (controle): assinatura gravada', $q$select 1 from integracoes_participantes where assinatura is not null and assinado_em is not null$q$, 1);
+select teste.igual('Integração (controle): TST lê a assinatura', $q$select 1 from storage.objects where bucket_id = 'integracoes'$q$, 1);
+select teste.sair();
+update alocacoes set data_integracao = current_date - 100, integracao_provisoria = true where id = :AL1;
+select teste.entrar(:T1);
+select concluir_integracao(:'TI', '{}');
+insert into storage.objects (bucket_id, name) values ('integracoes', :'TI' || '/lista-de-presenca-1.pdf');
+select salvar_lista_integracao(:'TI', :'TI' || '/lista-de-presenca-1.pdf');
+select teste.bloqueado('Integração: assinar depois de concluída', $q$select assinar_integracao('$q$ || :'TI' || $q$', '50000000-0000-0000-0000-000000000001', null)$q$);
+select teste.sair();
+select teste.igual('Integração: ausente com data provisória volta para a pendência', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-000000000001' and data_integracao is null and not integracao_provisoria$q$, 1);
+select teste.igual('Integração (controle): lista assinada guardada', $q$select 1 from integracoes where lista_pdf like '%lista-de-presenca-1.pdf'$q$, 1);
+update alocacoes set data_integracao = current_date - 100, integracao_provisoria = false where id = :AL1;
+select teste.entrar(:T1);
+select (criar_integracao('10000000-0000-0000-0000-000000000001', current_date, '8h', 'sala', 'Tst Um', array['50000000-0000-0000-0000-000000000001']::uuid[])).id as "TI2" \gset
+select concluir_integracao(:'TI2', '{}');
+select teste.sair();
+select teste.igual('Integração: falta não apaga integração real', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-000000000001' and data_integracao = current_date - 100$q$, 1);
+select teste.entrar(:T1);
+select (criar_integracao('10000000-0000-0000-0000-000000000001', current_date, '8h', 'sala', 'Tst Um', array['50000000-0000-0000-0000-000000000001']::uuid[])).id as "TI3" \gset
+select concluir_integracao(:'TI3', array['50000000-0000-0000-0000-000000000001']::uuid[]);
+select teste.sair();
+select teste.igual('Integração (controle): presente recebe a data real', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-000000000001' and data_integracao = current_date and not integracao_provisoria$q$, 1);
+update alocacoes set data_integracao = null where id = :AL1;
+
 -- ============================================================================================
 -- 4. Admin desativado perde tudo
 -- ============================================================================================

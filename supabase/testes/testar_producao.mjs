@@ -106,6 +106,8 @@ const FUNCOES = {
   seg_fornecedores_obra: 'p_obra uuid',
   seg_resumo_obra: 'p_obra uuid, p_desde date',
   seg_resumo_fornecedor: 'p_desde date',
+  assinar_integracao: 'p_integracao uuid, p_alocacao uuid, p_caminho text',
+  salvar_lista_integracao: 'p_integracao uuid, p_caminho text',
   bloquear_colaborador: 'p_colaborador uuid, p_bloquear boolean, p_motivo text',
   cadastrar_subcontratada: 'p_principal uuid, p_cnpj text, p_razao_social text, p_email text, p_obras uuid[]',
   cancelar_integracao: 'p_integracao uuid',

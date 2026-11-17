@@ -6,8 +6,10 @@ import { useSessao } from '../lib/sessao';
 import { mensagemDeErro } from '../lib/supabase';
 import { data, diasAte, hojeIso } from '../lib/formato';
 import { lerAlocacoes, type AlocacaoResumo } from '../lib/admin';
+import { Assinatura } from '../componentes/Assinatura';
 import {
-  baixarListaPresenca, cancelarIntegracao, concluirIntegracao, criarIntegracao, lerIntegracoes, type Integracao,
+  apagarAssinatura, assinarIntegracao, baixarListaGuardada, baixarListaPresenca, cancelarIntegracao, concluirIntegracao, criarIntegracao,
+  guardarListaAssinada, lerIntegracoes, linksAssinaturas, type Integracao,
 } from '../lib/integracao';
 
 const CHAVE_OBRA = 'portal-terceiros:obra-integracao';
@@ -128,7 +130,7 @@ export function Integracao() {
   async function participantesDa(t: Integracao) {
     const alocs = t.integracoes_participantes.map((p) => ({ p, a: porId.get(p.alocacao_id) })).filter((x) => x.a);
     return alocs
-      .map(({ p, a }) => ({ nome: a!.colaborador, empresa: a!.empresa, funcao: a!.funcao, presente: p.presente }))
+      .map(({ p, a }) => ({ nome: a!.colaborador, empresa: a!.empresa, funcao: a!.funcao, presente: p.presente, assinatura: p.assinatura }))
       .sort((x, y) => x.empresa.localeCompare(y.empresa, 'pt-BR') || x.nome.localeCompare(y.nome, 'pt-BR'));
   }
 
@@ -136,7 +138,8 @@ export function Integracao() {
     setErro(null);
     setBaixando(t.id);
     try {
-      await baixarListaPresenca(t, nomeObra, await participantesDa(t));
+      if (t.lista_pdf) await baixarListaGuardada(t.lista_pdf, t.data, nomeObra);
+      else await baixarListaPresenca(t, nomeObra, await participantesDa(t));
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
     } finally {
@@ -230,7 +233,7 @@ export function Integracao() {
                         title={futura ? 'A confirmação abre no dia da integração' : undefined}
                         onClick={() => setConfirmando(t)}
                       >
-                        Confirmar presença
+                        Presença e assinaturas
                       </button>
                       <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => cancelar(t)}>Cancelar turma</button>
                     </div>
@@ -329,11 +332,16 @@ export function Integracao() {
                   return (
                     <tr key={t.id}>
                       <th scope="row">{data(t.data)}{t.horario ? `, ${t.horario}` : ''}</th>
-                      <td>{presentes} de {t.integracoes_participantes.length}</td>
+                      <td>
+                        {presentes} de {t.integracoes_participantes.length}
+                        {t.integracoes_participantes.some((p) => p.assinatura) && (
+                          <small className="sub sub-linha">, {t.integracoes_participantes.filter((p) => p.presente && p.assinatura).length} assinaram na tela</small>
+                        )}
+                      </td>
                       <td>{t.responsavel}</td>
                       <td className="acoes">
                         <button type="button" className="botao botao-discreto botao-pequeno" disabled={baixando === t.id} onClick={() => baixar(t)}>
-                          {baixando === t.id ? 'Gerando PDF' : 'Baixar lista com presença'}
+                          {baixando === t.id ? 'Gerando PDF' : t.lista_pdf ? 'Baixar lista assinada' : 'Baixar lista com presença'}
                         </button>
                       </td>
                     </tr>
@@ -349,13 +357,28 @@ export function Integracao() {
         turma={confirmando}
         porId={porId}
         aoFechar={() => setConfirmando(null)}
-        aoConfirmar={async (presentes) => {
+        aoAssinar={async () => carregarTurmas(obra)}
+        aoConfirmar={async (presentes, assinaturas) => {
           const t = confirmando!;
           setConfirmando(null);
           setErro(null);
           try {
             const qtd = await concluirIntegracao(t.id, presentes);
-            setOk(`Integração de ${data(t.data)} registrada para ${qtd} ${qtd === 1 ? 'colaborador' : 'colaboradores'}.`);
+            const ausentes = t.integracoes_participantes.length - presentes.length;
+            setOk(
+              `Integração de ${data(t.data)} registrada para ${qtd} ${qtd === 1 ? 'colaborador' : 'colaboradores'}.` +
+                (ausentes ? ` ${ausentes} ${ausentes === 1 ? 'ausente voltou' : 'ausentes voltaram'} para a lista de quem precisa de integração.` : ''),
+            );
+            const presentesSet = new Set(presentes);
+            const lista = t.integracoes_participantes
+              .map((p) => ({ p, a: porId.get(p.alocacao_id) }))
+              .filter((x) => x.a)
+              .map(({ p, a }) => ({ nome: a!.colaborador, empresa: a!.empresa, funcao: a!.funcao, presente: presentesSet.has(p.alocacao_id), assinatura: assinaturas[p.alocacao_id] ?? null }));
+            try {
+              await guardarListaAssinada(t, nomeObra, lista);
+            } catch (e) {
+              setErro(mensagemDeErro(e as Error));
+            }
             await Promise.all([carregarTurmas(obra), carregarAlocacoes()]);
           } catch (e) {
             setErro(mensagemDeErro(e as Error));
@@ -367,57 +390,121 @@ export function Integracao() {
 }
 
 function ConfirmarPresenca({
-  turma, porId, aoFechar, aoConfirmar,
+  turma, porId, aoFechar, aoAssinar, aoConfirmar,
 }: {
   turma: Integracao | null;
   porId: Map<string, AlocacaoResumo>;
   aoFechar: () => void;
-  aoConfirmar: (presentes: string[]) => void;
+  aoAssinar: () => Promise<void>;
+  aoConfirmar: (presentes: string[], assinaturas: Record<string, string>) => void;
 }) {
   const [presentes, setPresentes] = useState<Set<string>>(new Set());
-  useEffect(() => setPresentes(new Set(turma?.integracoes_participantes.map((p) => p.alocacao_id) ?? [])), [turma]);
+  const [assinaturas, setAssinaturas] = useState<Record<string, string>>({});
+  const [links, setLinks] = useState<Record<string, string>>({});
+  const [assinando, setAssinando] = useState<AlocacaoResumo | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    const ps = turma?.integracoes_participantes ?? [];
+    const ass: Record<string, string> = {};
+    ps.forEach((p) => { if (p.assinatura) ass[p.alocacao_id] = p.assinatura; });
+    setAssinaturas(ass);
+    // Se já há assinaturas na tela, vêm marcados só os que assinaram; sem nenhuma, todos (conferência com a lista em papel).
+    setPresentes(new Set(Object.keys(ass).length ? Object.keys(ass) : ps.map((p) => p.alocacao_id)));
+    setErro(null);
+    setLinks({});
+    linksAssinaturas(Object.values(ass)).then(setLinks).catch(() => undefined);
+  }, [turma]);
+
   if (!turma) return <Dialogo aberto={false} titulo="" aoFechar={aoFechar}>{null}</Dialogo>;
   const lista = turma.integracoes_participantes
     .map((p) => porId.get(p.alocacao_id))
     .filter((a): a is AlocacaoResumo => !!a)
     .sort((a, b) => a.colaborador.localeCompare(b.colaborador, 'pt-BR'));
   const ausentes = lista.length - presentes.size;
+  const assinaram = Object.keys(assinaturas).length;
+  const marcar = (id: string, sim: boolean) =>
+    setPresentes((s) => {
+      const n = new Set(s);
+      if (sim) n.add(id);
+      else n.delete(id);
+      return n;
+    });
+
+  async function gravar(png: Blob) {
+    const a = assinando!;
+    setErro(null);
+    try {
+      const caminho = await assinarIntegracao(turma!.id, a.alocacao_id, png);
+      setAssinaturas((x) => ({ ...x, [a.alocacao_id]: caminho }));
+      marcar(a.alocacao_id, true);
+      setAssinando(null);
+      linksAssinaturas([caminho]).then((l) => setLinks((x) => ({ ...x, ...l }))).catch(() => undefined);
+      void aoAssinar();
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+      setAssinando(null);
+    }
+  }
+
+  async function refazer(a: AlocacaoResumo) {
+    setErro(null);
+    try {
+      await apagarAssinatura(turma!.id, a.alocacao_id);
+      setAssinaturas((x) => {
+        const n = { ...x };
+        delete n[a.alocacao_id];
+        return n;
+      });
+      setAssinando(a);
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    }
+  }
 
   return (
     <Dialogo aberto titulo={`Presença na integração de ${data(turma.data)}`} aoFechar={aoFechar} largura="larga">
       <div className="formulario formulario-largo">
-        <p className="apoio">Confira com a lista assinada e desmarque quem faltou. Só os presentes recebem a data da integração.</p>
-        <ul className="lista-marcar lista-alta">
-          {lista.map((a) => (
-            <li key={a.alocacao_id}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={presentes.has(a.alocacao_id)}
-                  onChange={() =>
-                    setPresentes((s) => {
-                      const n = new Set(s);
-                      if (n.has(a.alocacao_id)) n.delete(a.alocacao_id);
-                      else n.add(a.alocacao_id);
-                      return n;
-                    })
-                  }
-                />
-                <span>
-                  {a.colaborador}
-                  <small className="sub">{a.empresa}</small>
+        <p className="apoio">
+          Passe o tablet ou o celular para cada participante assinar. Quem assinar fica marcado como presente. Quem assinou no papel,
+          marque à mão. Quem não for marcado é registrado como ausente e volta para a lista de quem precisa de integração.
+        </p>
+        {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
+        <ul className="lista-assinar">
+          {lista.map((a) => {
+            const c = assinaturas[a.alocacao_id];
+            return (
+              <li key={a.alocacao_id} className={presentes.has(a.alocacao_id) ? 'presente' : 'ausente'}>
+                <label className="assinar-nome">
+                  <input type="checkbox" checked={presentes.has(a.alocacao_id)} onChange={(e) => marcar(a.alocacao_id, e.target.checked)} />
+                  <span>
+                    {a.colaborador}
+                    <small className="sub">{a.empresa}{presentes.has(a.alocacao_id) ? '' : '. Ausente'}</small>
+                  </span>
+                </label>
+                <span className="assinar-acao">
+                  {c ? (
+                    <>
+                      {links[c] ? <img src={links[c]} alt={`Assinatura de ${a.colaborador}`} className="assinatura-miniatura" /> : <span className="selo selo-liberado">Assinado</span>}
+                      <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => refazer(a)}>Refazer</button>
+                    </>
+                  ) : (
+                    <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => setAssinando(a)}>Assinar</button>
+                  )}
                 </span>
-              </label>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
+        <p className="dica">{assinaram} de {lista.length} assinaram na tela. Ao registrar, a lista de presença com as assinaturas é guardada no portal e baixada.</p>
         <div className="linha-botoes">
-          <button type="button" className="botao" onClick={() => aoConfirmar([...presentes])}>
+          <button type="button" className="botao" onClick={() => aoConfirmar([...presentes], assinaturas)}>
             Registrar {presentes.size} {presentes.size === 1 ? 'presente' : 'presentes'}{ausentes > 0 ? ` e ${ausentes} ${ausentes === 1 ? 'ausente' : 'ausentes'}` : ''}
           </button>
-          <button type="button" className="botao botao-discreto" onClick={aoFechar}>Cancelar</button>
+          <button type="button" className="botao botao-discreto" onClick={aoFechar}>Fechar</button>
         </div>
       </div>
+      <Assinatura aberto={!!assinando} nome={assinando?.colaborador ?? ''} aoFechar={() => setAssinando(null)} aoConfirmar={gravar} />
     </Dialogo>
   );
 }

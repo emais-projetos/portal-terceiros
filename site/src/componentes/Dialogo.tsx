@@ -29,7 +29,9 @@ export function Dialogo({ aberto, titulo, aoFechar, children, largura = 'normal'
     <dialog
       ref={ref}
       className={`dialogo dialogo-${largura}`}
-      onClose={() => {
+      onClose={(e) => {
+        // Janela dentro de janela (ex.: assinatura na lista de presença): o "fechar" da de dentro não fecha esta.
+        if (e.target !== e.currentTarget) return;
         if (fechandoPorCodigo.current) {
           fechandoPorCodigo.current = false;
           return;
