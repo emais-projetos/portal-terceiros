@@ -15,6 +15,7 @@ import {
 import { SeloClassificacao } from './seguranca/comum';
 import { Inspecoes } from './seguranca/Inspecoes';
 import { PainelConformidade } from './seguranca/PainelConformidade';
+import { PainelResumoObra } from './seguranca/ResumoObra';
 import { ListaFormularios } from './seguranca/Formularios';
 import { NovaInspecao } from './seguranca/NovaInspecao';
 
@@ -36,6 +37,61 @@ type Contexto = {
 };
 
 export function Seguranca() {
+  const { usuario } = useSessao();
+  return usuario?.perfil === 'engenharia' ? <SegurancaResumo /> : <SegurancaCompleta />;
+}
+
+// Engenharia: só o painel visual (conformidade, itens que mais falham e correções em aberto).
+function SegurancaResumo() {
+  const [obras, setObras] = useState<ObraDoPainel[] | null>(null);
+  const [obra, setObra] = useState('');
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    lerObrasDoPainel()
+      .then((o) => {
+        setObras(o);
+        let guardada = '';
+        try {
+          guardada = window.localStorage.getItem(CHAVE_OBRA) ?? '';
+        } catch {
+          guardada = '';
+        }
+        setObra(o.some((x) => x.id === guardada) ? guardada : o.length === 1 ? o[0].id : '');
+      })
+      .catch((e) => setErro(mensagemDeErro(e as Error)));
+  }, []);
+
+  function escolher(o: string) {
+    setObra(o);
+    try {
+      window.localStorage.setItem(CHAVE_OBRA, o);
+    } catch {
+      // segue sem lembrar a obra
+    }
+  }
+
+  return (
+    <Pagina titulo="Segurança da obra" apoio="Conformidade das inspeções, itens que mais aparecem como não conformes e correções em aberto dos fornecedores.">
+      {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
+      {!obras && !erro && <Carregando />}
+      {obras && (
+        <div className="filtros">
+          <label className="campo">
+            <span>Obra</span>
+            <select value={obra} onChange={(e) => escolher(e.target.value)}>
+              <option value="">Escolha a obra</option>
+              {obras.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
+      {obra && <PainelResumoObra obraId={obra} />}
+    </Pagina>
+  );
+}
+
+function SegurancaCompleta() {
   const { usuario } = useSessao();
   const podeEditar = usuario?.perfil === 'admin' || usuario?.perfil === 'tst';
   const [params, setParams] = useSearchParams();

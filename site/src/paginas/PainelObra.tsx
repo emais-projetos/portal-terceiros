@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlojamentosObra } from './seguranca/AlojamentosObra';
+import { ResumoAlojamentosObra } from './seguranca/ResumoObra';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useSessao } from '../lib/sessao';
 import { DetalheFrentes, LegendaFarois, LinhaFarol, ResumoFarois } from '../componentes/Farois';
@@ -79,7 +80,7 @@ export function PainelObra() {
       {painel && (
         <>
           <FaroisDaObra painel={painel} obraId={obraId} />
-          <AlojamentosObra obraId={obraId} />
+          {usuario?.perfil === 'admin' || usuario?.perfil === 'tst' ? <AlojamentosObra obraId={obraId} /> : <ResumoAlojamentosObra obraId={obraId} />}
           {comDetalhes && (
             <details className="detalhes-obra">
               <summary>Mais detalhes da obra: pagamento por mês, histórico da medição, documentos e colaboradores</summary>

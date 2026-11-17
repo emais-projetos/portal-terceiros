@@ -9,13 +9,42 @@ import {
 import type { Alojamento, Fornecedor, Maquina, NaoConformidade } from '../../lib/seguranca';
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-const mesCurto = (m: string) => `${MESES[Number(m.slice(5, 7)) - 1]}/${m.slice(2, 4)}`;
-const porcento = (v: number) => `${Math.round(v)}%`;
+export const mesCurto = (m: string) => `${MESES[Number(m.slice(5, 7)) - 1]}/${m.slice(2, 4)}`;
+export const porcento = (v: number) => `${Math.round(v)}%`;
 
-function inicioPeriodo(meses: number) {
+export function inicioPeriodo(meses: number) {
   const [a, m] = hojeIso().split('-').map(Number);
   const d = new Date(Date.UTC(a, m - 1 - (meses - 1), 1));
   return d.toISOString().slice(0, 10);
+}
+
+// Meses do período (AAAA-MM), do mais antigo ao atual, para o gráfico mostrar também os meses sem vistoria.
+export function mesesDesde(desde: string): string[] {
+  const fim = hojeIso().slice(0, 7);
+  const r: string[] = [];
+  let [a, m] = desde.split('-').map(Number);
+  for (let i = 0; i < 24; i++) {
+    const k = `${a}-${String(m).padStart(2, '0')}`;
+    r.push(k);
+    if (k >= fim) break;
+    m += 1;
+    if (m > 12) { m = 1; a += 1; }
+  }
+  return r;
+}
+
+export function SeletorPeriodo({ meses, aoMudar }: { meses: number; aoMudar: (m: number) => void }) {
+  return (
+    <label className="campo">
+      <span>Período</span>
+      <select value={meses} onChange={(e) => aoMudar(Number(e.target.value))}>
+        <option value={1}>Este mês</option>
+        <option value={3}>Últimos 3 meses</option>
+        <option value={6}>Últimos 6 meses</option>
+        <option value={12}>Últimos 12 meses</option>
+      </select>
+    </label>
+  );
 }
 
 // Painel da aba Inspeções: conformidade dos alojamentos (indicador principal) e das máquinas.

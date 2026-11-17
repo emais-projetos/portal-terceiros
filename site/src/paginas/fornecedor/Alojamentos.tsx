@@ -1,54 +1,57 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
 import { Pagina, Mensagem } from '../../componentes/Pagina';
 import { Carregando } from '../../componentes/Carregando';
 import { CampoFotos } from '../../componentes/CampoFotos';
-import { mensagemDeErro, supabase } from '../../lib/supabase';
+import { Barras, Cartao, Colunas } from '../../componentes/Graficos';
+import { mensagemDeErro } from '../../lib/supabase';
 import { data, diasAte } from '../../lib/formato';
-import {
-  lerAlojamento, lerMeusAlojamentos, lerMinhasNcs, lerVistoria, linksDosArquivos, responderNc,
-  type AlojamentoComObra, type AlojamentoFornecedor, type NcFornecedor, type Vistoria,
-} from '../../lib/seguranca';
-import { baixarPdfVistoria } from '../../lib/pdfSeguranca';
-import { Fotos, SeloClassificacao, Voltar, caminhosDaVistoria } from '../seguranca/comum';
-import { LeituraVistoria } from '../seguranca/VistoriaPagina';
+import { classificar } from '../../lib/indicadoresSeguranca';
+import { lerResumoFornecedor, linksDosArquivos, responderNc, type AcaoFornecedor, type ResumoFornecedor } from '../../lib/seguranca';
+import { Fotos } from '../seguranca/comum';
 import { seloNc } from '../seguranca/NcsVistoria';
+import { SeletorPeriodo, inicioPeriodo, mesCurto, mesesDesde, porcento } from '../seguranca/PainelConformidade';
 
-// Fornecedor: alojamentos sob responsabilidade da empresa, vistorias concluídas e itens a regularizar.
+// Fornecedor: painel dos alojamentos da empresa (só conformidade e itens que mais falham) e as correções a responder.
+// A vistoria completa fica com a Segurança do Trabalho da Emais.
 export function AlojamentosFornecedor() {
-  const [alojamentos, setAlojamentos] = useState<AlojamentoFornecedor[] | null>(null);
-  const [ncs, setNcs] = useState<NcFornecedor[]>([]);
+  const [meses, setMeses] = useState(6);
+  const desde = inicioPeriodo(meses);
+  const [r, setR] = useState<ResumoFornecedor | null>(null);
   const [links, setLinks] = useState<Record<string, string>>({});
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
   async function carregar() {
-    const [a, n] = await Promise.all([lerMeusAlojamentos(), lerMinhasNcs()]);
-    setAlojamentos(a);
-    setNcs(n);
-    setLinks(await linksDosArquivos(n.flatMap((x) => x.resposta_fotos ?? [])));
+    const x = await lerResumoFornecedor(desde);
+    setR(x);
+    setLinks(await linksDosArquivos(x.acoes.flatMap((n) => n.resposta_fotos ?? [])));
   }
 
   useEffect(() => {
+    setR(null);
     carregar().catch((e) => setErro(mensagemDeErro(e as Error)));
-  }, []);
+  }, [desde]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const abertas = ncs.filter((n) => n.situacao === 'aberta' || n.situacao === 'reaberta');
-  const emAvaliacao = ncs.filter((n) => n.situacao === 'respondida');
-  const regularizadas = ncs.filter((n) => n.situacao === 'regularizada');
+  const acoes = r?.acoes ?? [];
+  const abertas = acoes.filter((n) => n.situacao === 'aberta' || n.situacao === 'reaberta');
+  const vencidas = abertas.filter((n) => diasAte(n.prazo) < 0).length;
+  const emAvaliacao = acoes.filter((n) => n.situacao === 'respondida');
+  const regularizadas = acoes.filter((n) => n.situacao === 'regularizada');
+  const comNota = r?.alojamentos.filter((a) => a.pct !== null) ?? [];
+  const abaixo = r ? comNota.filter((a) => (a.pct ?? 0) < r.meta).length : 0;
 
   return (
-    <Pagina titulo="Alojamentos" apoio="Vistorias dos alojamentos sob responsabilidade da sua empresa e os itens que a Segurança do Trabalho pediu para regularizar.">
+    <Pagina titulo="Alojamentos" apoio="Conformidade dos alojamentos sob responsabilidade da sua empresa e os itens que a Segurança do Trabalho pediu para corrigir.">
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
-      {!alojamentos && !erro && <Carregando />}
+      {!r && !erro && <Carregando />}
 
-      {alojamentos && (
+      {r && (
         <>
           <section className="bloco">
-            <h2 className="bloco-titulo">Itens a regularizar {abertas.length > 0 && <span className="contador">{abertas.length}</span>}</h2>
+            <h2 className="bloco-titulo">Itens a corrigir {abertas.length > 0 && <span className="contador">{abertas.length}</span>}</h2>
             {abertas.length === 0 ? (
-              <p className="vazio">Nenhum item pendente. Quando a vistoria apontar algo para regularizar, ele aparece aqui, com o prazo.</p>
+              <p className="vazio">Nenhum item pendente. Quando a vistoria apontar algo para corrigir, ele aparece aqui, com o prazo.</p>
             ) : (
               <ul className="lista-ncs">
                 {abertas.map((n) => (
@@ -84,46 +87,49 @@ export function AlojamentosFornecedor() {
           )}
 
           <section className="bloco">
-            <h2 className="bloco-titulo">Alojamentos</h2>
-            {alojamentos.length === 0 ? (
-              <p className="vazio">Nenhum alojamento ligado à sua empresa.</p>
-            ) : (
-              <ul className="lista-inspecoes">
-                {alojamentos.map((a) => {
-                  const ultima = a.vistorias[0];
-                  const pend = abertas.filter((n) => n.vistoria?.alojamento?.nome === a.nome).length;
-                  return (
-                    <li key={a.id}>
-                      {ultima ? (
-                        <Link to={`/alojamentos/vistoria/${ultima.id}`} className="inspecao-linha">
-                          <span className="inspecao-data">
-                            {data(ultima.data_vistoria)}
-                            <small>última vistoria</small>
-                          </span>
-                          <span className="inspecao-local">
-                            <strong>{a.nome}</strong>
-                            <small>{a.obra.nome}{a.endereco ? `. ${a.endereco}` : ''}</small>
-                            {pend > 0 && <small className="texto-alerta">{pend} {pend === 1 ? 'item a regularizar' : 'itens a regularizar'}</small>}
-                          </span>
-                          <span className="inspecao-situacao"><SeloClassificacao v={ultima} /></span>
-                          <span className="inspecao-abrir" aria-hidden="true">Abrir ›</span>
-                        </Link>
-                      ) : (
-                        <div className="inspecao-linha">
-                          <span className="inspecao-data">-<small>sem vistoria</small></span>
-                          <span className="inspecao-local"><strong>{a.nome}</strong><small>{a.obra.nome}</small></span>
-                        </div>
-                      )}
-                    </li>
-                  );
+            <h2 className="bloco-titulo">Conformidade</h2>
+            <div className="filtros">
+              <SeletorPeriodo meses={meses} aoMudar={setMeses} />
+              <p className="dica">Conformidade = itens em ordem sobre os itens que se aplicam. Meta da Emais: {r.meta}%.</p>
+            </div>
+            <div className="cartoes">
+              <Cartao
+                rotulo="Conformidade no período"
+                valor={r.periodo.conformidade === null ? 'Sem vistoria' : porcento(r.periodo.conformidade)}
+                alerta={r.periodo.conformidade !== null && r.periodo.conformidade < r.meta}
+                apoio={`Meta: ${r.meta}%. ${r.periodo.vistorias} ${r.periodo.vistorias === 1 ? 'vistoria' : 'vistorias'} no período.`}
+              />
+              <Cartao rotulo="Alojamentos abaixo da meta" valor={`${abaixo} de ${comNota.length}`} alerta={abaixo > 0} apoio="Pela última vistoria de cada alojamento." />
+              <Cartao rotulo="Itens a corrigir" valor={String(abertas.length)} alerta={vencidas > 0} apoio={`${vencidas} com prazo vencido.`} />
+            </div>
+            <div className="duas-colunas graficos">
+              <Colunas
+                titulo="Conformidade por mês"
+                dados={mesesDesde(desde).map((m) => {
+                  const x = r.periodo.meses.find((y) => y.mes === m);
+                  return { rotulo: mesCurto(m), valor: x?.pct ?? null, dica: x ? `${x.qtd} ${x.qtd === 1 ? 'vistoria' : 'vistorias'}` : 'Sem vistoria' };
                 })}
-              </ul>
-            )}
+                formatar={porcento}
+                maximo={100}
+                meta={r.meta}
+                rotuloMeta={`meta ${r.meta}%`}
+                vazio="-"
+              />
+              <Barras
+                titulo="Por alojamento (última vistoria)"
+                dados={comNota.map((a) => ({ rotulo: `${a.nome} (${a.obra})`, valor: a.pct ?? 0, dica: `${classificar(a.pct ?? 0)}, ${data(a.data)}` }))}
+                formatar={porcento}
+              />
+              {r.periodo.mais_nao.length > 0 && (
+                <Barras titulo="Itens que mais aparecem como não conformes" dados={r.periodo.mais_nao.map((p) => ({ rotulo: p.texto, valor: p.qtd }))} formatar={(v) => `${v}x`} />
+              )}
+            </div>
+            {r.alojamentos.length === 0 && <p className="vazio">Nenhum alojamento ligado à sua empresa.</p>}
           </section>
 
           {regularizadas.length > 0 && (
             <details className="bloco detalhe-dobravel">
-              <summary>Itens já regularizados ({regularizadas.length})</summary>
+              <summary>Itens já corrigidos ({regularizadas.length})</summary>
               <ul className="lista-ncs">
                 {regularizadas.map((n) => (
                   <li key={n.id}>
@@ -139,15 +145,15 @@ export function AlojamentosFornecedor() {
   );
 }
 
-function CabecalhoNc({ n }: { n: NcFornecedor }) {
+function CabecalhoNc({ n }: { n: AcaoFornecedor }) {
   const aberta = n.situacao === 'aberta' || n.situacao === 'reaberta';
   const dias = diasAte(n.prazo);
   return (
     <>
       <div className="vistoria-item-linha">
         <span>
-          <strong>{n.vistoria?.alojamento?.nome ?? 'Alojamento'}</strong>
-          <small className="sub"> {n.vistoria?.obra?.nome}{n.vistoria ? `, vistoria de ${data(n.vistoria.data_vistoria)}` : ''}</small>
+          <strong>{n.alojamento}</strong>
+          <small className="sub"> {n.obra}</small>
         </span>
         {seloNc(n.situacao)}
       </div>
@@ -162,7 +168,7 @@ function CabecalhoNc({ n }: { n: NcFornecedor }) {
   );
 }
 
-function ItemParaResponder({ n, aoResponder }: { n: NcFornecedor; aoResponder: () => Promise<void> }) {
+function ItemParaResponder({ n, aoResponder }: { n: AcaoFornecedor; aoResponder: () => Promise<void> }) {
   const [texto, setTexto] = useState('');
   const [fotos, setFotos] = useState<string[]>([]);
   const [links, setLinks] = useState<Record<string, string>>({});
@@ -208,63 +214,5 @@ function ItemParaResponder({ n, aoResponder }: { n: NcFornecedor; aoResponder: (
         </button>
       </div>
     </li>
-  );
-}
-
-// Vistoria concluída vista pelo fornecedor (só leitura), com o PDF.
-export function VistoriaFornecedor() {
-  const { id = '' } = useParams();
-  const [v, setV] = useState<Vistoria | null>(null);
-  const [aloj, setAloj] = useState<AlojamentoComObra | null>(null);
-  const [empresa, setEmpresa] = useState('');
-  const [links, setLinks] = useState<Record<string, string>>({});
-  const [erro, setErro] = useState<string | null>(null);
-  const [baixando, setBaixando] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      const x = await lerVistoria(id);
-      const a = await lerAlojamento(x.alojamento_id!);
-      setV(x);
-      setAloj(a);
-      if (a.empresa_id) {
-        const { data: e } = await supabase.from('empresas').select('razao_social').eq('id', a.empresa_id).maybeSingle();
-        setEmpresa((e?.razao_social as string) ?? '');
-      }
-      if (!x.fotos_excluidas_em) setLinks(await linksDosArquivos(caminhosDaVistoria(x)));
-    })().catch((e) => setErro(mensagemDeErro(e as Error)));
-  }, [id]);
-
-  return (
-    <Pagina
-      titulo={aloj ? `Vistoria de ${aloj.nome}` : 'Vistoria'}
-      apoio={aloj ? aloj.obra.nome : undefined}
-      acoes={
-        v && aloj ? (
-          <button
-            type="button"
-            className="botao botao-secundario"
-            disabled={baixando}
-            onClick={async () => {
-              setBaixando(true);
-              try {
-                await baixarPdfVistoria(v, { obra: aloj.obra.nome, alojamento: aloj.nome, endereco: aloj.endereco, responsavel: empresa });
-              } catch (e) {
-                setErro(mensagemDeErro(e as Error));
-              } finally {
-                setBaixando(false);
-              }
-            }}
-          >
-            {baixando ? 'Gerando PDF' : 'Baixar PDF'}
-          </button>
-        ) : undefined
-      }
-    >
-      <Voltar para="/alojamentos" rotulo="Alojamentos" />
-      {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
-      {!v && !erro && <Carregando />}
-      {v && <LeituraVistoria v={v} links={links} responsavel={empresa} />}
-    </Pagina>
   );
 }

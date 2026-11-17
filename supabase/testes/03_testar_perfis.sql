@@ -509,7 +509,13 @@ end $$;
 -- ============================================================================================
 select teste.entrar(:F1);
 select teste.igual('Segurança (controle): fornecedor vê o alojamento dele', 'select 1 from seg_alojamentos', 1);
-select teste.igual('Segurança: fornecedor vê só a vistoria concluída', 'select 1 from seg_vistorias', 1);
+select teste.igual('Segurança: fornecedor não lê a vistoria (só o resumo)', 'select 1 from seg_vistorias', 0);
+select teste.igual('Segurança (controle): resumo do fornecedor traz o alojamento dele', $q$select 1 from jsonb_array_elements(seg_resumo_fornecedor(current_date - 90)->'alojamentos') a where a->>'nome' = 'CASA UM' and (a->>'pct')::numeric = 50$q$, 1);
+select teste.igual('Segurança: resumo do fornecedor sem alojamento de outro', $q$select 1 from jsonb_array_elements(seg_resumo_fornecedor(current_date - 90)->'alojamentos') a where a->>'nome' <> 'CASA UM'$q$, 0);
+select teste.igual('Segurança (controle): resumo do fornecedor traz o item a regularizar', $q$select 1 from jsonb_array_elements(seg_resumo_fornecedor(current_date - 90)->'acoes') a where a->>'descricao' is not null$q$, 1);
+select teste.igual('Segurança (controle): resumo do fornecedor traz o item com mais "Não"', $q$select 1 from jsonb_array_elements(seg_resumo_fornecedor(current_date - 90)->'periodo'->'mais_nao') a where a->>'texto' = 'Chuveiro aterrado?'$q$, 1);
+select teste.igual('Segurança: resumo do fornecedor sem lista de moradores e fotos', $q$select 1 where seg_resumo_fornecedor(current_date - 90)::text ~ '(funcionarios|envolvidos|vistoria/)'$q$, 0);
+select teste.bloqueado('Segurança: fornecedor', $q$select seg_resumo_obra('10000000-0000-0000-0000-000000000001', current_date - 90)$q$);
 select teste.igual('Segurança (controle): fornecedor vê a não conformidade dele', 'select 1 from seg_nao_conformidades', 1);
 select teste.igual('Segurança: fornecedor não vê máquinas', 'select 1 from seg_maquinas', 0);
 select teste.igual('Segurança: fornecedor não vê locadoras', 'select 1 from seg_locadoras', 0);
@@ -519,7 +525,7 @@ select teste.igual('Segurança: fornecedor não vê revisões de formulário', '
 select teste.bloqueado('Segurança: fornecedor', $q$select salvar_modelo_seg('alojamento', 'alojamento', 'Alojamento', '["X?"]', true, 'teste de invasão')$q$);
 select teste.bloqueado('Segurança: fornecedor', $q$insert into seg_termos_alojamento (alojamento_id, colaborador_id, nome, representante_nome, assinatura, representante_assinatura) values ('a1000000-0000-0000-0000-000000000001', null, 'Fulano de Tal', 'Responsavel', 'termo/a1000000-0000-0000-0000-000000000001/a.png', 'termo/a1000000-0000-0000-0000-000000000001/b.png')$q$);
 select teste.bloqueado('Segurança: fornecedor', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'termo/a1000000-0000-0000-0000-000000000001/x.png')$q$);
-select teste.igual('Segurança (controle): fornecedor vê a foto da vistoria concluída', $q$select 1 from storage.objects where bucket_id = 'seguranca'$q$, 1);
+select teste.igual('Segurança: fornecedor não vê a foto da vistoria', $q$select 1 from storage.objects where bucket_id = 'seguranca'$q$, 0);
 do $$
 declare t text := 'Segurança: fornecedor';
 begin
@@ -591,6 +597,8 @@ begin
   perform teste.bloqueado('Segurança: termo com colaborador de outro fornecedor', $q$insert into seg_termos_alojamento (alojamento_id, colaborador_id, nome, representante_nome, assinatura, representante_assinatura) values ('a1000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000002', 'Fulano de Tal', 'Responsavel', 'termo/a1000000-0000-0000-0000-000000000001/a.png', 'termo/a1000000-0000-0000-0000-000000000001/b.png')$q$);
   perform teste.bloqueado('Segurança: termo sem assinatura', $q$insert into seg_termos_alojamento (alojamento_id, nome, representante_nome) values ('a1000000-0000-0000-0000-000000000001', 'Fulano de Tal', 'Responsavel')$q$);
   perform teste.igual('Segurança (controle): TST vê as locadoras', 'select 1 from seg_locadoras', 1);
+  perform teste.igual('Segurança (controle): resumo da obra para o TST', $q$select 1 where seg_resumo_obra('10000000-0000-0000-0000-000000000001', current_date - 90) ? 'acoes'$q$, 1);
+  perform teste.bloqueado('Segurança: TST resumo de outra obra', $q$select seg_resumo_obra('10000000-0000-0000-0000-000000000002', current_date - 90)$q$);
 end $$;
 -- Vínculo de verdade: escolher a locadora tira a pendência da importação.
 select teste.entrar(:T1);
@@ -600,13 +608,25 @@ select teste.igual('Segurança (controle): locadora gravada', $q$select 1 from s
 
 select teste.entrar(:G1);
 do $$
-declare t text := 'Segurança: engenharia só consulta';
+declare t text := 'Segurança: engenharia só vê o resumo';
 begin
-  perform teste.igual('Segurança (controle): engenharia vê a obra dele', 'select 1 from seg_vistorias', 2);
+  perform teste.igual('Segurança: engenharia não lê as vistorias', 'select 1 from seg_vistorias', 0);
+  perform teste.igual('Segurança: engenharia não lê alojamentos', 'select 1 from seg_alojamentos', 0);
+  perform teste.igual('Segurança: engenharia não lê máquinas', 'select 1 from seg_maquinas', 0);
+  perform teste.igual('Segurança: engenharia não lê fichas', 'select 1 from seg_fichas_maquina', 0);
+  perform teste.igual('Segurança: engenharia não lê não conformidades', 'select 1 from seg_nao_conformidades', 0);
+  perform teste.igual('Segurança: engenharia não lê termos', 'select 1 from seg_termos_alojamento', 0);
+  perform teste.igual('Segurança: engenharia não lê revisões de formulário', 'select 1 from seg_modelos_revisoes', 0);
+  perform teste.igual('Segurança: engenharia não vê fotos', $q$select 1 from storage.objects where bucket_id = 'seguranca'$q$, 0);
+  perform teste.igual('Segurança (controle): resumo da obra para a engenharia', $q$select 1 where (seg_resumo_obra('10000000-0000-0000-0000-000000000001', current_date - 90)->'alojamento'->>'conformidade')::numeric = 50$q$, 1);
+  perform teste.igual('Segurança (controle): resumo da obra traz a ação aberta', $q$select 1 from jsonb_array_elements(seg_resumo_obra('10000000-0000-0000-0000-000000000001', current_date - 90)->'acoes')$q$, 1);
+  perform teste.igual('Segurança: resumo da obra sem moradores e fotos', $q$select 1 where seg_resumo_obra('10000000-0000-0000-0000-000000000001', current_date - 90)::text ~ '(funcionarios|envolvidos|vistoria/|nc/)'$q$, 0);
+  perform teste.bloqueado(t, $q$select seg_resumo_obra('10000000-0000-0000-0000-000000000002', current_date - 90)$q$);
+  perform teste.bloqueado(t, $q$select seg_resumo_fornecedor(current_date - 90)$q$);
   perform teste.bloqueado(t, $q$insert into seg_alojamentos (obra_id, nome) values ('10000000-0000-0000-0000-000000000001', 'NOVO')$q$);
   perform teste.bloqueado(t, $q$insert into seg_locadoras (nome) values ('NOVA')$q$);
-  perform teste.igual('Segurança (controle): engenharia vê as locadoras', 'select 1 from seg_locadoras', 1);
-  perform teste.igual('Segurança (controle): engenharia vê os fornecedores da obra dele', $q$select 1 from seg_fornecedores_obra('10000000-0000-0000-0000-000000000001')$q$, 1);
+  perform teste.igual('Segurança: engenharia não lê locadoras', 'select 1 from seg_locadoras', 0);
+  perform teste.bloqueado(t, $q$select seg_fornecedores_obra('10000000-0000-0000-0000-000000000001')$q$);
   perform teste.bloqueado(t, $q$select seg_fornecedores_obra('10000000-0000-0000-0000-000000000002')$q$);
   perform teste.bloqueado(t, $q$select abrir_ficha_maquina('a2000000-0000-0000-0000-000000000001', current_date)$q$);
   perform teste.bloqueado(t, $q$select salvar_dia_ficha('a4000000-0000-0000-0000-000000000001', 1, '{"statuses":["ok","ok"],"operador":"Fulano"}')$q$);

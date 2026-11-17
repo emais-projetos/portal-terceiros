@@ -428,28 +428,54 @@ export async function responderNc(id: string, resposta: string, fotos: string[])
 }
 
 // Fornecedor: alojamentos sob responsabilidade dele (só aparecem as vistorias concluídas) e itens a regularizar.
-export type AlojamentoFornecedor = Pick<Alojamento, 'id' | 'nome' | 'endereco' | 'vistorias'> & { obra: { nome: string } };
-export type NcFornecedor = NcCompleta & { vistoria: { id: string; data_vistoria: string; alojamento: { nome: string } | null; obra: { nome: string } | null } };
+// ---------------------------------------------------------------- Resumo (engenharia e fornecedor só veem números)
+// A vistoria completa (fotos, moradores, assinaturas) fica com o TST e o administrativo; o banco entrega só o resumo.
 
-export async function lerMeusAlojamentos(): Promise<AlojamentoFornecedor[]> {
-  const { data, error } = await supabase
-    .from('seg_alojamentos')
-    .select('id, nome, endereco, obra:obras(nome), vistorias:seg_vistorias(id, data_vistoria, classificacao, situacao, pontuacao, fotos_expiram_em, fotos_excluidas_em)')
-    .order('nome');
+export type ItemFrequente = { texto: string; qtd: number };
+export type BlocoResumo = {
+  conformidade: number | null;
+  vistorias: number;
+  ultima: string | null;
+  meses: { mes: string; pct: number | null; qtd: number }[];
+  mais_nao: ItemFrequente[];
+};
+export type AcaoObra = {
+  alojamento: string;
+  fornecedor: string;
+  descricao: string;
+  recomendacao: string | null;
+  prazo: string;
+  situacao: NcCompleta['situacao'];
+};
+export type ResumoObra = {
+  metas: { alojamento: number; canteiro: number };
+  alojamento: BlocoResumo & { por_alojamento: { nome: string; pct: number | null; data: string }[]; alojamentos_ativos: number };
+  canteiro: BlocoResumo;
+  maquinas: { conformidade: number | null; dias: number; nao_conformes: number; mais_nc: ItemFrequente[] };
+  acoes: AcaoObra[];
+};
+
+export async function lerResumoObra(obraId: string, desde: string): Promise<ResumoObra> {
+  const { data, error } = await supabase.rpc('seg_resumo_obra', { p_obra: obraId, p_desde: desde });
   if (error) throw error;
-  return ((data ?? []) as unknown as AlojamentoFornecedor[]).map((a) => ({
-    ...a,
-    vistorias: [...a.vistorias].filter((v) => v.situacao === 'concluida').sort((x, y) => y.data_vistoria.localeCompare(x.data_vistoria)),
-  }));
+  return data as ResumoObra;
 }
 
-export async function lerMinhasNcs(): Promise<NcFornecedor[]> {
-  const { data, error } = await supabase
-    .from('seg_nao_conformidades')
-    .select(`${CAMPOS_NC}, vistoria:seg_vistorias(id, data_vistoria, alojamento:seg_alojamentos(nome), obra:obras(nome))`)
-    .order('prazo');
+export type AcaoFornecedor = Pick<
+  NcCompleta,
+  'id' | 'descricao' | 'recomendacao' | 'prazo' | 'situacao' | 'resposta' | 'resposta_fotos' | 'respondida_em' | 'motivo_reabertura' | 'avaliada_em'
+> & { alojamento: string; obra: string };
+export type ResumoFornecedor = {
+  meta: number;
+  periodo: BlocoResumo;
+  alojamentos: { id: string; nome: string; obra: string; data: string | null; pct: number | null }[];
+  acoes: AcaoFornecedor[];
+};
+
+export async function lerResumoFornecedor(desde: string): Promise<ResumoFornecedor> {
+  const { data, error } = await supabase.rpc('seg_resumo_fornecedor', { p_desde: desde });
   if (error) throw error;
-  return (data ?? []) as unknown as NcFornecedor[];
+  return data as ResumoFornecedor;
 }
 
 export async function contarNcsAbertas(): Promise<number> {

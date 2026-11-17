@@ -104,6 +104,8 @@ const FUNCOES = {
   salvar_dia_ficha: 'p_ficha uuid, p_dia integer, p_dados jsonb',
   salvar_modelo_seg: 'p_codigo text, p_grupo text, p_nome text, p_itens jsonb, p_ativo boolean, p_motivo text',
   seg_fornecedores_obra: 'p_obra uuid',
+  seg_resumo_obra: 'p_obra uuid, p_desde date',
+  seg_resumo_fornecedor: 'p_desde date',
   bloquear_colaborador: 'p_colaborador uuid, p_bloquear boolean, p_motivo text',
   cadastrar_subcontratada: 'p_principal uuid, p_cnpj text, p_razao_social text, p_email text, p_obras uuid[]',
   cancelar_integracao: 'p_integracao uuid',

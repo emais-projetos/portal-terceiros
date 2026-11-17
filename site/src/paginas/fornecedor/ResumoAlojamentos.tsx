@@ -1,40 +1,39 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { data, diasAte } from '../../lib/formato';
-import { lerMeusAlojamentos, lerMinhasNcs, type AlojamentoFornecedor, type NcFornecedor } from '../../lib/seguranca';
-import { SeloClassificacao } from '../seguranca/comum';
+import { classificar } from '../../lib/indicadoresSeguranca';
+import { lerResumoFornecedor, type AcaoFornecedor, type ResumoFornecedor } from '../../lib/seguranca';
+import { inicioPeriodo } from '../seguranca/PainelConformidade';
 
-function useAlojamentosFornecedor() {
-  const [dados, setDados] = useState<{ alojamentos: AlojamentoFornecedor[]; ncs: NcFornecedor[] } | null>(null);
+function useResumoFornecedor() {
+  const [r, setR] = useState<ResumoFornecedor | null>(null);
   useEffect(() => {
-    Promise.all([lerMeusAlojamentos(), lerMinhasNcs()])
-      .then(([alojamentos, ncs]) => setDados({ alojamentos, ncs }))
-      .catch(() => setDados({ alojamentos: [], ncs: [] }));
+    lerResumoFornecedor(inicioPeriodo(6)).then(setR).catch(() => setR(null));
   }, []);
-  return dados;
+  return r;
 }
 
-const abertaNc = (n: NcFornecedor) => n.situacao === 'aberta' || n.situacao === 'reaberta';
+const aberta = (n: AcaoFornecedor) => n.situacao === 'aberta' || n.situacao === 'reaberta';
 
-// Tela inicial do fornecedor: alojamentos sob responsabilidade da empresa e o que está pendente.
+// Tela inicial do fornecedor: conformidade de cada alojamento da empresa e as correções pendentes.
 export function ResumoAlojamentos() {
-  const dados = useAlojamentosFornecedor();
-  if (!dados || dados.alojamentos.length === 0) return null;
-  const abertas = dados.ncs.filter(abertaNc);
+  const r = useResumoFornecedor();
+  if (!r || r.alojamentos.length === 0) return null;
+  const abertas = r.acoes.filter(aberta);
   const vencidas = abertas.filter((n) => diasAte(n.prazo) < 0).length;
 
   return (
     <section className="bloco">
       <div className="barra-lista">
         <h2 className="bloco-titulo">Alojamentos sob sua responsabilidade</h2>
-        <Link to="/alojamentos" className="link-forte">Ver alojamentos ›</Link>
+        <Link to="/alojamentos" className="link-forte">Ver conformidade ›</Link>
       </div>
       {abertas.length > 0 && (
         <div className="faixa-retido faixa-alojamento" role="alert">
           <div>
             <span>
               <strong>
-                {abertas.length} {abertas.length === 1 ? 'item a regularizar' : 'itens a regularizar'} nos alojamentos
+                {abertas.length} {abertas.length === 1 ? 'item a corrigir' : 'itens a corrigir'} nos alojamentos
                 {vencidas ? ` (${vencidas} com prazo vencido)` : ''}
               </strong>
               Responda cada item pelo portal, com foto do que foi feito. A Segurança do Trabalho da Emais avalia a resposta.
@@ -44,36 +43,30 @@ export function ResumoAlojamentos() {
         </div>
       )}
       <ul className="lista-inspecoes">
-        {dados.alojamentos.map((a) => {
-          const ultima = a.vistorias[0];
-          const pend = abertas.filter((n) => n.vistoria?.alojamento?.nome === a.nome).length;
-          const conteudo = (
-            <>
-              <span className="inspecao-data">
-                {ultima ? data(ultima.data_vistoria) : '-'}
-                <small>{ultima ? 'última vistoria' : 'sem vistoria'}</small>
-              </span>
-              <span className="inspecao-local">
-                <strong>{a.nome}</strong>
-                <small>{a.obra.nome}</small>
-                {pend > 0 && <small className="texto-alerta">{pend} {pend === 1 ? 'item a regularizar' : 'itens a regularizar'}</small>}
-              </span>
-              <span className="inspecao-situacao">
-                {ultima && <SeloClassificacao v={ultima} />}
-                {ultima?.pontuacao != null && <small className="sub"> {Math.round(ultima.pontuacao * 100)}%</small>}
-              </span>
-            </>
-          );
+        {r.alojamentos.map((a) => {
+          const pend = abertas.filter((n) => n.alojamento === a.nome && n.obra === a.obra).length;
+          const abaixo = a.pct !== null && a.pct < r.meta;
           return (
             <li key={a.id}>
-              {ultima ? (
-                <Link to={`/alojamentos/vistoria/${ultima.id}`} className="inspecao-linha">
-                  {conteudo}
-                  <span className="inspecao-abrir" aria-hidden="true">Abrir ›</span>
-                </Link>
-              ) : (
-                <div className="inspecao-linha">{conteudo}</div>
-              )}
+              <div className="inspecao-linha">
+                <span className="inspecao-data">
+                  {a.data ? data(a.data) : '-'}
+                  <small>{a.data ? 'última vistoria' : 'sem vistoria'}</small>
+                </span>
+                <span className="inspecao-local">
+                  <strong>{a.nome}</strong>
+                  <small>{a.obra}</small>
+                  {pend > 0 && <small className="texto-alerta">{pend} {pend === 1 ? 'item a corrigir' : 'itens a corrigir'}</small>}
+                </span>
+                <span className="inspecao-situacao">
+                  {a.pct !== null && (
+                    <>
+                      <span className={`selo ${abaixo ? 'selo-erro' : 'selo-ok'}`}>{classificar(a.pct)}</span>
+                      <small className={`sub${abaixo ? ' texto-erro' : ''}`}> {Math.round(a.pct)}%</small>
+                    </>
+                  )}
+                </span>
+              </div>
             </li>
           );
         })}
@@ -82,16 +75,16 @@ export function ResumoAlojamentos() {
   );
 }
 
-// "O que falta": itens de alojamento a regularizar, com prazo.
+// "O que falta": itens de alojamento a corrigir, com prazo.
 export function PendenciasAlojamento() {
-  const dados = useAlojamentosFornecedor();
-  if (!dados) return null;
-  const abertas = dados.ncs.filter(abertaNc).sort((a, b) => a.prazo.localeCompare(b.prazo));
+  const r = useResumoFornecedor();
+  if (!r) return null;
+  const abertas = r.acoes.filter(aberta).sort((a, b) => a.prazo.localeCompare(b.prazo));
   if (!abertas.length) return null;
   return (
     <section className="bloco">
       <div className="barra-lista">
-        <h2 className="bloco-titulo">Alojamentos: itens a regularizar <span className="contador">{abertas.length}</span></h2>
+        <h2 className="bloco-titulo">Alojamentos: itens a corrigir <span className="contador">{abertas.length}</span></h2>
         <Link className="botao botao-pequeno" to="/alojamentos">Responder</Link>
       </div>
       <ul className="lista-ncs">
@@ -101,8 +94,8 @@ export function PendenciasAlojamento() {
             <li key={n.id}>
               <div className="vistoria-item-linha">
                 <span>
-                  <strong>{n.vistoria?.alojamento?.nome ?? 'Alojamento'}</strong>
-                  <small className="sub"> {n.vistoria?.obra?.nome}</small>
+                  <strong>{n.alojamento}</strong>
+                  <small className="sub"> {n.obra}</small>
                 </span>
                 <span className={`selo ${dias < 0 ? 'selo-erro' : 'selo-teste'}`}>
                   {dias < 0 ? `vencido há ${-dias} ${dias === -1 ? 'dia' : 'dias'}` : dias === 0 ? 'vence hoje' : `prazo ${data(n.prazo)}`}

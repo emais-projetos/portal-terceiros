@@ -27,7 +27,7 @@ import { FichaPagina } from './paginas/seguranca/FichaPagina';
 import { DiaFicha } from './paginas/seguranca/DiaFicha';
 import { TermosAlojamento } from './paginas/seguranca/TermosAlojamento';
 import { FormularioPagina } from './paginas/seguranca/Formularios';
-import { AlojamentosFornecedor, VistoriaFornecedor } from './paginas/fornecedor/Alojamentos';
+import { AlojamentosFornecedor } from './paginas/fornecedor/Alojamentos';
 import { Carregando } from './componentes/Carregando';
 
 export function App() {
@@ -48,12 +48,11 @@ export function App() {
       <Route path="/" element={<ComLogin><Inicio /></ComLogin>} />
       <Route path="/painel-obra" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><PainelObra /></SoPerfil>} />
       <Route path="/seguranca" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><Seguranca /></SoPerfil>} />
-      <Route path="/seguranca/vistoria/:id" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><VistoriaPagina /></SoPerfil>} />
-      <Route path="/seguranca/ficha/:id" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><FichaPagina /></SoPerfil>} />
+      <Route path="/seguranca/vistoria/:id" element={<SoPerfil perfil={['admin', 'tst']}><VistoriaPagina /></SoPerfil>} />
+      <Route path="/seguranca/ficha/:id" element={<SoPerfil perfil={['admin', 'tst']}><FichaPagina /></SoPerfil>} />
       <Route path="/seguranca/formulario/:codigo" element={<SoAdmin><FormularioPagina /></SoAdmin>} />
-      <Route path="/seguranca/alojamento/:id/termos" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><TermosAlojamento /></SoPerfil>} />
+      <Route path="/seguranca/alojamento/:id/termos" element={<SoPerfil perfil={['admin', 'tst']}><TermosAlojamento /></SoPerfil>} />
       <Route path="/alojamentos" element={<SoPerfil perfil="fornecedor"><AlojamentosFornecedor /></SoPerfil>} />
-      <Route path="/alojamentos/vistoria/:id" element={<SoPerfil perfil="fornecedor"><VistoriaFornecedor /></SoPerfil>} />
       <Route path="/seguranca/ficha/:id/dia/:dia" element={<SoPerfil perfil={['admin', 'tst']}><DiaFicha /></SoPerfil>} />
       <Route path="/analise" element={<SoAdmin><Analise /></SoAdmin>} />
       <Route path="/colaboradores" element={<SoPerfil perfil={['admin', 'tst']}><Colaboradores /></SoPerfil>} />
