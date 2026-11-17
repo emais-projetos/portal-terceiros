@@ -10,9 +10,9 @@ import {
 } from '../../lib/formato';
 import {
   abrirArquivo, alocarComoAdmin, aprovarAlocacao, devolverAlocacaoTst, excecoesNovas, lerAlocacoes, lerAnexos, lerBaseTreinamentos, lerColaborador,
-  lerDevolucaoTst, lerEmailEmpresa, lerExcecoes, lerIdsComPendenciaCadastro, lerObrasCadastro, lerPendencias, linkOutlook, registrarIntegracao,
+  lerDevolucaoTst, lerEmailEmpresa, lerExcecoes, lerIdsComPendenciaCadastro, lerObrasCadastro, lerPendenciaLiberacao, lerPendencias, linkOutlook, registrarIntegracao,
   salvarCadastro, salvarTreinamentos, validarAlocacao,
-  type AlocacaoResumo, type BaseTreinamentos, type Colaborador, type Excecao, type ObraCadastro, type Pendencia,
+  type AlocacaoResumo, type BaseTreinamentos, type Colaborador, type Excecao, type ObraCadastro, type Pendencia, type PendenciaLiberacao,
 } from '../../lib/admin';
 import { bloquearColaborador, lerBloqueios, type Bloqueio } from '../../lib/fornecedor';
 import { enderecoDoSite } from '../../lib/supabase';
@@ -41,7 +41,7 @@ function passa(a: AlocacaoResumo, f: Filtro, cadastro: Set<string>): boolean {
     case 'analise': return a.status === 'em_analise';
     case 'tst': return a.status === 'aprovado_admin';
     case 'liberados': return a.status === 'liberado';
-    case 'liberados_pendencia': return a.status === 'liberado' && a.impeditivos_pendentes > 0;
+    case 'liberados_pendencia': return a.status === 'liberado' && (a.impeditivos_pendentes > 0 || !!a.pendencia_prazo);
     case 'cadastro': return cadastro.has(a.colaborador_id);
     case 'encerrados': return a.status === 'encerrado';
   }
@@ -227,6 +227,7 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
   const [comPendencia, setComPendencia] = useState(false);
   const [obsPendencia, setObsPendencia] = useState('');
   const [ciente, setCiente] = useState(false);
+  const [pendLib, setPendLib] = useState<PendenciaLiberacao | null>(null);
   const [devolucaoTst, setDevolucaoTst] = useState<{ motivo: string; em: string } | null>(null);
   const [excecoes, setExcecoes] = useState<Excecao[]>([]);
   const [bloqueios, setBloqueios] = useState<Bloqueio[]>([]);
@@ -251,6 +252,7 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
     setComPendencia(false);
     setObsPendencia('');
     setCiente(false);
+    setPendLib(null);
     setDevolucaoTst(null);
     setExcecoes([]);
     setBloqueios([]);
@@ -267,6 +269,7 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
         .catch(() => undefined);
     }
     if (ehAdmin) lerDevolucaoTst(id).then(setDevolucaoTst).catch(() => undefined);
+    if (alocacao?.pendencia_prazo) lerPendenciaLiberacao(id).then(setPendLib).catch(() => undefined);
     Promise.all([lerColaborador(colabId), lerPendencias(id)])
       .then(([c, p]) => {
         setColab(c);
@@ -372,7 +375,7 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
           </p>
         )}
         {alocacao.pendencia_prazo && (
-          <AvisoPendencia alocacao={alocacao} pendentes={travas.map((p) => p.documento)} />
+          <AvisoPendencia prazo={alocacao.pendencia_prazo} info={pendLib} pendentes={travas.map((p) => p.documento)} />
         )}
         {ehAdmin && colab?.pendencia_cadastro && (
           <p className="aviso aviso-alerta">
@@ -846,16 +849,22 @@ function EdicaoCadastro({
 }
 
 // Aviso no cadastro: liberado (ou a liberar) com documento pendente, anotação e prazo.
-function AvisoPendencia({ alocacao, pendentes }: { alocacao: AlocacaoResumo; pendentes: string[] }) {
-  const dias = diasAte(alocacao.pendencia_prazo!);
+function AvisoPendencia({ prazo, info, pendentes }: { prazo: string; info: PendenciaLiberacao | null; pendentes: string[] }) {
+  const dias = diasAte(prazo);
   return (
     <div className={`aviso ${dias < 0 ? 'aviso-erro' : 'aviso-alerta'}`}>
       <strong>
         Liberação com pendência
-        {dias < 0 ? `: prazo vencido em ${data(alocacao.pendencia_prazo)}` : `: regularizar até ${data(alocacao.pendencia_prazo)} (${dias === 0 ? 'vence hoje' : dias === 1 ? 'falta 1 dia' : `faltam ${dias} dias`})`}
+        {dias < 0 ? `: prazo vencido em ${data(prazo)}` : `: regularizar até ${data(prazo)} (${dias === 0 ? 'vence hoje' : dias === 1 ? 'falta 1 dia' : `faltam ${dias} dias`})`}
       </strong>
-      {pendentes.length > 0 && <span className="sub-linha">Pendente: {pendentes.join(', ')}.</span>}
-      {alocacao.pendencia_obs && <span className="sub-linha">Anotação{alocacao.pendencia_em ? ` de ${data(alocacao.pendencia_em)}` : ''}: {alocacao.pendencia_obs}</span>}
+      {pendentes.length > 0 ? (
+        <span className="sub-linha">Pendente: {pendentes.join(', ')}.</span>
+      ) : (
+        <span className="sub-linha">Os documentos já foram regularizados: a pendência sai na próxima rotina.</span>
+      )}
+      {info && <span className="sub-linha">Anotação de {data(info.criado_em)}: {info.anotacao}</span>}
+      {info?.ciente_tst_em && <span className="sub-linha">TST ciente em {data(info.ciente_tst_em)}.</span>}
+      {dias >= 0 && <span className="sub-linha">Vencido o prazo sem regularizar, o colaborador volta para pendente do fornecedor.</span>}
     </div>
   );
 }

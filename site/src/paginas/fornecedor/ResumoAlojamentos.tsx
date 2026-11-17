@@ -8,7 +8,9 @@ import { inicioPeriodo } from '../seguranca/PainelConformidade';
 function useResumoFornecedor() {
   const [r, setR] = useState<ResumoFornecedor | null>(null);
   useEffect(() => {
-    lerResumoFornecedor(inicioPeriodo(6)).then(setR).catch(() => setR(null));
+    lerResumoFornecedor(inicioPeriodo(6))
+      .then((x) => setR(x && Array.isArray(x.acoes) && Array.isArray(x.alojamentos) ? x : null))
+      .catch(() => setR(null));
   }, []);
   return r;
 }

@@ -10,7 +10,7 @@ tabelas_de_consulta(nome) as (values
 funcoes_revisadas(nome) as (values
   ('abrir_medicao'), ('acessos_ultimo_login'), ('alterar_tipo_documento'), ('aprovar_alocacao'), ('aprovar_documento'),
   ('avaliar_nao_conformidade'), ('colaboradores_ativos_empresa'), ('concluir_vistoria_seg'), ('fechar_ficha_maquina'),
-  ('notificar_nao_conformidades'), ('responder_nao_conformidade'), ('seg_fornecedores_obra'), ('abrir_ficha_maquina'), ('salvar_dia_ficha'), ('reabrir_vistoria_seg'), ('salvar_modelo_seg'), ('seg_resumo_obra'), ('seg_resumo_fornecedor'), ('assinar_integracao'), ('salvar_lista_integracao'),
+  ('notificar_nao_conformidades'), ('responder_nao_conformidade'), ('seg_fornecedores_obra'), ('abrir_ficha_maquina'), ('salvar_dia_ficha'), ('reabrir_vistoria_seg'), ('salvar_modelo_seg'), ('seg_resumo_obra'), ('seg_resumo_fornecedor'), ('assinar_integracao'), ('salvar_lista_integracao'), ('processar_pendencias_liberacao'),
   ('avaliar_item_medicao'), ('bloquear_colaborador'), ('cadastrar_subcontratada'), ('cancelar_integracao'),
   ('combinar_prazo_medicao'), ('concluir_conferencia_medicao'), ('conferir_encerramento_obra'), ('concluir_integracao'), ('conferir_colaborador_medicao'),
   ('corrigir_colaborador'), ('criar_integracao'), ('definir_colaborador_medicao'), ('desligar_colaborador'),

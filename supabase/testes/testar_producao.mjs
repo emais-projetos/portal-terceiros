@@ -63,7 +63,7 @@ const codigoAleatorio = () => randomBytes(32).toString('base64url');
 const TABELAS = [
   'alocacoes', 'arquivos', 'avisos_liberacao', 'cobrancas', 'cobrancas_envios', 'colaboradores', 'colaboradores_bloqueios',
   'colaboradores_documentos_extras', 'conversas', 'convites_acesso', 'documentos', 'empresas', 'empresas_obras', 'eventos',
-  'funcoes', 'funcoes_documentos', 'integracoes', 'integracoes_participantes', 'medicoes', 'medicoes_arquivos',
+  'funcoes', 'funcoes_documentos', 'integracoes', 'integracoes_participantes', 'liberacoes_pendencia', 'medicoes', 'medicoes_arquivos',
   'medicoes_colaboradores', 'medicoes_itens', 'mensagens', 'modelos_documento', 'modelos_email', 'modelos_email_revisoes',
   'obras', 'parametros', 'parametros_historico', 'pedidos_obra', 'seg_alojamentos', 'seg_fichas_maquina',
   'seg_locadoras', 'seg_maquinas', 'seg_modelos', 'seg_modelos_revisoes', 'seg_nao_conformidades', 'seg_termos_alojamento', 'seg_vistorias',
@@ -91,7 +91,7 @@ const FUNCOES = {
   abrir_medicao: 'p_empresa uuid, p_obra uuid, p_competencia date',
   acessos_ultimo_login: '',
   alterar_tipo_documento: 'p_codigo text, p_validade_dias integer, p_impeditivo boolean, p_motivo text',
-  aprovar_alocacao: 'p_alocacao uuid',
+  aprovar_alocacao: 'p_alocacao uuid, p_pendencia text',
   aprovar_documento: 'p_documento uuid, p_vencimento date',
   avaliar_item_medicao: 'p_item uuid, p_aprovar boolean, p_motivo text',
   avaliar_nao_conformidade: 'p_nc uuid, p_aprovar boolean, p_motivo text',
@@ -144,7 +144,8 @@ const FUNCOES = {
   remover_colaborador_medicao: 'p_medicao uuid, p_colaborador uuid',
   resolver_conversa: 'p_conversa uuid, p_resolvida boolean',
   responder_pedido_obra: 'p_pedido uuid, p_aprovar boolean, p_motivo text',
-  validar_alocacao_tst: 'p_alocacao uuid',
+  validar_alocacao_tst: 'p_alocacao uuid, p_ciente_pendencia boolean',
+  processar_pendencias_liberacao: '',
 };
 // Valores inofensivos: ids que não existem, datas antigas. Só serviriam para mostrar se a função roda sem login.
 function valor(tipo) {

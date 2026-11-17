@@ -533,6 +533,42 @@ select teste.sair();
 select teste.igual('Integração (controle): presente recebe a data real', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-000000000001' and data_integracao = current_date and not integracao_provisoria$q$, 1);
 update alocacoes set data_integracao = null where id = :AL1;
 
+-- --------------------------------------------------------------------------------------------
+-- Liberação com pendência: anotação do administrativo, ciente do TST e volta ao fornecedor no fim do prazo
+-- --------------------------------------------------------------------------------------------
+update alocacoes set status = 'em_analise' where id = :AL2;
+select teste.entrar(:F2);
+select teste.bloqueado('Pendência: fornecedor processa prazos', $q$select processar_pendencias_liberacao()$q$);
+select teste.entrar(:T2);
+select teste.bloqueado('Pendência: TST processa prazos', $q$select processar_pendencias_liberacao()$q$);
+select teste.bloqueado('Pendência: TST aprova com pendência', $q$select aprovar_alocacao('50000000-0000-0000-0000-000000000002', 'pedido da engenharia')$q$);
+select teste.entrar(:A);
+select teste.bloqueado('Pendência: aprovar com documento pendente sem anotação', $q$select aprovar_alocacao('50000000-0000-0000-0000-000000000002')$q$);
+select teste.bloqueado('Pendência: anotação em branco', $q$select aprovar_alocacao('50000000-0000-0000-0000-000000000002', '   ')$q$);
+select aprovar_alocacao(:AL2, 'Pedido do eng. Rodrigo para a concretagem');
+select teste.igual('Pendência (controle): prazo de 7 dias', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-000000000002' and status = 'aprovado_admin' and pendencia_prazo = current_date + 7$q$, 1);
+select teste.igual('Pendência (controle): anotação guardada com os documentos', $q$select 1 from liberacoes_pendencia where anotacao like 'Pedido do eng.%' and cardinality(documentos) > 0 and encerrada_em is null$q$, 1);
+select teste.entrar(:T2);
+select teste.igual('Pendência (controle): TST lê a anotação', 'select 1 from liberacoes_pendencia', 1);
+select teste.bloqueado('Pendência: TST libera sem ciente', $q$select validar_alocacao_tst('50000000-0000-0000-0000-000000000002')$q$);
+select validar_alocacao_tst(:AL2, true);
+select teste.igual('Pendência (controle): liberado com pendência', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-000000000002' and status = 'liberado' and pendencia_prazo is not null$q$, 1);
+select teste.entrar(:T1);
+select teste.igual('Pendência: TST de outra obra lê a anotação', 'select 1 from liberacoes_pendencia', 0);
+select teste.entrar(:F2);
+select teste.igual('Pendência: fornecedor lê a anotação', 'select 1 from liberacoes_pendencia', 0);
+select teste.igual('Pendência (controle): fornecedor vê o prazo', $q$select 1 from v_alocacoes_resumo where pendencia_prazo is not null$q$, 1);
+select teste.entrar(:G1);
+select teste.igual('Pendência: engenharia lê a anotação', 'select 1 from liberacoes_pendencia', 0);
+select teste.sair();
+select processar_pendencias_liberacao();
+select teste.igual('Pendência (controle): dentro do prazo continua liberado', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-000000000002' and status = 'liberado'$q$, 1);
+update alocacoes set pendencia_prazo = current_date - 1 where id = :AL2;
+select processar_pendencias_liberacao();
+select teste.igual('Pendência: prazo vencido volta para o fornecedor', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-000000000002' and status = 'pendente_fornecedor' and pendencia_prazo is null and validado_tst_em is null$q$, 1);
+select teste.igual('Pendência (controle): registro encerrado como vencido', $q$select 1 from liberacoes_pendencia where resultado = 'vencida' and encerrada_em is not null$q$, 1);
+update alocacoes set status = 'liberado', observacao = null where id = :AL2;
+
 -- ============================================================================================
 -- 4. Admin desativado perde tudo
 -- ============================================================================================

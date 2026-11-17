@@ -7,7 +7,7 @@ import { LinhaCompacta } from '../../componentes/Farois';
 import type { Cor } from '../../lib/farois';
 import { EnvioDocumento, type PedidoDeEnvio } from '../../componentes/EnvioDocumento';
 import { mensagemDeErro } from '../../lib/supabase';
-import { data, rotuloSituacao, rotuloStatus } from '../../lib/formato';
+import { data, diasAte, rotuloSituacao, rotuloStatus } from '../../lib/formato';
 import { enviarParaAnalise, lerDocumentosDaEmpresa, precisaAcao, type DocumentoEmpresa, type PendenciaFornecedor } from '../../lib/fornecedor';
 import { documentosDoColaborador, nomeDoDocumento, podeEnviarParaAnalise, travasDaAlocacao, useFornecedor } from '../../lib/useFornecedor';
 
@@ -36,6 +36,15 @@ export function OQueFalta() {
         .filter((a) => podeEnviarParaAnalise(a) && travasDaAlocacao(pendenciasPorAlocacao.get(a.alocacao_id)).length === 0)
         .sort((a, b) => a.colaborador.localeCompare(b.colaborador, 'pt-BR')),
     [dados, pendenciasPorAlocacao],
+  );
+
+  // Liberados com pendência a pedido da engenharia: prazo para regularizar.
+  const comPrazo = useMemo(
+    () =>
+      (dados?.alocacoes ?? [])
+        .filter((a) => a.pendencia_prazo && (a.status === 'liberado' || a.status === 'aprovado_admin'))
+        .sort((a, b) => (a.pendencia_prazo ?? '').localeCompare(b.pendencia_prazo ?? '') || a.colaborador.localeCompare(b.colaborador, 'pt-BR')),
+    [dados],
   );
 
   const porColaborador = useMemo(() => {
@@ -106,7 +115,7 @@ export function OQueFalta() {
       titulo="O que falta"
       apoio={
         dados
-          ? totalItens === 0 && prontos.length === 0
+          ? totalItens === 0 && prontos.length === 0 && comPrazo.length === 0
             ? 'Nada pendente. Quando algum documento estiver perto de vencer, ele aparece aqui.'
             : 'Documentos para enviar ou renovar, e colaboradores prontos para a análise da Emais.'
           : undefined
@@ -116,6 +125,41 @@ export function OQueFalta() {
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
       {!dados && !erro && <Carregando />}
       <PendenciasAlojamento />
+
+      {comPrazo.length > 0 && (
+        <section className="bloco">
+          <div className="faixa-retido" role="alert">
+            <div>
+              <span>
+                <strong>
+                  {comPrazo.length === 1 ? '1 colaborador liberado com pendência' : `${comPrazo.length} colaboradores liberados com pendência`}
+                </strong>
+                A Emais liberou antes de toda a documentação estar em ordem. Envie o que falta até o prazo: depois dele, o colaborador volta
+                para pendente e não pode trabalhar na obra.
+              </span>
+            </div>
+          </div>
+          <ul className="lista-simples">
+            {comPrazo.map((a) => {
+              const dias = diasAte(a.pendencia_prazo!);
+              const faltam = travasDaAlocacao(pendenciasPorAlocacao.get(a.alocacao_id));
+              return (
+                <li key={a.alocacao_id}>
+                  <span>
+                    <strong>{a.colaborador}</strong>
+                    <small className="sub">
+                      {a.obra}. {faltam.length ? `Falta: ${faltam.map((p) => p.documento).join(', ')}.` : 'Documentos enviados, aguardando conferência da Emais.'}
+                    </small>
+                  </span>
+                  <span className={`selo ${dias <= 2 ? 'selo-erro' : 'selo-teste'}`}>
+                    {dias < 0 ? 'prazo vencido' : dias === 0 ? 'vence hoje' : `até ${data(a.pendencia_prazo)}`}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {prontos.length > 0 && (
         <section className="bloco bloco-destaque">

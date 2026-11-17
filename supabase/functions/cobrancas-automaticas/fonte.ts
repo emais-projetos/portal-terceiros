@@ -221,6 +221,13 @@ async function liberacoes() {
   } catch (e) {
     console.error('Limpeza de fotos da segurança:', (e as Error).message);
   }
+  // Liberação com pendência: encerra as regularizadas e devolve ao fornecedor quem passou do prazo de 7 dias.
+  try {
+    const { error } = await supabase.rpc('processar_pendencias_liberacao');
+    if (error) throw error;
+  } catch (e) {
+    console.error('Prazos da liberação com pendência:', (e as Error).message);
+  }
   if (cfg.pausada) return { ...base, itens: [] };
   const avisos = await avisosDeLiberacao(cfg);
   const convites = await convitesDeAcesso(cfg);

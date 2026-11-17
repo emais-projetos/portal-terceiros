@@ -453,10 +453,8 @@ export type AlocacaoResumo = {
   a_vencer: number;
   bloqueado: boolean;
   bloqueio_motivo: string | null;
-  // Liberação com pendência (pedido da engenharia): anotação e prazo para regularizar.
+  // Liberação com pendência (pedido da engenharia): prazo para regularizar. A anotação fica em liberacoes_pendencia.
   pendencia_prazo: string | null;
-  pendencia_obs: string | null;
-  pendencia_em: string | null;
 };
 
 export async function lerAlocacoes(): Promise<AlocacaoResumo[]> {
@@ -466,7 +464,7 @@ export async function lerAlocacoes(): Promise<AlocacaoResumo[]> {
       .select(
         'alocacao_id, status, obra_id, obra, colaborador_id, colaborador, funcao, empresa_id, empresa, inicio_conferencia, ' +
           'aprovado_admin_em, validado_tst_em, data_integracao, vencimento_integracao, impeditivos_pendentes, pendentes_adm, ' +
-          'pendentes_sst, devolvidos, em_analise, a_vencer, bloqueado, bloqueio_motivo, pendencia_prazo, pendencia_obs, pendencia_em',
+          'pendentes_sst, devolvidos, em_analise, a_vencer, bloqueado, bloqueio_motivo, pendencia_prazo',
       )
       .order('alocacao_id')
       .range(inicio, fim) as unknown as PromiseLike<{ data: AlocacaoResumo[] | null; error: unknown }>,
@@ -604,6 +602,22 @@ export async function lerPendencias(alocacaoId: string): Promise<Pendencia[]> {
 export async function aprovarAlocacao(id: string, pendencia?: string) {
   const { error } = await supabase.rpc('aprovar_alocacao', { p_alocacao: id, p_pendencia: pendencia ?? null });
   if (error) throw error;
+}
+
+export type PendenciaLiberacao = { prazo: string; anotacao: string; documentos: string[]; criado_em: string; ciente_tst_em: string | null };
+
+// Anotação da liberação com pendência em aberto (só administrativo e TST da obra leem).
+export async function lerPendenciaLiberacao(alocacaoId: string): Promise<PendenciaLiberacao | null> {
+  const { data, error } = await supabase
+    .from('liberacoes_pendencia')
+    .select('prazo, anotacao, documentos, criado_em, ciente_tst_em')
+    .eq('alocacao_id', alocacaoId)
+    .is('encerrada_em', null)
+    .order('criado_em', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as PendenciaLiberacao | null) ?? null;
 }
 
 export async function registrarIntegracao(id: string, dataIso: string) {

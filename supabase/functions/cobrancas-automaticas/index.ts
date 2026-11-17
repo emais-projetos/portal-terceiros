@@ -35,7 +35,7 @@ async function lerTudo(montar) {
 async function lerAlocacoes() {
   return lerTudo(
     (inicio, fim) => supabase.from("v_alocacoes_resumo").select(
-      "alocacao_id, status, obra_id, obra, colaborador_id, colaborador, funcao, empresa_id, empresa, inicio_conferencia, aprovado_admin_em, validado_tst_em, data_integracao, vencimento_integracao, impeditivos_pendentes, pendentes_adm, pendentes_sst, devolvidos, em_analise, a_vencer, bloqueado, bloqueio_motivo"
+      "alocacao_id, status, obra_id, obra, colaborador_id, colaborador, funcao, empresa_id, empresa, inicio_conferencia, aprovado_admin_em, validado_tst_em, data_integracao, vencimento_integracao, impeditivos_pendentes, pendentes_adm, pendentes_sst, devolvidos, em_analise, a_vencer, bloqueado, bloqueio_motivo, pendencia_prazo"
     ).order("alocacao_id").range(inicio, fim)
   );
 }
@@ -772,6 +772,12 @@ async function liberacoes() {
     await limparFotosVencidas();
   } catch (e) {
     console.error("Limpeza de fotos da seguran\xE7a:", e.message);
+  }
+  try {
+    const { error } = await supabase.rpc("processar_pendencias_liberacao");
+    if (error) throw error;
+  } catch (e) {
+    console.error("Prazos da libera\xE7\xE3o com pend\xEAncia:", e.message);
   }
   if (cfg.pausada) return { ...base, itens: [] };
   const avisos = await avisosDeLiberacao(cfg);
