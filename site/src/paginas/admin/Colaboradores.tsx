@@ -6,7 +6,7 @@ import { Dialogo } from '../../componentes/Dialogo';
 import { Carregando } from '../../componentes/Carregando';
 import { mensagemDeErro } from '../../lib/supabase';
 import {
-  cpfValido, data, erroDatasColaborador, formatarCpf, hojeIso, ordemSituacao, rotuloSituacao, rotuloStatus, soDigitos,
+  cpfValido, data, diasAte, erroDatasColaborador, formatarCpf, hojeIso, somarDias, ordemSituacao, rotuloSituacao, rotuloStatus, soDigitos,
 } from '../../lib/formato';
 import {
   abrirArquivo, alocarComoAdmin, aprovarAlocacao, devolverAlocacaoTst, excecoesNovas, lerAlocacoes, lerAnexos, lerBaseTreinamentos, lerColaborador,
@@ -224,6 +224,9 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
   const [dataInt, setDataInt] = useState(hojeIso());
   const [devolvendo, setDevolvendo] = useState(false);
   const [motivo, setMotivo] = useState('');
+  const [comPendencia, setComPendencia] = useState(false);
+  const [obsPendencia, setObsPendencia] = useState('');
+  const [ciente, setCiente] = useState(false);
   const [devolucaoTst, setDevolucaoTst] = useState<{ motivo: string; em: string } | null>(null);
   const [excecoes, setExcecoes] = useState<Excecao[]>([]);
   const [bloqueios, setBloqueios] = useState<Bloqueio[]>([]);
@@ -245,6 +248,9 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
     setDataInt(hojeIso());
     setDevolvendo(false);
     setMotivo('');
+    setComPendencia(false);
+    setObsPendencia('');
+    setCiente(false);
     setDevolucaoTst(null);
     setExcecoes([]);
     setBloqueios([]);
@@ -345,7 +351,13 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
           <div><dt>CPF</dt><dd>{colab ? formatarCpf(colab.cpf) || 'Não informado' : ''}</dd></div>
           <div><dt>Admissão</dt><dd>{colab ? data(colab.data_admissao) || 'Não informada' : ''}</dd></div>
           <div><dt>Nascimento</dt><dd>{colab ? data(colab.data_nascimento) || 'Não informada' : ''}</dd></div>
-          <div><dt>Situação</dt><dd><span className={`selo selo-${alocacao.status}`}>{rotuloStatus[alocacao.status]}</span></dd></div>
+          <div>
+            <dt>Situação</dt>
+            <dd>
+              <span className={`selo selo-${alocacao.status}`}>{rotuloStatus[alocacao.status]}</span>
+              {alocacao.pendencia_prazo && <span className="selo selo-doc-a_vencer selo-junto">com pendência</span>}
+            </dd>
+          </div>
           <div><dt>Integração</dt><dd>{alocacao.data_integracao ? data(alocacao.data_integracao) : 'Não registrada'}</dd></div>
         </dl>
 
@@ -358,6 +370,9 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
           <p className="aviso aviso-alerta">
             <strong>Devolvido pelo TST em {data(devolucaoTst.em)}.</strong> {devolucaoTst.motivo}
           </p>
+        )}
+        {alocacao.pendencia_prazo && (
+          <AvisoPendencia alocacao={alocacao} pendentes={travas.map((p) => p.documento)} />
         )}
         {ehAdmin && colab?.pendencia_cadastro && (
           <p className="aviso aviso-alerta">
@@ -386,15 +401,28 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
               A documentação foi conferida e aprovada pelo administrativo da Emais. Confira os dados abaixo e dê a validação final
               da segurança do trabalho.
             </p>
+            {alocacao.pendencia_prazo && !devolvendo && (
+              <label className="opcao opcao-destaque">
+                <input type="checkbox" checked={ciente} onChange={(e) => setCiente(e.target.checked)} />
+                <span>
+                  Estou ciente e libero com pendência. O fornecedor tem até {data(alocacao.pendencia_prazo)} para regularizar.
+                </span>
+              </label>
+            )}
             {!devolvendo ? (
               <div className="linha-botoes">
                 <button
                   type="button"
                   className="botao"
-                  disabled={ocupado}
-                  onClick={() => agir(() => validarAlocacao(alocacao.alocacao_id), `${alocacao.colaborador} liberado para ${alocacao.obra}.`)}
+                  disabled={ocupado || (!!alocacao.pendencia_prazo && !ciente)}
+                  onClick={() =>
+                    agir(
+                      () => validarAlocacao(alocacao.alocacao_id, !!alocacao.pendencia_prazo),
+                      `${alocacao.colaborador} liberado para ${alocacao.obra}${alocacao.pendencia_prazo ? `, com pendência até ${data(alocacao.pendencia_prazo)}` : ''}.`,
+                    )
+                  }
                 >
-                  Validar e liberar
+                  {alocacao.pendencia_prazo ? 'Validar e liberar com pendência' : 'Validar e liberar'}
                 </button>
                 <button type="button" className="botao botao-secundario" disabled={ocupado} onClick={() => setDevolvendo(true)}>
                   Devolver ao administrativo
@@ -421,9 +449,52 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
           </div>
         )}
 
+        {ehAdmin && alocacao.status === 'em_analise' && pend && travas.length > 0 && (
+          <div className={`caixa${comPendencia ? ' caixa-alerta' : ''}`}>
+            <p className="caixa-texto">
+              {travas.length === 1 ? 'Falta 1 documento obrigatório' : `Faltam ${travas.length} documentos obrigatórios`}: {travas.map((p) => p.documento).join(', ')}.
+            </p>
+            <label className="opcao opcao-destaque">
+              <input type="checkbox" checked={comPendencia} onChange={(e) => setComPendencia(e.target.checked)} />
+              <span>Liberar com pendência (pedido da engenharia)</span>
+            </label>
+            {comPendencia && (
+              <form
+                className="formulario formulario-largo"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (obsPendencia.trim())
+                    agir(
+                      () => aprovarAlocacao(alocacao.alocacao_id, obsPendencia.trim()),
+                      `Aprovado com pendência até ${data(somarDias(hojeIso(), 7))}. Agora falta a validação do TST da obra.`,
+                    );
+                }}
+              >
+                <label className="campo">
+                  <span>Anotação</span>
+                  <textarea
+                    rows={3}
+                    value={obsPendencia}
+                    onChange={(e) => setObsPendencia(e.target.value)}
+                    placeholder="Quem pediu e por quê. Ex.: pedido do eng. Marcos para começar a montagem da estrutura; NR-35 em emissão pela empresa."
+                  />
+                </label>
+                <p className="dica">
+                  Prazo para regularizar: 7 dias, até <strong>{data(somarDias(hojeIso(), 7))}</strong>. O TST também confirma a liberação com pendência.
+                  O fornecedor vê o prazo em "O que falta". Vencido o prazo sem regularizar, o colaborador volta para pendente do fornecedor.
+                </p>
+                <div className="linha-botoes">
+                  <button className="botao" type="submit" disabled={!obsPendencia.trim() || ocupado}>Aprovar com pendência e enviar ao TST</button>
+                  <button className="botao botao-discreto" type="button" onClick={() => setComPendencia(false)}>Cancelar</button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
+
         {ehAdmin && (
         <div className="linha-botoes">
-          {alocacao.status === 'em_analise' && (
+          {alocacao.status === 'em_analise' && !comPendencia && (
             <button
               type="button"
               className="botao"
@@ -538,7 +609,7 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
           </div>
         )}
         {ehAdmin && alocacao.status === 'em_analise' && travas.length > 0 && (
-          <p className="dica">Para aprovar, todos os documentos impeditivos precisam estar aprovados e em dia. Faltam {travas.length}.</p>
+          <p className="dica">Para aprovar, todos os documentos impeditivos precisam estar aprovados e em dia. Faltam {travas.length}. Se a engenharia pediu, use "Liberar com pendência" acima.</p>
         )}
 
         {ehAdmin && colab && editando && (
@@ -771,5 +842,20 @@ function EdicaoCadastro({
         <button className="botao botao-discreto" type="button" onClick={aoCancelar}>Cancelar</button>
       </div>
     </form>
+  );
+}
+
+// Aviso no cadastro: liberado (ou a liberar) com documento pendente, anotação e prazo.
+function AvisoPendencia({ alocacao, pendentes }: { alocacao: AlocacaoResumo; pendentes: string[] }) {
+  const dias = diasAte(alocacao.pendencia_prazo!);
+  return (
+    <div className={`aviso ${dias < 0 ? 'aviso-erro' : 'aviso-alerta'}`}>
+      <strong>
+        Liberação com pendência
+        {dias < 0 ? `: prazo vencido em ${data(alocacao.pendencia_prazo)}` : `: regularizar até ${data(alocacao.pendencia_prazo)} (${dias === 0 ? 'vence hoje' : dias === 1 ? 'falta 1 dia' : `faltam ${dias} dias`})`}
+      </strong>
+      {pendentes.length > 0 && <span className="sub-linha">Pendente: {pendentes.join(', ')}.</span>}
+      {alocacao.pendencia_obs && <span className="sub-linha">Anotação{alocacao.pendencia_em ? ` de ${data(alocacao.pendencia_em)}` : ''}: {alocacao.pendencia_obs}</span>}
+    </div>
   );
 }

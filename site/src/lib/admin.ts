@@ -453,6 +453,10 @@ export type AlocacaoResumo = {
   a_vencer: number;
   bloqueado: boolean;
   bloqueio_motivo: string | null;
+  // Liberação com pendência (pedido da engenharia): anotação e prazo para regularizar.
+  pendencia_prazo: string | null;
+  pendencia_obs: string | null;
+  pendencia_em: string | null;
 };
 
 export async function lerAlocacoes(): Promise<AlocacaoResumo[]> {
@@ -462,7 +466,7 @@ export async function lerAlocacoes(): Promise<AlocacaoResumo[]> {
       .select(
         'alocacao_id, status, obra_id, obra, colaborador_id, colaborador, funcao, empresa_id, empresa, inicio_conferencia, ' +
           'aprovado_admin_em, validado_tst_em, data_integracao, vencimento_integracao, impeditivos_pendentes, pendentes_adm, ' +
-          'pendentes_sst, devolvidos, em_analise, a_vencer, bloqueado, bloqueio_motivo',
+          'pendentes_sst, devolvidos, em_analise, a_vencer, bloqueado, bloqueio_motivo, pendencia_prazo, pendencia_obs, pendencia_em',
       )
       .order('alocacao_id')
       .range(inicio, fim) as unknown as PromiseLike<{ data: AlocacaoResumo[] | null; error: unknown }>,
@@ -596,8 +600,9 @@ export async function lerPendencias(alocacaoId: string): Promise<Pendencia[]> {
   return (data ?? []) as Pendencia[];
 }
 
-export async function aprovarAlocacao(id: string) {
-  const { error } = await supabase.rpc('aprovar_alocacao', { p_alocacao: id });
+// Com anotação: libera mesmo com documento obrigatório pendente (prazo de 7 dias para regularizar).
+export async function aprovarAlocacao(id: string, pendencia?: string) {
+  const { error } = await supabase.rpc('aprovar_alocacao', { p_alocacao: id, p_pendencia: pendencia ?? null });
   if (error) throw error;
 }
 
@@ -678,8 +683,8 @@ export async function copiarTexto(texto: string) {
 
 // ---------------------------------------------------------------- Validação do TST
 
-export async function validarAlocacao(id: string) {
-  const { error } = await supabase.rpc('validar_alocacao_tst', { p_alocacao: id });
+export async function validarAlocacao(id: string, cientePendencia = false) {
+  const { error } = await supabase.rpc('validar_alocacao_tst', { p_alocacao: id, p_ciente_pendencia: cientePendencia });
   if (error) throw error;
 }
 
