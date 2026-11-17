@@ -3123,3 +3123,11 @@ button.celula:hover {
 .link-forte { color: var(--petroleo); font-weight: 600; text-decoration: none; white-space: nowrap; }
 .link-forte:hover { text-decoration: underline; }
 .faixa-alojamento { margin-bottom: 12px; }
+
+/* Liberação com pendência */
+.caixa-alerta { border-color: #e7c873; background: #fffaf0; }
+.opcao.opcao-destaque { display: flex; align-items: flex-start; margin: 4px 0 12px; font-weight: 600; }
+.opcao.opcao-destaque input { margin-top: 2px; flex: none; }
+.aviso .sub-linha { display: block; margin-top: 4px; }
+.caixa .formulario { margin-top: 4px; }
+.selo-junto { margin-left: 6px; }
