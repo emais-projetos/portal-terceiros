@@ -9,7 +9,7 @@ import { lerAlocacoes, type AlocacaoResumo } from '../lib/admin';
 import { Assinatura } from '../componentes/Assinatura';
 import {
   apagarAssinatura, assinarIntegracao, baixarListaGuardada, baixarListaPresenca, cancelarIntegracao, concluirIntegracao, criarIntegracao,
-  guardarListaAssinada, lerIntegracoes, linksAssinaturas, type Integracao,
+  guardarListaAssinada, lerIntegracoes, linksAssinaturas, registrarSemAssinatura, type Integracao,
 } from '../lib/integracao';
 
 const CHAVE_OBRA = 'portal-terceiros:obra-integracao';
@@ -130,7 +130,7 @@ export function Integracao() {
   async function participantesDa(t: Integracao) {
     const alocs = t.integracoes_participantes.map((p) => ({ p, a: porId.get(p.alocacao_id) })).filter((x) => x.a);
     return alocs
-      .map(({ p, a }) => ({ nome: a!.colaborador, empresa: a!.empresa, funcao: a!.funcao, presente: p.presente, assinatura: p.assinatura }))
+      .map(({ p, a }) => ({ alocacao_id: p.alocacao_id, nome: a!.colaborador, empresa: a!.empresa, funcao: a!.funcao, presente: p.presente }))
       .sort((x, y) => x.empresa.localeCompare(y.empresa, 'pt-BR') || x.nome.localeCompare(y.nome, 'pt-BR'));
   }
 
@@ -358,7 +358,7 @@ export function Integracao() {
         porId={porId}
         aoFechar={() => setConfirmando(null)}
         aoAssinar={async () => carregarTurmas(obra)}
-        aoConfirmar={async (presentes, assinaturas) => {
+        aoConfirmar={async (presentes) => {
           const t = confirmando!;
           setConfirmando(null);
           setErro(null);
@@ -373,7 +373,7 @@ export function Integracao() {
             const lista = t.integracoes_participantes
               .map((p) => ({ p, a: porId.get(p.alocacao_id) }))
               .filter((x) => x.a)
-              .map(({ p, a }) => ({ nome: a!.colaborador, empresa: a!.empresa, funcao: a!.funcao, presente: presentesSet.has(p.alocacao_id), assinatura: assinaturas[p.alocacao_id] ?? null }));
+              .map(({ p, a }) => ({ alocacao_id: p.alocacao_id, nome: a!.colaborador, empresa: a!.empresa, funcao: a!.funcao, presente: presentesSet.has(p.alocacao_id) }));
             try {
               await guardarListaAssinada(t, nomeObra, lista);
             } catch (e) {
@@ -396,21 +396,29 @@ function ConfirmarPresenca({
   porId: Map<string, AlocacaoResumo>;
   aoFechar: () => void;
   aoAssinar: () => Promise<void>;
-  aoConfirmar: (presentes: string[], assinaturas: Record<string, string>) => void;
+  aoConfirmar: (presentes: string[]) => void;
 }) {
   const [presentes, setPresentes] = useState<Set<string>>(new Set());
   const [assinaturas, setAssinaturas] = useState<Record<string, string>>({});
   const [links, setLinks] = useState<Record<string, string>>({});
+  const [semAss, setSemAss] = useState<Record<string, string>>({});
   const [assinando, setAssinando] = useState<AlocacaoResumo | null>(null);
+  const [semAssinar, setSemAssinar] = useState<AlocacaoResumo | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     const ps = turma?.integracoes_participantes ?? [];
     const ass: Record<string, string> = {};
-    ps.forEach((p) => { if (p.assinatura) ass[p.alocacao_id] = p.assinatura; });
+    const sem: Record<string, string> = {};
+    ps.forEach((p) => {
+      if (p.assinatura) ass[p.alocacao_id] = p.assinatura;
+      if (p.nao_assina && p.codigo_assinatura) sem[p.alocacao_id] = p.codigo_assinatura;
+    });
     setAssinaturas(ass);
+    setSemAss(sem);
     // Se já há assinaturas na tela, vêm marcados só os que assinaram; sem nenhuma, todos (conferência com a lista em papel).
-    setPresentes(new Set(Object.keys(ass).length ? Object.keys(ass) : ps.map((p) => p.alocacao_id)));
+    const registrados = [...Object.keys(ass), ...Object.keys(sem)];
+    setPresentes(new Set(registrados.length ? registrados : ps.map((p) => p.alocacao_id)));
     setErro(null);
     setLinks({});
     linksAssinaturas(Object.values(ass)).then(setLinks).catch(() => undefined);
@@ -422,7 +430,6 @@ function ConfirmarPresenca({
     .filter((a): a is AlocacaoResumo => !!a)
     .sort((a, b) => a.colaborador.localeCompare(b.colaborador, 'pt-BR'));
   const ausentes = lista.length - presentes.size;
-  const assinaram = Object.keys(assinaturas).length;
   const marcar = (id: string, sim: boolean) =>
     setPresentes((s) => {
       const n = new Set(s);
@@ -444,6 +451,32 @@ function ConfirmarPresenca({
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
       setAssinando(null);
+    }
+  }
+
+  async function registrarSem(a: AlocacaoResumo, registrar: boolean) {
+    setErro(null);
+    try {
+      const codigo = await registrarSemAssinatura(turma!.id, a.alocacao_id, registrar);
+      setSemAss((x) => {
+        const n = { ...x };
+        if (registrar && codigo) n[a.alocacao_id] = codigo;
+        else delete n[a.alocacao_id];
+        return n;
+      });
+      if (registrar) {
+        setAssinaturas((x) => {
+          const n = { ...x };
+          delete n[a.alocacao_id];
+          return n;
+        });
+        marcar(a.alocacao_id, true);
+      }
+      setSemAssinar(null);
+      void aoAssinar();
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+      setSemAssinar(null);
     }
   }
 
@@ -488,23 +521,55 @@ function ConfirmarPresenca({
                       {links[c] ? <img src={links[c]} alt={`Assinatura de ${a.colaborador}`} className="assinatura-miniatura" /> : <span className="selo selo-liberado">Assinado</span>}
                       <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => refazer(a)}>Refazer</button>
                     </>
+                  ) : semAss[a.alocacao_id] ? (
+                    <>
+                      <span className="registro-eletronico">
+                        Não sabe assinar
+                        <small>Registro eletrônico, cód. {semAss[a.alocacao_id]}</small>
+                      </span>
+                      <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => registrarSem(a, false)}>Desfazer</button>
+                    </>
                   ) : (
-                    <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => setAssinando(a)}>Assinar</button>
+                    <>
+                      <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => setSemAssinar(a)}>Não sabe assinar</button>
+                      <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => setAssinando(a)}>Assinar</button>
+                    </>
                   )}
                 </span>
               </li>
             );
           })}
         </ul>
-        <p className="dica">{assinaram} de {lista.length} assinaram na tela. Ao registrar, a lista de presença com as assinaturas é guardada no portal e baixada.</p>
+        <p className="dica">
+          {Object.keys(assinaturas).length} de {lista.length} assinaram na tela
+          {Object.keys(semAss).length ? `, ${Object.keys(semAss).length} com registro eletrônico (não sabe assinar)` : ''}. Ao registrar, a lista de
+          presença com as assinaturas é guardada no portal e baixada.
+        </p>
         <div className="linha-botoes">
-          <button type="button" className="botao" onClick={() => aoConfirmar([...presentes], assinaturas)}>
+          <button type="button" className="botao" onClick={() => aoConfirmar([...presentes])}>
             Registrar {presentes.size} {presentes.size === 1 ? 'presente' : 'presentes'}{ausentes > 0 ? ` e ${ausentes} ${ausentes === 1 ? 'ausente' : 'ausentes'}` : ''}
           </button>
           <button type="button" className="botao botao-discreto" onClick={aoFechar}>Fechar</button>
         </div>
       </div>
       <Assinatura aberto={!!assinando} nome={assinando?.colaborador ?? ''} aoFechar={() => setAssinando(null)} aoConfirmar={gravar} />
+      <Dialogo aberto={!!semAssinar} titulo="Não sabe assinar" aoFechar={() => setSemAssinar(null)}>
+        {semAssinar && (
+          <div className="formulario formulario-largo">
+            <p className="apoio">
+              Registrar a presença de <strong>{semAssinar.colaborador}</strong> sem assinatura, porque a pessoa não sabe escrever?
+            </p>
+            <p className="dica">
+              O portal gera um registro eletrônico no lugar da assinatura, com data, hora e código de verificação, e você fica como
+              responsável pelo registro. Na lista de presença sai "Não sabe assinar: registro eletrônico" com o código.
+            </p>
+            <div className="linha-botoes">
+              <button type="button" className="botao" onClick={() => registrarSem(semAssinar, true)}>Registrar presença sem assinatura</button>
+              <button type="button" className="botao botao-discreto" onClick={() => setSemAssinar(null)}>Cancelar</button>
+            </div>
+          </div>
+        )}
+      </Dialogo>
     </Dialogo>
   );
 }

@@ -29,9 +29,11 @@ export type DadosLista = {
   data: string; // AAAA-MM-DD
   instrutor: string;
   empresas: { empresa: string; participantes: Linha[] }[];
+  // Folha final com as assinaturas eletrônicas (forma, data e hora, código de verificação).
+  evidencias?: { nome: string; empresa: string; forma: string; quando: string; codigo: string }[];
 };
 
-type Linha = { nome: string; funcao: string | null; assinatura?: string | null };
+type Linha = { nome: string; funcao: string | null; assinatura?: string | null; semAssinatura?: { codigo: string; quando: string } | null };
 
 type Trecho = { t: string; b: boolean; i: boolean };
 
@@ -269,6 +271,14 @@ function folha(
       } catch {
         // imagem inválida: a linha fica em branco para assinar no papel
       }
+    } else if (l.semAssinatura) {
+      // Não sabe assinar: registro eletrônico no lugar da assinatura.
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.6);
+      doc.text('NÃO SABE ASSINAR: REGISTRO ELETRÔNICO', 170.95, topo + alturaLinha / 2 - 0.4, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Cód. ${l.semAssinatura.codigo}, ${l.semAssinatura.quando}`, 170.95, topo + alturaLinha / 2 + 1.9, { align: 'center' });
+      doc.setFontSize(9);
     }
   }
 
@@ -295,5 +305,60 @@ export function gerarListaPresenca(JsPDFClasse: typeof JsPDF, modelo: ModeloList
       folha(doc, modelo, logo, dados, e.empresa, bloco, n + 1, blocos.length);
     });
   });
+  if (dados.evidencias?.length) folhaEvidencias(doc, dados);
   return doc;
+}
+
+// Folha de evidências: cada assinatura feita no portal, com a forma, a data e hora e o código de verificação.
+function folhaEvidencias(doc: JsPDF, dados: DadosLista) {
+  const ev = dados.evidencias ?? [];
+  const col = { nome: 14.3, empresa: 76, forma: 122, quando: 158, codigo: 182 };
+  let y = 0;
+  const cabecalho = () => {
+    doc.addPage();
+    doc.setDrawColor(0);
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('REGISTRO DAS ASSINATURAS ELETRÔNICAS', 105, 18, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`Integração de ${dataCurta(dados.data)}, obra ${dados.obra.toUpperCase()}. Instrutor(a): ${dados.instrutor}.`, 105, 24, { align: 'center' });
+    const nota = doc.splitTextToSize(
+      'Assinaturas colhidas no Portal de Terceiros da Emais durante a integração. Quem não sabe assinar teve a presença registrada eletronicamente pelo instrutor, com data, hora e código de verificação guardados no portal.',
+      181,
+    ) as string[];
+    doc.setFontSize(8);
+    doc.text(nota, 14.3, 31);
+    y = 31 + nota.length * 3.6 + 4;
+    doc.setFont('helvetica', 'bold');
+    doc.text('NOME', col.nome, y);
+    doc.text('EMPRESA', col.empresa, y);
+    doc.text('FORMA', col.forma, y);
+    doc.text('DATA E HORA', col.quando, y);
+    doc.text('CÓDIGO', col.codigo, y);
+    doc.setLineWidth(0.2);
+    doc.line(14.3, y + 1.6, 196, y + 1.6);
+    doc.setFont('helvetica', 'normal');
+    y += 6;
+  };
+  cabecalho();
+  ev.forEach((e) => {
+    if (y > 282) cabecalho();
+    doc.setFontSize(caber(doc, e.nome.toUpperCase(), 60, 7.5));
+    doc.text(e.nome.toUpperCase(), col.nome, y);
+    doc.setFontSize(caber(doc, e.empresa, 44, 7.5));
+    doc.text(e.empresa, col.empresa, y);
+    doc.setFontSize(caber(doc, e.forma, 34, 7.5));
+    doc.text(e.forma, col.forma, y);
+    doc.setFontSize(7.5);
+    doc.text(e.quando, col.quando, y);
+    doc.setFont('courier', 'bold');
+    doc.text(e.codigo, col.codigo, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setDrawColor(200);
+    doc.line(14.3, y + 1.8, 196, y + 1.8);
+    doc.setDrawColor(0);
+    y += 5.6;
+  });
 }

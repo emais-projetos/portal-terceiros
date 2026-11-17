@@ -15,12 +15,19 @@ export type Integracao = {
   integracoes_participantes: Participante[];
 };
 
-export type Participante = { alocacao_id: string; presente: boolean | null; assinatura: string | null; assinado_em: string | null };
+export type Participante = {
+  alocacao_id: string;
+  presente: boolean | null;
+  assinatura: string | null;
+  assinado_em: string | null;
+  nao_assina: boolean;
+  codigo_assinatura: string | null;
+};
 
 export async function lerIntegracoes(obraId: string): Promise<Integracao[]> {
   const { data: linhas, error } = await supabase
     .from('integracoes')
-    .select('id, obra_id, data, horario, local, responsavel, criado_em, concluida_em, cancelada_em, lista_pdf, integracoes_participantes(alocacao_id, presente, assinatura, assinado_em)')
+    .select('id, obra_id, data, horario, local, responsavel, criado_em, concluida_em, cancelada_em, lista_pdf, integracoes_participantes(alocacao_id, presente, assinatura, assinado_em, nao_assina, codigo_assinatura)')
     .eq('obra_id', obraId)
     .is('cancelada_em', null)
     .order('data', { ascending: false })
@@ -48,7 +55,7 @@ export async function criarIntegracao(dados: {
   if (error) throw error;
   return {
     ...(i as Omit<Integracao, 'integracoes_participantes'>),
-    integracoes_participantes: dados.alocacoes.map((alocacao_id) => ({ alocacao_id, presente: null, assinatura: null, assinado_em: null })),
+    integracoes_participantes: dados.alocacoes.map((alocacao_id) => ({ alocacao_id, presente: null, assinatura: null, assinado_em: null, nao_assina: false, codigo_assinatura: null })),
   };
 }
 
@@ -102,6 +109,13 @@ export async function assinarIntegracao(integracaoId: string, alocacaoId: string
   return caminho;
 }
 
+// Não sabe assinar: o portal gera um registro eletrônico (data, hora, código, quem registrou). Devolve o código.
+export async function registrarSemAssinatura(integracaoId: string, alocacaoId: string, registrar: boolean): Promise<string | null> {
+  const { data, error } = await supabase.rpc('registrar_sem_assinatura', { p_integracao: integracaoId, p_alocacao: alocacaoId, p_registrar: registrar });
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
 export async function apagarAssinatura(integracaoId: string, alocacaoId: string) {
   const { error } = await supabase.rpc('assinar_integracao', { p_integracao: integracaoId, p_alocacao: alocacaoId, p_caminho: null });
   if (error) throw error;
@@ -142,7 +156,7 @@ export async function cancelarIntegracao(id: string) {
   if (error) throw error;
 }
 
-export type ParticipanteLista = { nome: string; empresa: string; funcao: string | null; presente?: boolean | null; assinatura?: string | null };
+export type ParticipanteLista = { alocacao_id: string; nome: string; empresa: string; funcao: string | null; presente?: boolean | null };
 
 // Documento controlado "Declaração de recebimento de treinamento": texto, revisão e data vêm do banco.
 export async function lerModeloLista(): Promise<ModeloLista> {
@@ -171,17 +185,25 @@ async function lerLogo(): Promise<string | null> {
   }
 }
 
-function montarPdf(
-  jsPDF: Parameters<typeof gerarListaPresenca>[0],
-  modelo: ModeloLista,
-  logo: string | null,
-  i: Pick<Integracao, 'data' | 'responsavel' | 'concluida_em'>,
-  obra: string,
-  participantes: ParticipanteLista[],
-  assinaturas: Record<string, string>,
-) {
-  const lista = i.concluida_em ? participantes.filter((p) => p.presente) : participantes;
-  const porEmpresa = new Map<string, ParticipanteLista[]>();
+const dataHora = (iso: string) =>
+  new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+
+// Assinaturas e registros eletrônicos da turma, lidos do banco na hora de gerar o PDF.
+async function lerEvidencias(integracaoId: string): Promise<Map<string, Participante>> {
+  const { data, error } = await supabase
+    .from('integracoes_participantes')
+    .select('alocacao_id, presente, assinatura, assinado_em, nao_assina, codigo_assinatura')
+    .eq('integracao_id', integracaoId);
+  if (error) throw error;
+  return new Map(((data ?? []) as Participante[]).map((p) => [p.alocacao_id, p]));
+}
+
+async function gerarPdf(i: Pick<Integracao, 'id' | 'data' | 'responsavel' | 'concluida_em'>, obra: string, participantes: ParticipanteLista[]) {
+  const evid = await lerEvidencias(i.id);
+  const caminhos = [...evid.values()].map((p) => p.assinatura).filter((c): c is string => !!c);
+  const [{ jsPDF }, modelo, logo, imagens] = await Promise.all([import('jspdf'), lerModeloLista(), lerLogo(), assinaturasEmDataUrl(caminhos)]);
+  const lista = (i.concluida_em ? participantes.filter((p) => p.presente) : participantes).map((p) => ({ ...p, e: evid.get(p.alocacao_id) }));
+  const porEmpresa = new Map<string, typeof lista>();
   lista.forEach((p) => porEmpresa.set(p.empresa, [...(porEmpresa.get(p.empresa) ?? []), p]));
   const empresas = [...porEmpresa.entries()]
     .sort(([a], [b]) => a.localeCompare(b, 'pt-BR'))
@@ -189,28 +211,39 @@ function montarPdf(
       empresa,
       participantes: ps
         .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
-        .map((p) => ({ nome: p.nome, funcao: p.funcao, assinatura: p.assinatura ? assinaturas[p.assinatura] ?? null : null })),
+        .map((p) => ({
+          nome: p.nome,
+          funcao: p.funcao,
+          assinatura: p.e?.assinatura ? imagens[p.e.assinatura] ?? null : null,
+          semAssinatura: p.e?.nao_assina && p.e.codigo_assinatura ? { codigo: p.e.codigo_assinatura, quando: dataHora(p.e.assinado_em!) } : null,
+        })),
     }));
   if (empresas.length === 0) throw new Error('A turma não tem participantes para a lista.');
-  return gerarListaPresenca(jsPDF, modelo, logo, { obra, data: i.data, instrutor: i.responsavel, empresas });
+  const evidencias = lista
+    .filter((p) => p.e?.codigo_assinatura && p.e.assinado_em)
+    .sort((a, b) => a.empresa.localeCompare(b.empresa, 'pt-BR') || a.nome.localeCompare(b.nome, 'pt-BR'))
+    .map((p) => ({
+      nome: p.nome,
+      empresa: p.empresa,
+      forma: p.e!.nao_assina ? 'Registro eletrônico' : 'Assinatura na tela',
+      quando: dataHora(p.e!.assinado_em!),
+      codigo: p.e!.codigo_assinatura!,
+    }));
+  return gerarListaPresenca(jsPDF, modelo, logo, { obra, data: i.data, instrutor: i.responsavel, empresas, evidencias });
 }
 
 const nomeArquivo = (dataIso: string, obra: string) =>
   `${dataIso.replace(/-/g, '')}_Lista de presenca integracao_${obra.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, ' ').trim()}.pdf`;
 
 // Uma folha por empresa (o documento tem o campo EMPRESA). Depois da integração concluída, só os presentes,
-// com a assinatura de quem assinou na tela.
-export async function baixarListaPresenca(i: Pick<Integracao, 'data' | 'responsavel' | 'concluida_em'>, obra: string, participantes: ParticipanteLista[]) {
-  const caminhos = participantes.map((p) => p.assinatura).filter((c): c is string => !!c);
-  const [{ jsPDF }, modelo, logo, assinaturas] = await Promise.all([import('jspdf'), lerModeloLista(), lerLogo(), assinaturasEmDataUrl(caminhos)]);
-  montarPdf(jsPDF, modelo, logo, i, obra, participantes, assinaturas).save(nomeArquivo(i.data, obra));
+// com a assinatura (ou o registro eletrônico) de cada um e a folha de evidências no fim.
+export async function baixarListaPresenca(i: Pick<Integracao, 'id' | 'data' | 'responsavel' | 'concluida_em'>, obra: string, participantes: ParticipanteLista[]) {
+  (await gerarPdf(i, obra, participantes)).save(nomeArquivo(i.data, obra));
 }
 
 // Ao concluir: gera a lista com as assinaturas, guarda no portal (arquivo digital) e baixa uma cópia.
 export async function guardarListaAssinada(i: Pick<Integracao, 'id' | 'data' | 'responsavel'>, obra: string, participantes: ParticipanteLista[]) {
-  const caminhos = participantes.map((p) => p.assinatura).filter((c): c is string => !!c);
-  const [{ jsPDF }, modelo, logo, assinaturas] = await Promise.all([import('jspdf'), lerModeloLista(), lerLogo(), assinaturasEmDataUrl(caminhos)]);
-  const doc = montarPdf(jsPDF, modelo, logo, { ...i, concluida_em: new Date().toISOString() }, obra, participantes, assinaturas);
+  const doc = await gerarPdf({ ...i, concluida_em: new Date().toISOString() }, obra, participantes);
   const caminho = `${i.id}/lista-de-presenca-${Date.now()}.pdf`;
   const { error: e1 } = await supabase.storage.from('integracoes').upload(caminho, doc.output('blob'), { contentType: 'application/pdf', upsert: false });
   if (e1) throw new Error(`A presença foi registrada, mas a lista assinada não foi guardada: ${e1.message}`);

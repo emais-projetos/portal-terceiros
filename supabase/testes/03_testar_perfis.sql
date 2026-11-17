@@ -494,6 +494,7 @@ end $$;
 -- --------------------------------------------------------------------------------------------
 select teste.entrar(:F1);
 select teste.bloqueado('Integração: fornecedor assina', $q$select assinar_integracao('80000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', null)$q$);
+select teste.bloqueado('Integração: fornecedor registra sem assinatura', $q$select registrar_sem_assinatura('80000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', true)$q$);
 select teste.bloqueado('Integração: fornecedor guarda lista', $q$select salvar_lista_integracao('80000000-0000-0000-0000-000000000001', 'x')$q$);
 select teste.bloqueado('Integração: fornecedor envia arquivo', $q$insert into storage.objects (bucket_id, name) values ('integracoes', '80000000-0000-0000-0000-000000000001/50000000-0000-0000-0000-000000000001-1.png')$q$);
 select teste.igual('Integração: fornecedor lê arquivo', $q$select 1 from storage.objects where bucket_id = 'integracoes'$q$, 0);
@@ -510,6 +511,10 @@ insert into storage.objects (bucket_id, name) values ('integracoes', :'TI' || '/
 select assinar_integracao(:'TI', '50000000-0000-0000-0000-000000000001', :'TI' || '/50000000-0000-0000-0000-000000000001-1.png');
 select teste.igual('Integração (controle): assinatura gravada', $q$select 1 from integracoes_participantes where assinatura is not null and assinado_em is not null$q$, 1);
 select teste.igual('Integração (controle): TST lê a assinatura', $q$select 1 from storage.objects where bucket_id = 'integracoes'$q$, 1);
+select teste.igual('Integração (controle): assinatura desenhada tem código', $q$select 1 from integracoes_participantes where assinatura is not null and codigo_assinatura ~ '^[0-9A-F]{4}-[0-9A-F]{4}$'$q$, 1);
+select teste.bloqueado('Integração: sem assinatura em outra obra', $q$select registrar_sem_assinatura('80000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000002', true)$q$);
+select registrar_sem_assinatura(:'TI', '50000000-0000-0000-0000-000000000001', true);
+select teste.igual('Integração (controle): não sabe assinar gera registro eletrônico', $q$select 1 from integracoes_participantes where nao_assina and assinatura is null and codigo_assinatura is not null and assinado_em is not null and assinatura_por is not null$q$, 1);
 select teste.sair();
 update alocacoes set data_integracao = current_date - 100, integracao_provisoria = true where id = :AL1;
 select teste.entrar(:T1);
