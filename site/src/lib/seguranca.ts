@@ -69,7 +69,7 @@ export type Alojamento = {
   empresa_id: string | null;
   empresa_a_vincular: string | null;
   ativo: boolean;
-  vistorias: Pick<Vistoria, 'id' | 'data_vistoria' | 'classificacao' | 'situacao' | 'fotos_expiram_em' | 'fotos_excluidas_em'>[];
+  vistorias: Pick<Vistoria, 'id' | 'data_vistoria' | 'classificacao' | 'situacao' | 'pontuacao' | 'fotos_expiram_em' | 'fotos_excluidas_em'>[];
 };
 
 export const NOMES_STATUS_VISTORIA = { sim: 'Sim', nao: 'Não', na: 'Não se aplica' } as const;
@@ -129,7 +129,7 @@ export async function lerFicha(id: string): Promise<Ficha> {
 export async function lerAlojamentos(obraId: string): Promise<Alojamento[]> {
   const { data, error } = await supabase
     .from('seg_alojamentos')
-    .select('id, obra_id, nome, endereco, empresa_id, empresa_a_vincular, ativo, vistorias:seg_vistorias(id, data_vistoria, classificacao, situacao, fotos_expiram_em, fotos_excluidas_em)')
+    .select('id, obra_id, nome, endereco, empresa_id, empresa_a_vincular, ativo, vistorias:seg_vistorias(id, data_vistoria, classificacao, situacao, pontuacao, fotos_expiram_em, fotos_excluidas_em)')
     .eq('obra_id', obraId)
     .order('nome');
   if (error) throw error;
@@ -434,7 +434,7 @@ export type NcFornecedor = NcCompleta & { vistoria: { id: string; data_vistoria:
 export async function lerMeusAlojamentos(): Promise<AlojamentoFornecedor[]> {
   const { data, error } = await supabase
     .from('seg_alojamentos')
-    .select('id, nome, endereco, obra:obras(nome), vistorias:seg_vistorias(id, data_vistoria, classificacao, situacao, fotos_expiram_em, fotos_excluidas_em)')
+    .select('id, nome, endereco, obra:obras(nome), vistorias:seg_vistorias(id, data_vistoria, classificacao, situacao, pontuacao, fotos_expiram_em, fotos_excluidas_em)')
     .order('nome');
   if (error) throw error;
   return ((data ?? []) as unknown as AlojamentoFornecedor[]).map((a) => ({

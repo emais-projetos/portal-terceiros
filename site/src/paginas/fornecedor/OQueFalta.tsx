@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { PendenciasAlojamento } from './ResumoAlojamentos';
 import { Link } from 'react-router-dom';
 import { Pagina, Mensagem } from '../../componentes/Pagina';
 import { Carregando } from '../../componentes/Carregando';
@@ -114,6 +115,7 @@ export function OQueFalta() {
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
       {!dados && !erro && <Carregando />}
+      <PendenciasAlojamento />
 
       {prontos.length > 0 && (
         <section className="bloco bloco-destaque">

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AlojamentosObra } from './seguranca/AlojamentosObra';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useSessao } from '../lib/sessao';
 import { DetalheFrentes, LegendaFarois, LinhaFarol, ResumoFarois } from '../componentes/Farois';
@@ -58,7 +59,7 @@ export function PainelObra() {
   return (
     <Pagina
       titulo={painel ? painel.obra : 'Painel da obra'}
-      apoio="Situação de cada empresa da obra em documentos, integração e medição. Clique numa empresa para ver o que é cada pendência."
+      apoio="Situação de cada empresa da obra em documentos, integração e medição, e dos alojamentos. Clique numa empresa para ver o que é cada pendência."
       acoes={
         obras && obras.length > 1 ? (
           <label className="campo">
@@ -78,6 +79,7 @@ export function PainelObra() {
       {painel && (
         <>
           <FaroisDaObra painel={painel} obraId={obraId} />
+          <AlojamentosObra obraId={obraId} />
           {comDetalhes && (
             <details className="detalhes-obra">
               <summary>Mais detalhes da obra: pagamento por mês, histórico da medição, documentos e colaboradores</summary>

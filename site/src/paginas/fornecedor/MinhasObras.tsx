@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ResumoAlojamentos } from './ResumoAlojamentos';
 import { Link } from 'react-router-dom';
 import { Pagina, Mensagem } from '../../componentes/Pagina';
 import { Carregando } from '../../componentes/Carregando';
@@ -81,6 +82,8 @@ export function MinhasObras() {
           )}
         </div>
       )}
+
+      <ResumoAlojamentos />
 
       {linhas && linhas.length > 0 && (
         <>
