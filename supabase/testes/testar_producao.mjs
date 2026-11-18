@@ -26,16 +26,31 @@ function ok(cond, teste, detalhe) {
   if (!cond) falhas.push(`${teste}: ${detalhe}`);
 }
 
+// Edge function às vezes responde 503 (ou trava) quando a instância está sendo desligada no plano gratuito.
+// Não é falha do portal: tenta de novo até 2 vezes antes de contar o resultado.
 async function chamar(caminho, { metodo = 'GET', corpo, cabecalhos = {}, comChave = true } = {}) {
-  const r = await fetch(caminho.startsWith('http') ? caminho : BASE + caminho, {
-    method: metodo,
-    headers: {
-      ...(comChave ? { apikey: CHAVE } : {}),
-      ...(corpo !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...cabecalhos,
-    },
-    body: corpo === undefined ? undefined : typeof corpo === 'string' ? corpo : JSON.stringify(corpo),
-  });
+  const url = caminho.startsWith('http') ? caminho : BASE + caminho;
+  const funcao = url.includes('/functions/v1/');
+  let r;
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      r = await fetch(url, {
+        method: metodo,
+        headers: {
+          ...(comChave ? { apikey: CHAVE } : {}),
+          ...(corpo !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          ...cabecalhos,
+        },
+        body: corpo === undefined ? undefined : typeof corpo === 'string' ? corpo : JSON.stringify(corpo),
+        signal: AbortSignal.timeout(30000),
+      });
+    } catch (e) {
+      if (funcao && tentativa < 2) { await new Promise((ok) => setTimeout(ok, 3000)); continue; }
+      throw e;
+    }
+    if (funcao && [502, 503, 504].includes(r.status) && tentativa < 2) { await new Promise((ok) => setTimeout(ok, 3000)); continue; }
+    break;
+  }
   const texto = await r.text();
   let json = null;
   try { json = JSON.parse(texto); } catch { /* não é JSON */ }
