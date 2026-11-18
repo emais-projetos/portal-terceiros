@@ -90,7 +90,7 @@ type Item = {
   end?: boolean;
   // Quando a rota sozinha não basta (ex.: Colaboradores x Para validar, que usam a mesma página).
   ativo?: (caminho: string, busca: string) => boolean;
-  filhos?: { to: string; rotulo: string; ativo: (caminho: string, busca: string) => boolean }[];
+  filhos?: { to: string; rotulo: string; ativo: (caminho: string, busca: string) => boolean; contador?: number | null }[];
 };
 type Grupo = { titulo: string | null; itens: Item[] };
 
@@ -140,7 +140,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
               { to: '/acessos', rotulo: 'Usuários', ativo: abaAcessos('usuarios') },
               { to: '/acessos?aba=regras', rotulo: 'Regras', ativo: abaAcessos('regras') },
               { to: '/acessos?aba=emails', rotulo: 'E-mails', ativo: abaAcessos('emails') },
-              { to: '/acessos?aba=exportar', rotulo: 'Exportar', ativo: abaAcessos('exportar') },
+              { to: '/acessos?aba=exportar', rotulo: 'Exportar', ativo: abaAcessos('exportar'), contador: exportar },
             ],
           },
         ],
@@ -263,6 +263,9 @@ export function Topo() {
     if (!ehAdmin || !usuario) return;
     contarCobrancas(usuario.nome).then(setCobrancas).catch(() => setCobrancas(null));
     exportacaoPendente().then(setExportar).catch(() => setExportar(null));
+    const aoExportar = () => exportacaoPendente().then(setExportar).catch(() => undefined);
+    window.addEventListener('exportacao-feita', aoExportar);
+    return () => window.removeEventListener('exportacao-feita', aoExportar);
   }, [ehAdmin, usuario, pathname]);
 
   // No celular, o menu fecha ao trocar de página.
@@ -321,6 +324,8 @@ export function Topo() {
               {g.itens.map((i) => {
                 const forcado = estaAtivo(i);
                 const mostrarFilhos = !!i.filhos && pathname.startsWith(i.to);
+                // Com o submenu aberto, o contador fica só na aba a que ele se refere (ex.: Exportar).
+                const contadorNoFilho = mostrarFilhos && i.filhos!.some((f) => !!f.contador);
                 return (
                   <div key={i.to + i.rotulo}>
                     <NavLink
@@ -332,13 +337,14 @@ export function Topo() {
                     >
                       <Icone nome={i.icone} />
                       <span className="menu-item-rotulo">{i.rotulo}</span>
-                      {i.contador ? <span className="contador">{i.contador}</span> : null}
+                      {i.contador && !contadorNoFilho ? <span className="contador">{i.contador}</span> : null}
                     </NavLink>
                     {mostrarFilhos && (
                       <div className="menu-filhos">
                         {i.filhos!.map((f) => (
                           <NavLink key={f.rotulo} to={f.to} className={() => `menu-filho${f.ativo(pathname, search) ? ' ativo' : ''}`}>
                             {f.rotulo}
+                            {f.contador ? <span className="contador" title="Exportação do mês pendente">{f.contador}</span> : null}
                           </NavLink>
                         ))}
                       </div>

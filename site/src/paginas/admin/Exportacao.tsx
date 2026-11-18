@@ -28,6 +28,7 @@ export function ExportacaoMensal() {
       const r = await exportarTudo(usuario?.nome ?? 'administrativo', setProgresso);
       setOk(`Exportação baixada: ${r.tabelas} tabelas, ${r.linhas.toLocaleString('pt-BR')} linhas e ${r.arquivos} arquivos (${mb(r.bytes)}). Guarde o ZIP na pasta restrita do SharePoint.`);
       setUltima(await lerUltimaExportacao());
+      window.dispatchEvent(new Event('exportacao-feita'));
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
     } finally {
