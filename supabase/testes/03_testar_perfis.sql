@@ -574,6 +574,27 @@ select teste.igual('Pendência: prazo vencido volta para o fornecedor', $q$selec
 select teste.igual('Pendência (controle): registro encerrado como vencido', $q$select 1 from liberacoes_pendencia where resultado = 'vencida' and encerrada_em is not null$q$, 1);
 update alocacoes set status = 'liberado', observacao = null where id = :AL2;
 
+-- --------------------------------------------------------------------------------------------
+-- Exportação mensal e arquivos sem vínculo
+-- --------------------------------------------------------------------------------------------
+select teste.entrar(:F1);
+select teste.bloqueado('Exportação: fornecedor registra', $q$select registrar_exportacao(1, 1, 1, 1)$q$);
+select teste.bloqueado('Arquivos sem vínculo: fornecedor lista', $q$select * from arquivos_sem_vinculo(24, 10)$q$);
+select teste.entrar(:T1);
+select teste.bloqueado('Exportação: TST registra', $q$select registrar_exportacao(1, 1, 1, 1)$q$);
+select teste.bloqueado('Arquivos sem vínculo: TST lista', $q$select * from arquivos_sem_vinculo(24, 10)$q$);
+select teste.entrar(:G1);
+select teste.bloqueado('Exportação: engenharia registra', $q$select registrar_exportacao(1, 1, 1, 1)$q$);
+select teste.entrar(:A);
+select teste.bloqueado('Arquivos sem vínculo: administrativo lista (só a rotina)', $q$select * from arquivos_sem_vinculo(24, 10)$q$);
+select registrar_exportacao(40, 1000, 12, 5000000);
+select teste.igual('Exportação (controle): administrativo vê o registro', 'select 1 from exportacoes', 1);
+select teste.entrar(:T1);
+select teste.igual('Exportação: TST não vê o registro', 'select 1 from exportacoes', 0);
+select teste.entrar(:F1);
+select teste.igual('Exportação: fornecedor não vê o registro', 'select 1 from exportacoes', 0);
+select teste.sair();
+
 -- ============================================================================================
 -- 4. Admin desativado perde tudo
 -- ============================================================================================

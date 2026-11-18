@@ -62,7 +62,7 @@ const codigoAleatorio = () => randomBytes(32).toString('base64url');
 // ------------------------------------------------------------------------------------------
 const TABELAS = [
   'alocacoes', 'arquivos', 'avisos_liberacao', 'cobrancas', 'cobrancas_envios', 'colaboradores', 'colaboradores_bloqueios',
-  'colaboradores_documentos_extras', 'conversas', 'convites_acesso', 'documentos', 'empresas', 'empresas_obras', 'eventos',
+  'colaboradores_documentos_extras', 'conversas', 'convites_acesso', 'documentos', 'empresas', 'empresas_obras', 'eventos', 'exportacoes',
   'funcoes', 'funcoes_documentos', 'integracoes', 'integracoes_participantes', 'liberacoes_pendencia', 'medicoes', 'medicoes_arquivos',
   'medicoes_colaboradores', 'medicoes_itens', 'mensagens', 'modelos_documento', 'modelos_email', 'modelos_email_revisoes',
   'obras', 'parametros', 'parametros_historico', 'pedidos_obra', 'seg_alojamentos', 'seg_fichas_maquina',
@@ -109,6 +109,8 @@ const FUNCOES = {
   assinar_integracao: 'p_integracao uuid, p_alocacao uuid, p_caminho text',
   salvar_lista_integracao: 'p_integracao uuid, p_caminho text',
   registrar_sem_assinatura: 'p_integracao uuid, p_alocacao uuid, p_registrar boolean',
+  arquivos_sem_vinculo: 'p_horas integer, p_limite integer',
+  registrar_exportacao: 'p_tabelas integer, p_linhas integer, p_arquivos integer, p_bytes bigint',
   bloquear_colaborador: 'p_colaborador uuid, p_bloquear boolean, p_motivo text',
   cadastrar_subcontratada: 'p_principal uuid, p_cnpj text, p_razao_social text, p_email text, p_obras uuid[]',
   cancelar_integracao: 'p_integracao uuid',

@@ -296,7 +296,11 @@ export async function enviarItemMedicao(dados: {
     p_justificativa: null,
     p_aceite_lgpd: true,
   });
-  if (error) throw error;
+  if (error) {
+    // O registro não entrou: tira os arquivos que já subiram, para nenhum arquivo ficar sem vínculo.
+    await supabase.storage.from('documentos').remove(enviados.map((a) => a.caminho)).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function marcarNaoSeAplica(medicaoId: string, tipo: string, justificativa: string) {

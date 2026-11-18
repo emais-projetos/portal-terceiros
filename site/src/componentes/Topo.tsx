@@ -6,6 +6,7 @@ import { contarCobrancas } from '../lib/cobrancas';
 import { contarAtendimento } from '../lib/ajuda';
 import { lerRegras } from '../lib/regras';
 import { contarNcsAbertas, contarNcsParaAvaliar } from '../lib/seguranca';
+import { exportacaoPendente } from '../paginas/admin/Exportacao';
 
 // Menu lateral fixo: fica parado ao rolar, pode ser recolhido (só ícones) e, no celular, abre por cima da tela.
 
@@ -96,7 +97,7 @@ type Grupo = { titulo: string | null; itens: Item[] };
 const abaAcessos = (aba: string) => (caminho: string, busca: string) =>
   caminho.startsWith('/acessos') && (new URLSearchParams(busca).get('aba') ?? 'usuarios') === aba;
 
-function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, atendimento: number | null = null, ncs: number | null = null): Grupo[] {
+function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, atendimento: number | null = null, ncs: number | null = null, exportar: number | null = null): Grupo[] {
   // Segurança da obra: para o fornecedor, itens a regularizar; para o TST e o administrativo, respostas a avaliar.
   const paraValidar = (_: string, busca: string) => busca.includes('situacao=tst');
   if (perfil === 'admin')
@@ -134,10 +135,12 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
             to: '/acessos',
             rotulo: 'Acessos',
             icone: 'acessos',
+            contador: exportar,
             filhos: [
               { to: '/acessos', rotulo: 'Usuários', ativo: abaAcessos('usuarios') },
               { to: '/acessos?aba=regras', rotulo: 'Regras', ativo: abaAcessos('regras') },
               { to: '/acessos?aba=emails', rotulo: 'E-mails', ativo: abaAcessos('emails') },
+              { to: '/acessos?aba=exportar', rotulo: 'Exportar', ativo: abaAcessos('exportar') },
             ],
           },
         ],
@@ -222,6 +225,7 @@ export function Topo() {
   const [naFila, setNaFila] = useState<number | null>(null);
   const [atendimento, setAtendimento] = useState<number | null>(null);
   const [ncs, setNcs] = useState<number | null>(null);
+  const [exportar, setExportar] = useState<number | null>(null);
   const [recolhido, setRecolhido] = useState(lerRecolhido);
   const [aberto, setAberto] = useState(false); // celular
 
@@ -258,6 +262,7 @@ export function Topo() {
   useEffect(() => {
     if (!ehAdmin || !usuario) return;
     contarCobrancas(usuario.nome).then(setCobrancas).catch(() => setCobrancas(null));
+    exportacaoPendente().then(setExportar).catch(() => setExportar(null));
   }, [ehAdmin, usuario, pathname]);
 
   // No celular, o menu fecha ao trocar de página.
@@ -280,7 +285,7 @@ export function Topo() {
     }
   }
 
-  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento, ncs);
+  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento, ncs, exportar);
   const estaAtivo = (i: Item) => (i.ativo ? i.ativo(pathname, search) : undefined);
 
   return (

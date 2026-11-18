@@ -221,6 +221,13 @@ async function liberacoes() {
   } catch (e) {
     console.error('Limpeza de fotos da segurança:', (e as Error).message);
   }
+  // Documentos e medição: arquivo baixado sai do portal 30 dias depois (a cópia fica no SharePoint), e arquivo
+  // que não ficou ligado a nenhum documento sai depois de 24 horas.
+  try {
+    await limparArquivosBaixados();
+  } catch (e) {
+    console.error('Exclusão dos arquivos baixados:', (e as Error).message);
+  }
   // Liberação com pendência: encerra as regularizadas e devolve ao fornecedor quem passou do prazo de 7 dias.
   try {
     const { error } = await supabase.rpc('processar_pendencias_liberacao');
@@ -705,3 +712,39 @@ Deno.serve(async (req) => {
     return resposta(500, { erro: (e as { message?: string }).message ?? String(e) });
   }
 });
+
+// Apaga do armazenamento os arquivos com prazo de guarda vencido (apagar_apos, contado do primeiro download) e
+// marca apagado_em: o registro do documento continua, só o arquivo sai. Depois, os arquivos sem vínculo.
+async function limparArquivosBaixados() {
+  const hoje = hojeSaoPaulo();
+  const pasta = supabase.storage.from('documentos');
+  for (const tabela of ['arquivos', 'medicoes_arquivos'] as const) {
+    const { data, error } = await supabase
+      .from(tabela)
+      .select('id, caminho')
+      .lt('apagar_apos', hoje)
+      .is('apagado_em', null)
+      .order('apagar_apos')
+      .limit(200);
+    if (error) throw error;
+    const vencidos = data ?? [];
+    if (!vencidos.length) continue;
+    const { error: e1 } = await pasta.remove(vencidos.map((a) => a.caminho as string));
+    if (e1) throw e1;
+    const agora = new Date().toISOString();
+    const { error: e2 } = await supabase.from(tabela).update({ apagado_em: agora }).in('id', vencidos.map((a) => a.id as string));
+    if (e2) throw e2;
+    const { error: e3 } = await supabase.from('eventos').insert(
+      vencidos.map((a) => ({ tabela, registro_id: a.id, acao: 'arquivo_apagado', detalhe: { caminho: a.caminho, motivo: 'prazo de guarda depois do download' } })),
+    );
+    if (e3) throw e3;
+  }
+  const { data: soltos, error: e4 } = await supabase.rpc('arquivos_sem_vinculo', { p_horas: 24, p_limite: 200 });
+  if (e4) throw e4;
+  const nomes = ((soltos ?? []) as { nome: string }[]).map((x) => x.nome);
+  if (nomes.length) {
+    const { error: e5 } = await pasta.remove(nomes);
+    if (e5) throw e5;
+    console.log(`Arquivos sem vínculo apagados: ${nomes.length}`);
+  }
+}

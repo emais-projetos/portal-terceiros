@@ -774,6 +774,11 @@ async function liberacoes() {
     console.error("Limpeza de fotos da seguran\xE7a:", e.message);
   }
   try {
+    await limparArquivosBaixados();
+  } catch (e) {
+    console.error("Exclus\xE3o dos arquivos baixados:", e.message);
+  }
+  try {
     const { error } = await supabase.rpc("processar_pendencias_liberacao");
     if (error) throw error;
   } catch (e) {
@@ -1155,3 +1160,30 @@ Deno.serve(async (req) => {
     return resposta(500, { erro: e.message ?? String(e) });
   }
 });
+async function limparArquivosBaixados() {
+  const hoje = hojeSaoPaulo();
+  const pasta = supabase.storage.from("documentos");
+  for (const tabela of ["arquivos", "medicoes_arquivos"]) {
+    const { data: data2, error } = await supabase.from(tabela).select("id, caminho").lt("apagar_apos", hoje).is("apagado_em", null).order("apagar_apos").limit(200);
+    if (error) throw error;
+    const vencidos = data2 ?? [];
+    if (!vencidos.length) continue;
+    const { error: e1 } = await pasta.remove(vencidos.map((a) => a.caminho));
+    if (e1) throw e1;
+    const agora = (/* @__PURE__ */ new Date()).toISOString();
+    const { error: e2 } = await supabase.from(tabela).update({ apagado_em: agora }).in("id", vencidos.map((a) => a.id));
+    if (e2) throw e2;
+    const { error: e3 } = await supabase.from("eventos").insert(
+      vencidos.map((a) => ({ tabela, registro_id: a.id, acao: "arquivo_apagado", detalhe: { caminho: a.caminho, motivo: "prazo de guarda depois do download" } }))
+    );
+    if (e3) throw e3;
+  }
+  const { data: soltos, error: e4 } = await supabase.rpc("arquivos_sem_vinculo", { p_horas: 24, p_limite: 200 });
+  if (e4) throw e4;
+  const nomes = (soltos ?? []).map((x) => x.nome);
+  if (nomes.length) {
+    const { error: e5 } = await pasta.remove(nomes);
+    if (e5) throw e5;
+    console.log(`Arquivos sem v\xEDnculo apagados: ${nomes.length}`);
+  }
+}

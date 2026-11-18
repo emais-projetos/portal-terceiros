@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ModelosEmail, Regras } from './RegrasEmails';
+import { ExportacaoMensal } from './Exportacao';
 import { Pagina, Mensagem } from '../../componentes/Pagina';
 import { Dialogo } from '../../componentes/Dialogo';
 import { Carregando } from '../../componentes/Carregando';
@@ -52,6 +53,7 @@ const ABAS = [
   ['usuarios', 'Usuários'],
   ['regras', 'Regras'],
   ['emails', 'E-mails'],
+  ['exportar', 'Exportar'],
 ] as const;
 type Aba = (typeof ABAS)[number][0];
 
@@ -159,6 +161,8 @@ export function Acessos() {
           ? 'Prazos das cobranças, validade dos documentos, envio automático e assinatura dos e-mails.'
           : aba === 'emails'
             ? 'Os textos das cobranças. Os dados entram sozinhos nos campos entre chaves, e cada mudança salva vira uma nova revisão.'
+            : aba === 'exportar'
+              ? 'Cópia completa do portal para guardar fora dele, uma vez por mês.'
             : `Quem entra no portal. ${semAcesso > 0 ? `${semAcesso} empresas ainda não têm acesso.` : 'Todas as empresas já têm acesso.'}`
       }
       acoes={aba === 'usuarios' ? <button className="botao" type="button" onClick={() => setNovoAberto(true)}>Novo acesso</button> : undefined}
@@ -174,6 +178,7 @@ export function Acessos() {
     >
       {aba === 'regras' && <Regras />}
       {aba === 'emails' && <ModelosEmail />}
+      {aba === 'exportar' && <ExportacaoMensal />}
       {aba === 'usuarios' && (
         <>
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}

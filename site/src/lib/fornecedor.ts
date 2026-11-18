@@ -374,6 +374,10 @@ export async function enviarDocumento(dados: {
     p_arquivos: enviados,
     p_aceite_lgpd: dados.aceiteLgpd,
   });
-  if (error) throw error;
+  if (error) {
+    // O registro não entrou: tira os arquivos que já subiram, para nenhum arquivo ficar sem vínculo.
+    await supabase.storage.from('documentos').remove(enviados.map((a) => a.caminho)).catch(() => undefined);
+    throw error;
+  }
   return id;
 }
