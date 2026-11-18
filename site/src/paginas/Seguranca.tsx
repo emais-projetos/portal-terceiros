@@ -18,6 +18,7 @@ import { PainelConformidade } from './seguranca/PainelConformidade';
 import { PainelResumoObra } from './seguranca/ResumoObra';
 import { ListaFormularios } from './seguranca/Formularios';
 import { NovaInspecao } from './seguranca/NovaInspecao';
+import { CadastroAlojamentos } from './seguranca/CadastroAlojamentos';
 
 const CHAVE_OBRA = 'portal-terceiros:obra-seguranca';
 const ABAS = [
@@ -26,11 +27,13 @@ const ABAS = [
   ['maquinas', 'Máquinas'],
   ['locadoras', 'Locadoras'],
   ['formularios', 'Formulários'],
+  ['cadastro', 'Cadastro'],
 ] as const;
 type Aba = (typeof ABAS)[number][0];
 
 type Contexto = {
   podeEditar: boolean;
+  ehAdmin: boolean;
   fornecedores: Fornecedor[];
   locadoras: Locadora[];
   modelos: Modelo[];
@@ -96,9 +99,9 @@ function SegurancaCompleta() {
   const podeEditar = usuario?.perfil === 'admin' || usuario?.perfil === 'tst';
   const [params, setParams] = useSearchParams();
   const ehAdmin = usuario?.perfil === 'admin';
-  const abas = ABAS.filter(([a]) => a !== 'formularios' || ehAdmin);
+  const abas = ABAS.filter(([a]) => (a !== 'formularios' && a !== 'cadastro') || ehAdmin);
   const aba = (abas.find(([a]) => a === params.get('aba'))?.[0] ?? 'inspecoes') as Aba;
-  const semObra = aba === 'locadoras' || aba === 'formularios';
+  const semObra = aba === 'locadoras' || aba === 'formularios' || aba === 'cadastro';
 
   const [obras, setObras] = useState<ObraDoPainel[] | null>(null);
   const [obra, setObra] = useState('');
@@ -155,7 +158,7 @@ function SegurancaCompleta() {
     carregarObra(obra);
   }, [obra]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const ctx: Contexto = { podeEditar, fornecedores, locadoras, modelos };
+  const ctx: Contexto = { podeEditar, ehAdmin, fornecedores, locadoras, modelos };
   const pendentes = (alojamentos?.filter((a) => a.empresa_a_vincular).length ?? 0) + (maquinas?.filter((m) => m.empresa_a_vincular).length ?? 0);
 
   async function recarregar(mensagem: string) {
@@ -223,6 +226,7 @@ function SegurancaCompleta() {
       ) : <Carregando />)}
       {aba === 'locadoras' && obras && <Locadoras lista={locadoras} podeEditar={podeEditar} aoSalvar={recarregar} />}
       {aba === 'formularios' && ehAdmin && <ListaFormularios />}
+      {aba === 'cadastro' && ehAdmin && obras && <CadastroAlojamentos obras={obras} />}
 
       {obra && alojamentos && maquinas && (
         <NovaInspecao
@@ -235,6 +239,7 @@ function SegurancaCompleta() {
           fornecedores={fornecedores}
           locadoras={locadoras}
           tst={usuario?.nome ?? ''}
+          ehAdmin={ehAdmin}
           aoFechar={() => setNova(false)}
         />
       )}
@@ -337,7 +342,7 @@ function Alojamentos({ lista, ncs, ctx, aoSalvar }: { lista: Alojamento[]; ncs: 
                   <td className="acoes">
                     <div className="acoes-coluna">
                       <Link className="botao botao-secundario botao-pequeno" to={`/seguranca/alojamento/${a.id}/termos`}>Termos de uso</Link>
-                      {ctx.podeEditar && (
+                      {(ctx.ehAdmin || (ctx.podeEditar && a.empresa_a_vincular)) && (
                         <button type="button" className={`botao botao-pequeno${a.empresa_a_vincular ? ' botao-secundario' : ' botao-discreto'}`} onClick={() => setEditando(a)}>
                           {a.empresa_a_vincular ? 'Vincular' : 'Editar cadastro'}
                         </button>
@@ -410,12 +415,13 @@ function EditarAlojamento({ alojamento, ctx, aoFechar, aoSalvar }: { alojamento:
         {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
         <label className="campo">
           <span>Nome do alojamento</span>
-          <input value={nome} onChange={(e) => setNome(e.target.value)} required />
+          <input value={nome} onChange={(e) => setNome(e.target.value)} required disabled={!ctx.ehAdmin} />
         </label>
         <label className="campo">
           <span>Endereço</span>
-          <input value={endereco} onChange={(e) => setEndereco(e.target.value)} />
+          <input value={endereco} onChange={(e) => setEndereco(e.target.value)} disabled={!ctx.ehAdmin} />
         </label>
+        {!ctx.ehAdmin && <p className="dica">Nome e endereço são padronizados pelo administrativo. Se estiverem errados, peça a correção.</p>}
         <fieldset className="campo-grupo opcoes-empilhadas">
           <legend>Quem responde pelo alojamento</legend>
           <label className="opcao">

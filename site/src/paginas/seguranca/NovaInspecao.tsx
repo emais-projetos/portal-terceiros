@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Dialogo } from '../../componentes/Dialogo';
 import { mensagemDeErro } from '../../lib/supabase';
 import { hojeIso } from '../../lib/formato';
 import {
-  abrirFicha, criarAlojamento, criarMaquina, criarVistoria, salvarLocadora,
+  abrirFicha, criarMaquina, criarVistoria, salvarLocadora,
   type Alojamento, type Fornecedor, type Locadora, type Maquina, type Modelo, type Responsavel,
 } from '../../lib/seguranca';
 
@@ -17,7 +17,7 @@ function agoraHora() {
 
 // "Realizar inspeção": escolhe o tipo e o que vai ser inspecionado (ou cadastra na hora) e abre o formulário.
 export function NovaInspecao({
-  aberto, obraId, obraNome, alojamentos, maquinas, modelos, fornecedores, locadoras, tst, aoFechar,
+  aberto, obraId, obraNome, alojamentos, maquinas, modelos, fornecedores, locadoras, tst, ehAdmin, aoFechar,
 }: {
   aberto: boolean;
   obraId: string;
@@ -28,6 +28,7 @@ export function NovaInspecao({
   fornecedores: Fornecedor[];
   locadoras: Locadora[];
   tst: string;
+  ehAdmin: boolean;
   aoFechar: () => void;
 }) {
   const navegar = useNavigate();
@@ -35,9 +36,6 @@ export function NovaInspecao({
   const [alvo, setAlvo] = useState('');
   const [dia, setDia] = useState(hojeIso());
   const [hora, setHora] = useState(agoraHora());
-  // Novo alojamento
-  const [nome, setNome] = useState('');
-  const [endereco, setEndereco] = useState('');
   // Nova máquina
   const [modelo, setModelo] = useState('');
   const [identificacao, setIdentificacao] = useState('');
@@ -55,8 +53,6 @@ export function NovaInspecao({
     setAlvo('');
     setDia(hojeIso());
     setHora(agoraHora());
-    setNome('');
-    setEndereco('');
     setModelo('');
     setIdentificacao('');
     setResp('');
@@ -84,7 +80,8 @@ export function NovaInspecao({
     !!dia &&
     !!alvo &&
     (tipo !== 'canteiro' || modelosCanteiro.some((m) => m.codigo === alvo)) &&
-    (!novo || (tipo === 'alojamento' ? nome.trim().length > 0 && (resp === 'emais' || (resp === 'fornecedor' && !!empresa)) : !!modelo && identificacao.trim().length > 0 && respOk));
+    (tipo !== 'alojamento' || !novo) &&
+    (!novo || (!!modelo && identificacao.trim().length > 0 && respOk));
 
   async function responsavel(): Promise<Responsavel> {
     if (resp === 'fornecedor') return { tipo: 'fornecedor', id: empresa };
@@ -102,8 +99,7 @@ export function NovaInspecao({
         const id = await criarVistoria({ obraId, alojamentoId: null, modelo: modelosCanteiro.find((m) => m.codigo === alvo)!, data: dia, horario: hora, tst });
         navegar(`/seguranca/vistoria/${id}`);
       } else if (tipo === 'alojamento') {
-        const alojamentoId = novo ? await criarAlojamento({ obraId, nome, endereco, empresaId: resp === 'fornecedor' ? empresa : null }) : alvo;
-        const id = await criarVistoria({ obraId, alojamentoId, modelo: modeloAlojamento!, data: dia, horario: hora, tst });
+        const id = await criarVistoria({ obraId, alojamentoId: alvo, modelo: modeloAlojamento!, data: dia, horario: hora, tst });
         navegar(`/seguranca/vistoria/${id}`);
       } else {
         const maquinaId = novo ? await criarMaquina({ obraId, modelo, identificacao, responsavel: await responsavel() }) : alvo;
@@ -147,44 +143,30 @@ export function NovaInspecao({
           ))}
         </div>
 
-        {tipo === 'alojamento' && (
+        {tipo === 'alojamento' && (ativosAloj.length > 0 ? (
           <>
             <label className="campo">
               <span>Alojamento</span>
               <select value={alvo} onChange={(e) => setAlvo(e.target.value)} required>
                 <option value="">Escolha o alojamento</option>
-                {ativosAloj.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
-                <option value={NOVO}>+ Cadastrar novo alojamento</option>
+                {ativosAloj.map((a) => (
+                  <option key={a.id} value={a.id}>{a.nome}{a.endereco ? `, ${a.endereco}` : ''}</option>
+                ))}
               </select>
             </label>
-            {novo && (
-              <div className="caixa">
-                <label className="campo">
-                  <span>Nome do alojamento</span>
-                  <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Casa 3, Rua das Flores" />
-                </label>
-                <label className="campo">
-                  <span>Endereço</span>
-                  <input value={endereco} onChange={(e) => setEndereco(e.target.value)} />
-                </label>
-                <fieldset className="campo-grupo opcoes-empilhadas">
-                  <legend>Quem responde pelo alojamento</legend>
-                  <label className="opcao"><input type="radio" name="novo-resp" checked={resp === 'fornecedor'} onChange={() => setResp('fornecedor')} /><span>Fornecedor da obra</span></label>
-                  {resp === 'fornecedor' && (
-                    <label className="campo">
-                      <span className="sr">Fornecedor</span>
-                      <select value={empresa} onChange={(e) => setEmpresa(e.target.value)}>
-                        <option value="">Escolha o fornecedor</option>
-                        {fornecedoresAtivos.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
-                      </select>
-                    </label>
-                  )}
-                  <label className="opcao"><input type="radio" name="novo-resp" checked={resp === 'emais'} onChange={() => setResp('emais')} /><span>Emais</span></label>
-                </fieldset>
-              </div>
-            )}
+            <p className="dica">
+              O alojamento não está na lista? {ehAdmin ? (
+                <>Cadastre em <Link to="/seguranca?aba=cadastro" onClick={aoFechar}>Segurança da obra &gt; Cadastro</Link>.</>
+              ) : 'Peça ao administrativo para cadastrar, com o nome, o endereço e o fornecedor.'}
+            </p>
           </>
-        )}
+        ) : (
+          <p className="aviso aviso-alerta">
+            Nenhum alojamento cadastrado nesta obra. {ehAdmin ? (
+              <>Cadastre em <Link to="/seguranca?aba=cadastro" onClick={aoFechar}>Segurança da obra &gt; Cadastro</Link> antes de fazer a vistoria.</>
+            ) : 'Peça ao administrativo para cadastrar o alojamento, com o nome, o endereço e o fornecedor, antes de fazer a vistoria.'}
+          </p>
+        ))}
 
         {tipo === 'maquina' && (
           <>

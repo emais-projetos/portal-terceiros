@@ -111,6 +111,7 @@ const FUNCOES = {
   registrar_sem_assinatura: 'p_integracao uuid, p_alocacao uuid, p_registrar boolean',
   arquivos_sem_vinculo: 'p_horas integer, p_limite integer',
   registrar_exportacao: 'p_tabelas integer, p_linhas integer, p_arquivos integer, p_bytes bigint',
+  juntar_alojamentos: 'p_origem uuid, p_destino uuid',
   bloquear_colaborador: 'p_colaborador uuid, p_bloquear boolean, p_motivo text',
   cadastrar_subcontratada: 'p_principal uuid, p_cnpj text, p_razao_social text, p_email text, p_obras uuid[]',
   cancelar_integracao: 'p_integracao uuid',

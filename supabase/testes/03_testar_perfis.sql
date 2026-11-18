@@ -595,6 +595,38 @@ select teste.entrar(:F1);
 select teste.igual('Exportação: fornecedor não vê o registro', 'select 1 from exportacoes', 0);
 select teste.sair();
 
+-- Cadastro de alojamentos: só o administrativo cadastra, renomeia e junta duplicados.
+select teste.entrar(:T1);
+do $$
+declare t text := 'Alojamento: TST da obra';
+begin
+  perform teste.bloqueado(t, $q$insert into seg_alojamentos (obra_id, nome) values ('10000000-0000-0000-0000-000000000001', 'CASA NOVA')$q$);
+  if teste.linhas($q$update seg_alojamentos set nome = 'OUTRO NOME' where id = 'a1000000-0000-0000-0000-000000000001'$q$) > 0 then perform teste.falha(t, 'renomeia o alojamento'); end if;
+  if teste.linhas($q$update seg_alojamentos set endereco = 'Rua X, 1' where id = 'a1000000-0000-0000-0000-000000000001'$q$) > 0 then perform teste.falha(t, 'altera o endereço'); end if;
+  if teste.linhas($q$update seg_alojamentos set empresa_id = null where id = 'a1000000-0000-0000-0000-000000000001'$q$) > 0 then perform teste.falha(t, 'troca o fornecedor'); end if;
+  if teste.linhas($q$update seg_alojamentos set ativo = false where id = 'a1000000-0000-0000-0000-000000000001'$q$) = 0 then perform teste.falha('Alojamento (controle): TST desativa', 'não desativou'); end if;
+  perform teste.bloqueado(t, $q$select juntar_alojamentos('a1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001')$q$);
+end $$;
+select teste.entrar(:F1);
+select teste.bloqueado('Alojamento: fornecedor', $q$select juntar_alojamentos('a1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001')$q$);
+select teste.entrar(:A);
+select teste.permitido('Alojamento (controle): administrativo cadastra', $q$insert into seg_alojamentos (obra_id, nome, endereco, empresa_id) values ('10000000-0000-0000-0000-000000000001', 'CASA TRES', 'Rua Y, 2', '20000000-0000-0000-0000-000000000001')$q$);
+do $$ begin
+  perform teste.contar();
+  if teste.linhas($q$update seg_alojamentos set nome = 'CASA 1', endereco = 'Rua Z, 3', empresa_id = null where id = 'a1000000-0000-0000-0000-000000000001'$q$) = 0 then perform teste.falha('Alojamento (controle): administrativo renomeia', 'não alterou'); end if;
+end $$;
+insert into seg_alojamentos (id, obra_id, nome, empresa_id) values ('a1000000-0000-0000-0000-000000000009', :O1, 'CASA UM REPETIDA', :E1);
+insert into seg_vistorias (id, modelo_codigo, obra_id, alojamento_id, data_vistoria, itens) values
+  ('a3000000-0000-0000-0000-000000000009', 'alojamento', :O1, 'a1000000-0000-0000-0000-000000000009', current_date, '[]');
+select teste.bloqueado('Alojamento: juntar com outra obra', $q$select juntar_alojamentos('a1000000-0000-0000-0000-000000000009', 'a1000000-0000-0000-0000-000000000002')$q$);
+select teste.bloqueado('Alojamento: juntar com ele mesmo', $q$select juntar_alojamentos('a1000000-0000-0000-0000-000000000009', 'a1000000-0000-0000-0000-000000000009')$q$);
+select teste.igual('Alojamento (controle): juntar passa a vistoria', $q$select 1 where juntar_alojamentos('a1000000-0000-0000-0000-000000000009', 'a1000000-0000-0000-0000-000000000001') = 1$q$, 1);
+select teste.igual('Alojamento (controle): vistoria no alojamento certo', $q$select 1 from seg_vistorias where id = 'a3000000-0000-0000-0000-000000000009' and alojamento_id = 'a1000000-0000-0000-0000-000000000001'$q$, 1);
+select teste.igual('Alojamento (controle): cadastro repetido apagado', $q$select 1 from seg_alojamentos where id = 'a1000000-0000-0000-0000-000000000009'$q$, 0);
+select teste.igual('Alojamento (controle): junção registrada', $q$select 1 from eventos where acao = 'alojamento_juntado'$q$, 1);
+select teste.sair();
+delete from seg_vistorias where id = 'a3000000-0000-0000-0000-000000000009';
+
 -- ============================================================================================
 -- 4. Admin desativado perde tudo
 -- ============================================================================================

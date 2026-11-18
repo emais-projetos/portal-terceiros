@@ -248,6 +248,31 @@ export async function criarAlojamento(c: { obraId: string; nome: string; enderec
   return data.id as string;
 }
 
+// Segurança da obra > Cadastro (administrativo): todos os alojamentos, de todas as obras.
+export type AlojamentoCadastro = Omit<Alojamento, 'vistorias'> & { obra: string; empresa: string | null; vistorias: number };
+
+export async function lerCadastroAlojamentos(): Promise<AlojamentoCadastro[]> {
+  const { data, error } = await supabase
+    .from('seg_alojamentos')
+    .select('id, obra_id, nome, endereco, empresa_id, empresa_a_vincular, ativo, obra:obras(nome), empresa:empresas(razao_social), vistorias:seg_vistorias(count)')
+    .order('nome');
+  if (error) throw error;
+  type Linha = Omit<Alojamento, 'vistorias'> & { obra: { nome: string } | null; empresa: { razao_social: string } | null; vistorias: { count: number }[] };
+  return ((data ?? []) as unknown as Linha[]).map((a) => ({
+    ...a,
+    obra: a.obra?.nome ?? '',
+    empresa: a.empresa?.razao_social ?? null,
+    vistorias: a.vistorias?.[0]?.count ?? 0,
+  }));
+}
+
+// Junta um alojamento repetido em outro da mesma obra: as vistorias passam para o destino e o repetido é apagado.
+export async function juntarAlojamentos(origem: string, destino: string): Promise<number> {
+  const { data, error } = await supabase.rpc('juntar_alojamentos', { p_origem: origem, p_destino: destino });
+  if (error) throw error;
+  return data as number;
+}
+
 export async function criarMaquina(c: { obraId: string; modelo: string; identificacao: string; responsavel: Responsavel }): Promise<string> {
   const { data, error } = await supabase
     .from('seg_maquinas')
