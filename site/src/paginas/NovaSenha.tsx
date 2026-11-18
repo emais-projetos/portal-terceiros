@@ -5,7 +5,15 @@ import { useSessao } from '../lib/sessao';
 import { Moldura } from '../componentes/Moldura';
 import { Carregando } from '../componentes/Carregando';
 
-const TAMANHO_MINIMO = 8;
+// Mesma regra configurada no Supabase (Authentication > Sign In / Providers > Email).
+const TAMANHO_MINIMO = 10;
+const REGRAS: [string, (s: string) => boolean][] = [
+  [`pelo menos ${TAMANHO_MINIMO} caracteres`, (s) => s.length >= TAMANHO_MINIMO],
+  ['uma letra maiúscula', (s) => /[A-Z]/.test(s)],
+  ['uma letra minúscula', (s) => /[a-z]/.test(s)],
+  ['um número', (s) => /\d/.test(s)],
+  ['um símbolo (ex.: ! @ # $ %)', (s) => /[^A-Za-z0-9]/.test(s)],
+];
 
 export function NovaSenha() {
   const { situacao, sessao, concluirRecuperacao } = useSessao();
@@ -31,12 +39,13 @@ export function NovaSenha() {
     );
   }
 
-  const curta = senha.length > 0 && senha.length < TAMANHO_MINIMO;
+  const faltam = REGRAS.filter(([, ok]) => !ok(senha));
+  const fraca = senha.length > 0 && faltam.length > 0;
   const diferente = confirmacao.length > 0 && confirmacao !== senha;
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
-    if (senha.length < TAMANHO_MINIMO || senha !== confirmacao) return;
+    if (faltam.length > 0 || senha !== confirmacao) return;
     setErro(null);
     setSalvando(true);
     const { error } = await supabase.auth.updateUser({ password: senha });
@@ -53,7 +62,10 @@ export function NovaSenha() {
     <Moldura>
       <form className="formulario" onSubmit={salvar} noValidate>
         <h2>Crie sua senha</h2>
-        <p className="apoio">Acesso de {sessao.user.email}. Use pelo menos {TAMANHO_MINIMO} caracteres.</p>
+        <p className="apoio">
+          Acesso de {sessao.user.email}. A senha precisa ter pelo menos {TAMANHO_MINIMO} caracteres, com letra maiúscula, letra minúscula, número e
+          símbolo.
+        </p>
 
         <label className="campo">
           <span>Nova senha</span>
@@ -61,10 +73,17 @@ export function NovaSenha() {
             type="password"
             autoComplete="new-password"
             value={senha}
-            aria-invalid={curta}
+            aria-invalid={fraca}
+            aria-describedby="regras-senha"
             onChange={(e) => setSenha(e.target.value)}
           />
-          {curta && <small className="campo-erro">Faltam {TAMANHO_MINIMO - senha.length} caracteres.</small>}
+          <ul className="regras-senha" id="regras-senha">
+            {REGRAS.map(([rotulo, ok]) => (
+              <li key={rotulo} className={ok(senha) ? 'ok' : ''}>
+                {ok(senha) ? '✓' : '·'} {rotulo}
+              </li>
+            ))}
+          </ul>
         </label>
 
         <label className="campo">
@@ -84,7 +103,7 @@ export function NovaSenha() {
         <button
           className="botao"
           type="submit"
-          disabled={salvando || senha.length < TAMANHO_MINIMO || senha !== confirmacao}
+          disabled={salvando || faltam.length > 0 || senha !== confirmacao}
         >
           {salvando ? 'Salvando' : 'Salvar senha'}
         </button>

@@ -3148,3 +3148,5 @@ button.celula:hover {
 .registro-eletronico { display: inline-flex; flex-direction: column; font-weight: 600; font-size: var(--fs-apoio); color: #6b4a00; background: #fdf3dc; border-radius: 6px; padding: 4px 8px; }
 .registro-eletronico small { font-weight: 400; }
 .menu-filho .contador { margin-left: auto; }
+.regras-senha { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; font-size: var(--fs-apoio); color: var(--texto-apoio, #5b6b74); }
+.regras-senha li.ok { color: #1f7a4d; }
