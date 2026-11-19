@@ -1,6 +1,6 @@
 import type { jsPDF as JsPDF } from 'jspdf';
 import { data as dataBr } from './formato';
-import { NOMES_STATUS_VISTORIA, competencia, linksDosArquivos, type Ficha, type Pessoa, type Termo, type Vistoria } from './seguranca';
+import { NOMES_CAMA, NOMES_STATUS_VISTORIA, competencia, itemDosOcupantes, linksDosArquivos, type Ficha, type ItemVistoria, type Pessoa, type Termo, type Vistoria } from './seguranca';
 import { TERMO } from './termoAlojamento';
 
 // PDF da vistoria de alojamento e da ficha mensal da máquina, com fotos e assinaturas.
@@ -195,14 +195,14 @@ function fotos(f: Folha, caminhos: string[], imgs: Record<string, Imagem>, x: nu
 
 function assinaturas(f: Folha, titulo: string, pessoas: Pessoa[], imgs: Record<string, Imagem>) {
   if (!pessoas.length) return;
-  f.caber(14);
+  f.caber(14 + 29); // título junto com a primeira linha de assinaturas
   f.y += 2;
   f.texto(titulo, f.m, f.util, 10.5, 'bold');
   f.y += 2;
   const colunas = 2;
   const w = f.util / colunas;
   for (let i = 0; i < pessoas.length; i += colunas) {
-    f.caber(26);
+    f.caber(29);
     pessoas.slice(i, i + colunas).forEach((p, k) => {
       const x = f.m + k * w;
       const img = p.assinatura ? imgs[p.assinatura] : null;
@@ -220,14 +220,28 @@ function assinaturas(f: Folha, titulo: string, pessoas: Pessoa[], imgs: Record<s
       if (p.cargo) {
         f.doc.setFontSize(7.5);
         f.doc.setTextColor(...CINZA);
-        f.doc.text(p.cargo, x + 2, f.y + 22.5);
+        (f.doc.splitTextToSize(limpo(p.cargo), w - 12) as string[]).slice(0, 2).forEach((l, k) => f.doc.text(l, x + 2, f.y + 22.5 + k * 3.3));
       }
     });
-    f.y += 26;
+    f.y += 29;
   }
 }
 
-export async function baixarPdfVistoria(v: Vistoria, ctx: { obra: string; alojamento: string; endereco: string | null; responsavel: string; canteiro?: boolean; checklist?: string }) {
+// Situação do morador que não assinou na tela (ausente ou registro eletrônico), com a empresa.
+function comSituacao(pessoas: Pessoa[]): Pessoa[] {
+  return pessoas.map((p) => {
+    const sit = p.ausente ? 'Ausente na hora da vistoria' : p.nao_assina ? `Não sabe assinar: registro eletrônico ${p.codigo ?? '(gerado na conclusão)'}` : '';
+    return { ...p, cargo: [p.empresa, sit].filter(Boolean).join('. ') || p.cargo };
+  });
+}
+
+function quemCorrige(it: ItemVistoria, moradores: Pessoa[]): string {
+  if (!it.quarto || !itemDosOcupantes(it.texto)) return 'Emais';
+  const e = [...new Set(moradores.filter((p) => p.quarto === it.quarto && p.empresa).map((p) => p.empresa as string))];
+  return e.length ? e.join(', ') : 'Emais';
+}
+
+export async function baixarPdfVistoria(v: Vistoria, ctx: { obra: string; alojamento: string; endereco: string | null; responsavel: string; canteiro?: boolean; checklist?: string; naObra?: boolean }) {
   const caminhos = [...v.itens.flatMap((i) => i.fotos ?? []), ...v.funcionarios.map((p) => p.assinatura ?? ''), ...v.envolvidos.map((p) => p.assinatura ?? '')];
   const [{ jsPDF }, marca, imgs] = await Promise.all([import('jspdf'), logo(), v.fotos_excluidas_em ? Promise.resolve({}) : carregarTodas(caminhos)]);
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -250,7 +264,7 @@ export async function baixarPdfVistoria(v: Vistoria, ctx: { obra: string; alojam
     f.y += 3;
   }
 
-  v.itens.forEach((it, n) => {
+  const desenharItem = (it: ItemVistoria, n: number, corrige?: string) => {
     f.caber(16);
     const topo = f.y;
     const status = it.status ? NOMES_STATUS_VISTORIA[it.status] : 'Sem resposta';
@@ -266,7 +280,7 @@ export async function baixarPdfVistoria(v: Vistoria, ctx: { obra: string; alojam
     f.texto(`${n + 1}. ${it.texto}`, f.m, f.util - wStatus - 6, 9.5, 'normal');
     f.y = Math.max(f.y, topo + 6.5);
     if (it.recomendacao || it.prazo) {
-      const partes = [it.recomendacao ? `Recomendação: ${it.recomendacao}` : '', it.prazo ? `Prazo: ${dataBr(it.prazo)}` : ''].filter(Boolean);
+      const partes = [it.recomendacao ? `Recomendação: ${it.recomendacao}` : '', it.prazo ? `Prazo: ${dataBr(it.prazo)}` : '', it.status === 'nao' && corrige ? `Corrige: ${corrige}` : ''].filter(Boolean);
       f.texto(partes.join('. '), f.m + 4, f.util - 8, 8.5, 'normal', it.status === 'nao' ? VERMELHO : CINZA);
     }
     if (it.fotos?.length) {
@@ -278,9 +292,32 @@ export async function baixarPdfVistoria(v: Vistoria, ctx: { obra: string; alojam
     doc.setLineWidth(0.15);
     doc.line(f.m, f.y, f.larg - f.m, f.y);
     f.y += 3;
-  });
+  };
 
-  if (!ctx.canteiro) assinaturas(f, 'Moradores', v.funcionarios, imgs);
+  const secao = (titulo: string, sub: string) => {
+    f.caber(18);
+    f.y += 2;
+    f.texto(titulo, f.m, f.util, 12, 'bold', PETROLEO);
+    if (sub) f.texto(sub, f.m, f.util, 8.5, 'normal', CINZA);
+    f.y += 2;
+  };
+
+  if (ctx.naObra) {
+    v.quartos.forEach((q) => {
+      const itens = v.itens.filter((it) => it.quarto === q.nome && !it.auto_na);
+      const sim = itens.filter((i) => i.status === 'sim').length;
+      const aplic = itens.filter((i) => i.status === 'sim' || i.status === 'nao').length;
+      secao(q.nome, `${q.cama ? NOMES_CAMA[q.cama] : 'Tipo de cama não informado'}. ${aplic ? `${sim} de ${aplic} itens em ordem` : 'Sem itens aplicáveis'}.`);
+      itens.forEach((it, k) => desenharItem(it, k, quemCorrige(it, v.funcionarios)));
+      assinaturas(f, `Moradores do ${q.nome}`, comSituacao(v.funcionarios.filter((p) => p.quarto === q.nome)), imgs);
+    });
+    secao('Áreas comuns', `Banheiros, chuveiros e refeição. ${v.funcionarios.length} moradores nos quartos vistoriados.`);
+    v.itens.filter((it) => !it.quarto).forEach((it, k) => desenharItem(it, k, 'Emais'));
+  } else {
+    v.itens.forEach((it, n) => desenharItem(it, n));
+  }
+
+  if (!ctx.canteiro && !ctx.naObra) assinaturas(f, 'Moradores', comSituacao(v.funcionarios), imgs);
   assinaturas(f, 'Acompanharam a vistoria', v.envolvidos, imgs);
   f.rodape(`Vistoria ${ctx.alojamento}, ${dataBr(v.data_vistoria)}`);
   doc.save(`${nomeArquivo([v.data_vistoria.replace(/-/g, ''), ctx.canteiro ? 'Vistoria canteiro' : 'Vistoria alojamento', ctx.canteiro ? '' : ctx.alojamento, ctx.obra].filter(Boolean))}.pdf`);

@@ -6,13 +6,13 @@ import { mensagemDeErro } from '../../lib/supabase';
 import type { ObraDoPainel } from '../../lib/painelObra';
 import {
   criarAlojamento, juntarAlojamentos, lerCadastroAlojamentos, lerFornecedoresDaObra, salvarAlojamento,
-  type AlojamentoCadastro, type Fornecedor,
+  type AlojamentoCadastro, type Fornecedor, type TipoAlojamento,
 } from '../../lib/seguranca';
 
 const EMAIS = '__emais__';
 const sem = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-type Edicao = { id?: string; obra: string; empresa: string; nome: string; endereco: string; ativo: boolean; vistorias: number };
+type Edicao = { id?: string; obra: string; tipo: TipoAlojamento; empresa: string; nome: string; endereco: string; ativo: boolean; vistorias: number };
 
 // Segurança da obra > Cadastro (administrativo): a lista oficial de alojamentos de cada obra, com fornecedor,
 // nome e endereço. O TST só escolhe um alojamento desta lista em "Realizar inspeção".
@@ -74,7 +74,7 @@ export function CadastroAlojamentos({ obras, podeJuntar }: { obras: ObraDoPainel
         <button
           type="button"
           className="botao botao-pequeno"
-          onClick={() => setEditando({ obra: obra || (obras.length === 1 ? obras[0].id : ''), empresa: '', nome: '', endereco: '', ativo: true, vistorias: 0 })}
+          onClick={() => setEditando({ obra: obra || (obras.length === 1 ? obras[0].id : ''), tipo: 'padrao', empresa: '', nome: '', endereco: '', ativo: true, vistorias: 0 })}
         >
           Cadastrar alojamento
         </button>
@@ -138,6 +138,7 @@ export function CadastroAlojamentos({ obras, podeJuntar }: { obras: ObraDoPainel
                   </td>
                   <th scope="row">
                     {a.nome}
+                    {a.tipo === 'obra' && <small className="sub">na obra, por quarto</small>}
                     {!a.ativo && <small className="sub">desativado</small>}
                   </th>
                   <td>{a.endereco?.trim() ? a.endereco : <span className="sub texto-alerta">sem endereço</span>}</td>
@@ -147,7 +148,7 @@ export function CadastroAlojamentos({ obras, podeJuntar }: { obras: ObraDoPainel
                       type="button"
                       className="botao botao-secundario botao-pequeno"
                       onClick={() =>
-                        setEditando({ id: a.id, obra: a.obra_id, empresa: a.empresa_id ?? (a.empresa_a_vincular ? '' : EMAIS), nome: a.nome, endereco: a.endereco ?? '', ativo: a.ativo, vistorias: a.vistorias })
+                        setEditando({ id: a.id, obra: a.obra_id, tipo: a.tipo, empresa: a.empresa_id ?? (a.empresa_a_vincular ? '' : EMAIS), nome: a.nome, endereco: a.endereco ?? '', ativo: a.ativo, vistorias: a.vistorias })
                       }
                     >
                       Editar
@@ -207,7 +208,7 @@ function EditarCadastro({
   const original = f.id ? lista.find((a) => a.id === f.id) : undefined;
   const nomeObra = obras.find((o) => o.id === f.obra)?.nome ?? original?.obra ?? '';
   const repetido = lista.find((a) => a.id !== f.id && a.obra_id === f.obra && sem(a.nome.trim()) === sem(f.nome.trim()));
-  const valido = !!f.obra && !!f.empresa && f.nome.trim().length > 0 && f.endereco.trim().length > 0 && !repetido;
+  const valido = !!f.obra && (f.tipo === 'obra' || !!f.empresa) && f.nome.trim().length > 0 && f.endereco.trim().length > 0 && !repetido;
   const outros = lista
     .filter((a) => a.id !== f.id && a.obra_id === f.obra)
     .sort((x, y) => (x.empresa ?? 'zzz').localeCompare(y.empresa ?? 'zzz', 'pt-BR') || x.nome.localeCompare(y.nome, 'pt-BR'));
@@ -220,8 +221,8 @@ function EditarCadastro({
     setErro(null);
     try {
       const empresaId = f.empresa === EMAIS ? null : f.empresa;
-      if (f.id) await salvarAlojamento(f.id, { nome: f.nome, endereco: f.endereco, empresaId, ativo: f.ativo });
-      else await criarAlojamento({ obraId: f.obra, nome: f.nome, endereco: f.endereco, empresaId });
+      if (f.id) await salvarAlojamento(f.id, { nome: f.nome, endereco: f.endereco, empresaId, ativo: f.ativo, tipo: f.tipo });
+      else await criarAlojamento({ obraId: f.obra, nome: f.nome, endereco: f.endereco, empresaId, tipo: f.tipo });
       await aoSalvar(`Alojamento ${f.nome.trim()} ${f.id ? 'salvo' : 'cadastrado'}.`);
     } catch (er) {
       setErro(mensagemDeErro(er as Error));
@@ -266,16 +267,40 @@ function EditarCadastro({
             </select>
           </label>
         )}
-        <label className="campo">
-          <span>Fornecedor responsável</span>
-          <select value={f.empresa} onChange={(e) => setF({ ...f, empresa: e.target.value })} disabled={!f.obra || !fornecedores} required>
-            <option value="">{f.obra && !fornecedores ? 'Carregando' : 'Escolha o fornecedor'}</option>
-            {opcoes.map((x) => (
-              <option key={x.id} value={x.id}>{x.nome}{x.ativo_na_obra ? '' : ' (fora da obra)'}</option>
-            ))}
-            <option value={EMAIS}>Emais (alojamento da própria Emais)</option>
-          </select>
-        </label>
+        <fieldset className="campo-grupo opcoes-empilhadas">
+          <legend>Tipo de alojamento</legend>
+          {([
+            ['padrao', 'Casa ou alojamento fora da obra', 'Checklist do alojamento inteiro, com o fornecedor responsável (ou a Emais).'],
+            ['obra', 'Alojamento da Emais dentro da obra', 'Vistoria por quarto: o TST inclui os quartos e escolhe quem está em cada um. Limpeza vai para as empresas do quarto; estrutura fica com a Emais.'],
+          ] as const).map(([v, rotulo, dica]) => (
+            <label key={v} className="opcao">
+              <input
+                type="radio"
+                name="tipo-alojamento"
+                checked={f.tipo === v}
+                disabled={!!f.id && f.vistorias > 0 && f.tipo !== v}
+                onChange={() => setF({ ...f, tipo: v, empresa: v === 'obra' ? EMAIS : f.empresa })}
+              />
+              <span>
+                {rotulo}
+                <small className="sub">{dica}</small>
+              </span>
+            </label>
+          ))}
+          {!!f.id && f.vistorias > 0 && <p className="dica">O tipo não muda depois da primeira vistoria.</p>}
+        </fieldset>
+        {f.tipo === 'padrao' && (
+          <label className="campo">
+            <span>Fornecedor responsável</span>
+            <select value={f.empresa} onChange={(e) => setF({ ...f, empresa: e.target.value })} disabled={!f.obra || !fornecedores} required>
+              <option value="">{f.obra && !fornecedores ? 'Carregando' : 'Escolha o fornecedor'}</option>
+              {opcoes.map((x) => (
+                <option key={x.id} value={x.id}>{x.nome}{x.ativo_na_obra ? '' : ' (fora da obra)'}</option>
+              ))}
+              <option value={EMAIS}>Emais (alojamento da própria Emais)</option>
+            </select>
+          </label>
+        )}
         <label className="campo">
           <span>Nome do alojamento</span>
           <input value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Ex.: R P Santos, Casa 1" required />
@@ -285,7 +310,11 @@ function EditarCadastro({
           <span>Endereço</span>
           <input value={f.endereco} onChange={(e) => setF({ ...f, endereco: e.target.value })} placeholder="Rua, número, bairro" required />
         </label>
-        <p className="dica">Sugestão de padrão para o nome: fornecedor e número da casa (ex.: "R P Santos, Casa 1"). O fornecedor vê as vistorias concluídas do alojamento e responde os itens a corrigir.</p>
+        <p className="dica">
+          {f.tipo === 'obra'
+            ? 'Os quartos não são cadastrados aqui: o TST inclui cada quarto na hora da vistoria.'
+            : 'Sugestão de padrão para o nome: fornecedor e número da casa (ex.: "R P Santos, Casa 1"). O fornecedor vê o resultado das vistorias e responde os itens a corrigir.'}
+        </p>
         {f.id && (
           <label className="opcao">
             <input type="checkbox" checked={!f.ativo} onChange={(e) => setF({ ...f, ativo: !e.target.checked })} />

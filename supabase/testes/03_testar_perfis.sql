@@ -626,6 +626,67 @@ select teste.igual('Alojamento (controle): junção registrada', $q$select 1 fro
 select teste.sair();
 delete from seg_vistorias where id = 'a3000000-0000-0000-0000-000000000009';
 
+-- Alojamento na obra (Emais) com quartos: limpeza vai para as empresas do quarto, o resto é pendência da Emais,
+-- que a engenharia da obra responde. Moradores vêm dos colaboradores liberados na obra.
+insert into colaboradores (id, empresa_id, nome, cpf) values ('40000000-0000-0000-0000-00000000000a', :E1, 'COLAB QUARTO', '33333333333');
+insert into alocacoes (id, colaborador_id, obra_id, status) values ('50000000-0000-0000-0000-00000000000a', '40000000-0000-0000-0000-00000000000a', :O1, 'liberado');
+insert into seg_alojamentos (id, obra_id, nome, endereco, tipo) values ('a1000000-0000-0000-0000-00000000000a', :O1, 'ALOJAMENTO DA OBRA', 'Dentro da obra', 'obra');
+select teste.bloqueado('Alojamento na obra com fornecedor', $q$update seg_alojamentos set empresa_id = '20000000-0000-0000-0000-000000000001' where id = 'a1000000-0000-0000-0000-00000000000a'$q$);
+select teste.entrar(:T1);
+select teste.igual('Moradores (controle): TST vê os liberados da obra', $q$select 1 from seg_moradores_obra('10000000-0000-0000-0000-000000000001') where id = '40000000-0000-0000-0000-00000000000a'$q$, 1);
+select teste.igual('Moradores (controle): filtro por empresa', $q$select 1 from seg_moradores_obra('10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000002')$q$, 0);
+select teste.bloqueado('Alojamento na obra: checklist padrão', $q$insert into seg_vistorias (modelo_codigo, obra_id, alojamento_id, data_vistoria, itens) values ('alojamento', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-00000000000a', current_date, '[]')$q$);
+select teste.bloqueado('Alojamento padrão: checklist de quarto', $q$insert into seg_vistorias (modelo_codigo, obra_id, alojamento_id, data_vistoria, itens) values ('alojamento:obra-quarto', '10000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', current_date, '[]')$q$);
+insert into seg_vistorias (id, modelo_codigo, obra_id, alojamento_id, data_vistoria, quartos, itens, funcionarios) values (
+  'a3000000-0000-0000-0000-00000000000a', 'alojamento:obra-quarto', :O1, 'a1000000-0000-0000-0000-00000000000a', current_date,
+  '[{"nome": "Quarto 1", "cama": ""}]',
+  '[{"texto": "Alojamento está devidamente limpo e organizado?", "quarto": "Quarto 1", "status": "nao", "recomendacao": "Organizar", "prazo": null, "fotos": ["vistoria/a3000000-0000-0000-0000-00000000000a/0/limpeza.jpg"]},
+    {"texto": "O forro e/ou laje do alojamento está em boas condições de conservação e segurança?", "quarto": "Quarto 1", "status": "nao", "recomendacao": "Trocar o forro", "prazo": null, "fotos": ["vistoria/a3000000-0000-0000-0000-00000000000a/1/forro.jpg"]},
+    {"texto": "Possui armários individuais duplos com separação para guarda de roupas dos trabalhadores?", "quarto": "Quarto 1", "status": "sim", "recomendacao": "", "prazo": null, "fotos": []},
+    {"texto": "Os chuveiros dispõem de água quente?", "quarto": null, "status": "nao", "recomendacao": "Consertar", "prazo": null, "fotos": []}]',
+  '[{"colaborador_id": "40000000-0000-0000-0000-00000000000a", "nome": "COLAB QUARTO", "empresa_id": "20000000-0000-0000-0000-000000000001", "quarto": "Quarto 1", "nao_assina": true, "assinatura": null},
+    {"colaborador_id": null, "nome": "OUTRA EMPRESA", "empresa_id": "20000000-0000-0000-0000-000000000002", "quarto": "Quarto 1", "assinatura": null},
+    {"colaborador_id": null, "nome": "NOME A MAO", "quarto": "Quarto 1", "ausente": true, "assinatura": null}]');
+select teste.bloqueado('Alojamento na obra: concluir sem tipo de cama', $q$select concluir_vistoria_seg('a3000000-0000-0000-0000-00000000000a')$q$);
+update seg_vistorias set quartos = '[{"nome": "Quarto 1", "cama": "simples"}]' where id = 'a3000000-0000-0000-0000-00000000000a';
+select concluir_vistoria_seg('a3000000-0000-0000-0000-00000000000a');
+select teste.igual('Alojamento na obra (controle): código para quem não sabe assinar', $q$select 1 from seg_vistorias v, jsonb_array_elements(v.funcionarios) p where v.id = 'a3000000-0000-0000-0000-00000000000a' and p->>'codigo' ~ '^[0-9A-F]{4}-[0-9A-F]{4}$'$q$, 1);
+select teste.igual('Alojamento na obra (controle): moradores contados', $q$select 1 from seg_vistorias where id = 'a3000000-0000-0000-0000-00000000000a' and qtd_funcionarios = 3$q$, 1);
+select teste.igual('Alojamento na obra (controle): itens enviados', $q$select 1 where notificar_nao_conformidades('a3000000-0000-0000-0000-00000000000a', null) = 4$q$, 1);
+select teste.sair();
+select teste.igual('Alojamento na obra (controle): limpeza para as duas empresas', $q$select 1 from seg_nao_conformidades where vistoria_id = 'a3000000-0000-0000-0000-00000000000a' and item = 0 and empresa_id is not null and quarto = 'Quarto 1'$q$, 2);
+select teste.igual('Alojamento na obra (controle): estrutura e áreas comuns para a Emais', $q$select 1 from seg_nao_conformidades where vistoria_id = 'a3000000-0000-0000-0000-00000000000a' and empresa_id is null$q$, 2);
+select id as "NCEMAIS" from seg_nao_conformidades where vistoria_id = 'a3000000-0000-0000-0000-00000000000a' and item = 1 \gset
+select id as "NCE1" from seg_nao_conformidades where vistoria_id = 'a3000000-0000-0000-0000-00000000000a' and empresa_id = :E1 \gset
+select teste.entrar(:F1);
+select teste.igual('Alojamento na obra: fornecedor vê só o item dele', $q$select 1 from seg_nao_conformidades where vistoria_id = 'a3000000-0000-0000-0000-00000000000a'$q$, 1);
+select teste.bloqueado('Pendência da Emais: fornecedor responde', format($q$select responder_nao_conformidade(%L, 'Arrumado pela empresa', '[]')$q$, :'NCEMAIS'));
+select teste.bloqueado('Pendência da Emais: fornecedor lista', $q$select seg_pendencias_emais('10000000-0000-0000-0000-000000000001')$q$);
+select teste.entrar(:T2);
+select teste.igual('Alojamento na obra: TST de outra obra', $q$select 1 from seg_nao_conformidades where vistoria_id = 'a3000000-0000-0000-0000-00000000000a'$q$, 0);
+select teste.bloqueado('Pendência da Emais: TST de outra obra lista', $q$select seg_pendencias_emais('10000000-0000-0000-0000-000000000001')$q$);
+select teste.bloqueado('Moradores: TST de outra obra', $q$select * from seg_moradores_obra('10000000-0000-0000-0000-000000000001')$q$);
+select teste.entrar(:G1);
+select teste.bloqueado('Moradores: engenharia', $q$select * from seg_moradores_obra('10000000-0000-0000-0000-000000000001')$q$);
+select teste.igual('Pendência da Emais (controle): engenharia vê as da obra', $q$select 1 from seg_nao_conformidades where vistoria_id = 'a3000000-0000-0000-0000-00000000000a'$q$, 2);
+select teste.igual('Pendência da Emais (controle): lista da engenharia', $q$select jsonb_array_elements(seg_pendencias_emais('10000000-0000-0000-0000-000000000001'))$q$, 2);
+select teste.igual('Pendência da Emais (controle): engenharia vê a foto do problema', $q$select 1 where app.seg_arquivo('vistoria/a3000000-0000-0000-0000-00000000000a/1/forro.jpg', false)$q$, 1);
+select teste.igual('Pendência da Emais: engenharia vê foto de item de fornecedor', $q$select 1 where app.seg_arquivo('vistoria/a3000000-0000-0000-0000-00000000000a/0/limpeza.jpg', false)$q$, 0);
+select teste.igual('Pendência da Emais (controle): engenharia grava a foto da correção', format($q$select 1 where app.seg_arquivo('nc/%s/x.jpg', true)$q$, :'NCEMAIS'), 1);
+select teste.igual('Pendência da Emais: engenharia grava foto em item de fornecedor', format($q$select 1 where app.seg_arquivo('nc/%s/x.jpg', true)$q$, :'NCE1'), 0);
+select teste.bloqueado('Pendência da Emais: engenharia responde item de fornecedor', format($q$select responder_nao_conformidade(%L, 'Arrumado pela engenharia', '[]')$q$, :'NCE1'));
+select teste.permitido('Pendência da Emais (controle): engenharia responde', format($q$select responder_nao_conformidade(%L, 'Forro trocado pela equipe da obra', '[]')$q$, :'NCEMAIS'));
+select teste.bloqueado('Pendência da Emais: engenharia avalia', format($q$select avaliar_nao_conformidade(%L, true, null)$q$, :'NCEMAIS'));
+select teste.entrar(:T1);
+select reabrir_vistoria_seg('a3000000-0000-0000-0000-00000000000a', 'Teste de correção');
+select teste.bloqueado('Alojamento na obra: incluir quarto com itens já enviados', $q$update seg_vistorias set itens = itens || '[{"texto": "x", "quarto": "Quarto 2", "status": null}]' where id = 'a3000000-0000-0000-0000-00000000000a'$q$);
+select teste.sair();
+delete from seg_nao_conformidades where vistoria_id = 'a3000000-0000-0000-0000-00000000000a';
+delete from seg_vistorias where id = 'a3000000-0000-0000-0000-00000000000a';
+delete from seg_alojamentos where id = 'a1000000-0000-0000-0000-00000000000a';
+delete from alocacoes where id = '50000000-0000-0000-0000-00000000000a';
+delete from colaboradores where id = '40000000-0000-0000-0000-00000000000a';
+
 -- ============================================================================================
 -- 4. Admin desativado perde tudo
 -- ============================================================================================

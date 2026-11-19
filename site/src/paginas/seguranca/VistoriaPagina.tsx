@@ -4,18 +4,19 @@ import { Pagina, Mensagem } from '../../componentes/Pagina';
 import { Dialogo } from '../../componentes/Dialogo';
 import { Carregando } from '../../componentes/Carregando';
 import { Assinatura } from '../../componentes/Assinatura';
-import { CampoFotos } from '../../componentes/CampoFotos';
 import { useSessao } from '../../lib/sessao';
 import { mensagemDeErro } from '../../lib/supabase';
-import { data, hojeIso, somarDias } from '../../lib/formato';
+import { data, hojeIso } from '../../lib/formato';
 import {
-  NOMES_STATUS_VISTORIA, colaboradoresAtivos, concluirVistoria, enviarImagem, excluirRascunho, gravarVistoria, lerAlojamento,
-  lerFornecedoresDaObra, lerModelo, lerVistoria, linksDosArquivos, nomeDaObra, notaPrevia, reabrirVistoria,
-  type AlojamentoComObra, type ColaboradorAtivo, type Fornecedor, type ItemVistoria, type Pessoa, type Vistoria,
+  NOMES_CAMA, NOMES_STATUS_VISTORIA, concluirVistoria, enviarImagem, excluirRascunho, gravarVistoria, lerAlojamento,
+  lerFornecedoresDaObra, lerModelo, lerMoradoresObra, lerNcsDaVistoria, lerVistoria, linksDosArquivos, nomeDaObra, notaPrevia, reabrirVistoria,
+  type AlojamentoComObra, type Fornecedor, type ItemVistoria, type MoradorObra, type Pessoa, type Vistoria,
 } from '../../lib/seguranca';
 import { baixarPdfVistoria } from '../../lib/pdfSeguranca';
 import { Assinaturas, Fotos, SeloClassificacao, Voltar, caminhosDaVistoria, nomeResponsavel } from './comum';
 import { NcsVistoria } from './NcsVistoria';
+import { ItemEdicao, ListaAssinaturas, situacaoMorador } from './ItensVistoria';
+import { EdicaoQuartos, EscolherMoradores, responsavelItemQuarto } from './VistoriaQuartos';
 
 type Lista = 'funcionarios' | 'envolvidos';
 
@@ -31,7 +32,8 @@ export function VistoriaPagina() {
   const [nomeModelo, setNomeModelo] = useState('');
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [links, setLinks] = useState<Record<string, string>>({});
-  const [colabs, setColabs] = useState<ColaboradorAtivo[] | null>(null);
+  const [colabs, setColabs] = useState<MoradorObra[] | null>(null);
+  const [temItensEnviados, setTemItensEnviados] = useState(false);
   const [sujo, setSujo] = useState(false);
   const [salvando, setSalvando] = useState<null | 'salvar' | 'concluir'>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -46,14 +48,15 @@ export function VistoriaPagina() {
     // Canteiro não tem alojamento: o "local" é a própria obra, responsabilidade da Emais.
     const a: AlojamentoComObra = x.alojamento_id
       ? await lerAlojamento(x.alojamento_id)
-      : { id: '', obra_id: x.obra_id, nome: 'Canteiro de obras', endereco: null, empresa_id: null, empresa_a_vincular: null, ativo: true, obra: { nome: await nomeDaObra(x.obra_id) } };
+      : { id: '', obra_id: x.obra_id, nome: 'Canteiro de obras', endereco: null, tipo: 'padrao', empresa_id: null, empresa_a_vincular: null, ativo: true, obra: { nome: await nomeDaObra(x.obra_id) } };
     lerModelo(x.modelo_codigo).then((m) => setNomeModelo(m?.nome ?? '')).catch(() => undefined);
     atual.current = x;
     setV(x);
     setAloj(a);
     setSujo(false);
     lerFornecedoresDaObra(a.obra_id).then(setFornecedores).catch(() => undefined);
-    if (a.empresa_id && x.situacao === 'rascunho') colaboradoresAtivos(a.empresa_id).then(setColabs).catch(() => setColabs([]));
+    if (x.alojamento_id && a.tipo !== 'obra' && x.situacao === 'rascunho') lerMoradoresObra(a.obra_id, a.empresa_id).then(setColabs).catch(() => setColabs([]));
+    if (x.situacao === 'rascunho') lerNcsDaVistoria(x.id).then((l) => setTemItensEnviados(l.length > 0)).catch(() => undefined);
     if (!x.fotos_excluidas_em) setLinks(await linksDosArquivos(caminhosDaVistoria(x)));
   }
 
@@ -110,6 +113,15 @@ export function VistoriaPagina() {
       setErro(`Faltam ${faltam} ${faltam === 1 ? 'item' : 'itens'} sem resposta.`);
       return;
     }
+    const semCama = x.quartos.find((q) => !q.cama);
+    if (semCama) {
+      setErro(`Informe o tipo de cama do ${semCama.nome}.`);
+      return;
+    }
+    if (x.funcionarios.some((p) => !p.nome.trim())) {
+      setErro('Há morador sem nome. Preencha ou tire da lista.');
+      return;
+    }
     setErro(null);
     setOk(null);
     setSalvando('concluir');
@@ -134,7 +146,7 @@ export function VistoriaPagina() {
       if (editando && sujo) await gravar(atual.current!);
       await baixarPdfVistoria(atual.current!, {
         obra: aloj.obra.nome, alojamento: aloj.nome, endereco: aloj.endereco, responsavel: nomeResponsavel(aloj, fornecedores, []),
-        canteiro: !v.alojamento_id, checklist: nomeModelo,
+        canteiro: !v.alojamento_id, checklist: aloj.tipo === 'obra' ? 'Alojamento na obra: quartos e áreas comuns' : nomeModelo, naObra: aloj.tipo === 'obra',
       });
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
@@ -165,6 +177,7 @@ export function VistoriaPagina() {
     );
 
   const canteiro = !v.alojamento_id;
+  const naObra = aloj.tipo === 'obra';
   const respondidos = v.itens.filter((i) => i.status).length;
   const previa = notaPrevia(v.itens);
   const responsavel = nomeResponsavel(aloj, fornecedores, []);
@@ -200,7 +213,7 @@ export function VistoriaPagina() {
                 <span>Horário</span>
                 <input type="time" value={v.horario ?? ''} onChange={(e) => atualizar((x) => ({ ...x, horario: e.target.value }))} />
               </label>
-              {!canteiro && <label className="campo">
+              {!canteiro && !naObra && <label className="campo">
                 <span>Moradores no alojamento</span>
                 <input
                   type="number"
@@ -213,102 +226,71 @@ export function VistoriaPagina() {
             </div>
           </section>
 
-          <section className="bloco">
-            <div className="barra-lista">
-              <h2 className="bloco-titulo">{nomeModelo || 'Checklist'}</h2>
-              <span className="sub">
-                {respondidos} de {v.itens.length} respondidos{previa ? `. Até aqui: ${previa.classificacao}` : ''}
-              </span>
-            </div>
-            <ol className="itens-inspecao">
-              {v.itens.map((it, n) => (
-                <li key={n} className={`item-inspecao${it.status === 'nao' ? ' item-inspecao-nao' : ''}${it.status ? '' : ' item-inspecao-aberto'}`}>
-                  <p className="item-inspecao-texto">
-                    <span className="item-inspecao-numero">{n + 1}</span>
-                    {it.texto}
-                  </p>
-                  <div className="escolha" role="radiogroup" aria-label={`Resposta do item ${n + 1}`}>
-                    {(['sim', 'nao', 'na'] as const).map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        role="radio"
-                        aria-checked={it.status === s}
-                        className={`escolha-${s}`}
-                        onClick={() => mudarItem(n, s === 'nao' && !it.prazo ? { status: s, prazo: somarDias(hojeIso(), 7) } : { status: s })}
-                      >
-                        {NOMES_STATUS_VISTORIA[s]}
-                      </button>
-                    ))}
-                  </div>
-                  {it.status === 'nao' && (
-                    <div className="grade-recomendacao">
-                      <label className="campo">
-                        <span>O que precisa ser feito</span>
-                        <textarea rows={2} value={it.recomendacao} onChange={(e) => mudarItem(n, { recomendacao: e.target.value })} />
-                      </label>
-                      <label className="campo">
-                        <span>Prazo</span>
-                        <input type="date" value={it.prazo ?? ''} onChange={(e) => mudarItem(n, { prazo: e.target.value || null })} />
-                      </label>
-                    </div>
-                  )}
-                  <CampoFotos
-                    pasta={`vistoria/${id}/${n}`}
-                    fotos={it.fotos ?? []}
+          {naObra ? (
+            <EdicaoQuartos
+              v={v}
+              obraId={aloj.obra_id}
+              alojamentoId={aloj.id}
+              links={links}
+              temItensEnviados={temItensEnviados}
+              aoLinks={(novos) => setLinks((l) => ({ ...l, ...novos }))}
+              atualizar={atualizar}
+              mudarItem={mudarItem}
+              aoAssinar={(i) => setAssinando({ lista: 'funcionarios', i })}
+              aoErro={setErro}
+            />
+          ) : (
+            <section className="bloco">
+              <div className="barra-lista">
+                <h2 className="bloco-titulo">{nomeModelo || 'Checklist'}</h2>
+                <span className="sub">
+                  {respondidos} de {v.itens.length} respondidos{previa ? `. Até aqui: ${previa.classificacao}` : ''}
+                </span>
+              </div>
+              <ol className="itens-inspecao">
+                {v.itens.map((it, n) => (
+                  <ItemEdicao
+                    key={n}
+                    it={it}
+                    n={n}
+                    numero={n + 1}
+                    idVistoria={id}
                     links={links}
-                    aoMudar={(fotos, novos) => {
-                      setLinks((l) => ({ ...l, ...novos }));
-                      mudarItem(n, { fotos }, true);
-                    }}
+                    aoMudar={(p, gravarJa) => mudarItem(n, p, gravarJa)}
+                    aoLinks={(novos) => setLinks((l) => ({ ...l, ...novos }))}
                   />
-                </li>
-              ))}
-            </ol>
-          </section>
+                ))}
+              </ol>
+            </section>
+          )}
+          {naObra && previa && <p className="sub">Nota até aqui (todos os quartos e as áreas comuns): {previa.classificacao}, {respondidos} de {v.itens.length} respondidos.</p>}
 
-          {!canteiro && <section className="bloco">
+          {!canteiro && !naObra && <section className="bloco">
             <h2 className="bloco-titulo">Moradores</h2>
-            {aloj.empresa_id && colabs && colabs.length > 0 && (
-              <>
-                <p className="dica">Marque quem mora no alojamento (colaboradores ativos de {responsavel}).</p>
-                <ul className="lista-marcar lista-curta">
-                  {colabs.map((c) => {
-                    const marcado = v.funcionarios.some((p) => p.colaborador_id === c.id);
-                    return (
-                      <li key={c.id}>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={marcado}
-                            onChange={() =>
-                              atualizar((x) => ({
-                                ...x,
-                                funcionarios: marcado
-                                  ? x.funcionarios.filter((p) => p.colaborador_id !== c.id)
-                                  : [...x.funcionarios, { colaborador_id: c.id, nome: c.nome, cargo: c.funcao ?? undefined, assinatura: null }],
-                                qtd_funcionarios: x.qtd_funcionarios ?? null,
-                              }))
-                            }
-                          />
-                          <span>
-                            {c.nome}
-                            {c.funcao && <small className="sub">{c.funcao.toLowerCase()}</small>}
-                          </span>
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            )}
+            <p className="dica">
+              Marque quem mora no alojamento: colaboradores liberados na obra{aloj.empresa_id ? ` de ${responsavel}` : ''}.
+            </p>
+            <EscolherMoradores
+              quarto={null}
+              moradoresObra={colabs}
+              funcionarios={v.funcionarios}
+              aoMarcar={(m, marcar) =>
+                atualizar((x) => ({
+                  ...x,
+                  funcionarios: marcar
+                    ? [...x.funcionarios, { colaborador_id: m.id, nome: m.nome, cargo: m.funcao ?? undefined, empresa_id: m.empresa_id, empresa: m.empresa, assinatura: null }]
+                    : x.funcionarios.filter((p) => p.colaborador_id !== m.id),
+                }))
+              }
+            />
             <ListaAssinaturas
-              pessoas={v.funcionarios}
+              pessoas={v.funcionarios.map((p, i) => ({ p, i }))}
               links={links}
               comCargo={false}
-              rotuloIncluir={aloj.empresa_id ? 'Incluir morador que não está na lista' : 'Incluir morador'}
+              comPresenca
+              rotuloIncluir="Incluir nome à mão (quem não está no portal)"
               aoIncluir={() => atualizar((x) => ({ ...x, funcionarios: [...x.funcionarios, { colaborador_id: null, nome: '', assinatura: null }] }))}
-              aoMudar={(i, p) => mudarPessoa('funcionarios', i, p)}
+              aoMudar={(i, p) => mudarPessoa('funcionarios', i, p, 'ausente' in p || 'nao_assina' in p)}
               aoRemover={(i) => atualizar((x) => ({ ...x, funcionarios: x.funcionarios.filter((_, k) => k !== i) }))}
               aoAssinar={(i) => setAssinando({ lista: 'funcionarios', i })}
             />
@@ -317,7 +299,7 @@ export function VistoriaPagina() {
           <section className="bloco">
             <h2 className="bloco-titulo">Quem acompanhou a vistoria</h2>
             <ListaAssinaturas
-              pessoas={v.envolvidos}
+              pessoas={v.envolvidos.map((p, i) => ({ p, i }))}
               links={links}
               comCargo
               rotuloIncluir="Incluir pessoa"
@@ -343,12 +325,14 @@ export function VistoriaPagina() {
         </div>
       ) : (
         <>
-          <LeituraVistoria v={v} links={links} responsavel={responsavel} canteiro={canteiro} />
-          {v.situacao === 'concluida' && !canteiro && (
+          <LeituraVistoria v={v} links={links} responsavel={responsavel} canteiro={canteiro} naObra={naObra} />
+          {v.situacao === 'concluida' && (
             <NcsVistoria
               v={v}
+              naObra={naObra}
               empresaId={aloj.empresa_id}
               empresaNome={responsavel}
+              fornecedores={fornecedores}
               podeEditar={podeEditar}
               aoMensagem={(tipo, texto) => (tipo === 'ok' ? (setErro(null), setOk(texto)) : (setOk(null), setErro(texto)))}
             />
@@ -400,59 +384,40 @@ export function VistoriaPagina() {
   );
 }
 
-function ListaAssinaturas({
-  pessoas, links, comCargo, rotuloIncluir, aoIncluir, aoMudar, aoRemover, aoAssinar,
-}: {
-  pessoas: Pessoa[];
-  links: Record<string, string>;
-  comCargo: boolean;
-  rotuloIncluir: string;
-  aoIncluir: () => void;
-  aoMudar: (i: number, p: Partial<Pessoa>) => void;
-  aoRemover: (i: number) => void;
-  aoAssinar: (i: number) => void;
-}) {
+function ItemLeitura({ i, links, responsavel }: { i: ItemVistoria; links: Record<string, string>; responsavel?: string }) {
   return (
-    <div className="lista-pessoas">
-      {pessoas.map((p, i) => (
-        <div key={i} className="pessoa-assina">
-          <div className={comCargo ? 'grade-2' : undefined}>
-            <label className="campo">
-              <span>Nome</span>
-              <input value={p.nome} readOnly={!!p.colaborador_id} onChange={(e) => aoMudar(i, { nome: e.target.value })} />
-            </label>
-            {comCargo && (
-              <label className="campo">
-                <span>Cargo</span>
-                <input value={p.cargo ?? ''} onChange={(e) => aoMudar(i, { cargo: e.target.value })} />
-              </label>
-            )}
-          </div>
-          <div className="pessoa-assina-acoes">
-            {p.assinatura && links[p.assinatura] ? (
-              <img className="assinatura-previa" src={links[p.assinatura]} alt={`Assinatura de ${p.nome}`} />
-            ) : (
-              <span className="sub">sem assinatura</span>
-            )}
-            <button type="button" className="botao botao-secundario botao-pequeno" disabled={!p.nome.trim()} onClick={() => aoAssinar(i)}>
-              {p.assinatura ? 'Assinar de novo' : 'Assinar'}
-            </button>
-            <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => aoRemover(i)}>Tirar</button>
-          </div>
-        </div>
-      ))}
-      <button type="button" className="botao botao-discreto botao-pequeno" onClick={aoIncluir}>+ {rotuloIncluir}</button>
-    </div>
+    <li className={i.status === 'nao' ? 'vistoria-item-nao' : undefined}>
+      <div className="vistoria-item-linha">
+        <span>{i.texto}</span>
+        <span className={`selo ${i.status === 'sim' ? 'selo-ok' : i.status === 'nao' ? 'selo-erro' : 'selo-fila'}`}>
+          {i.status ? NOMES_STATUS_VISTORIA[i.status] : 'sem resposta'}
+        </span>
+      </div>
+      {(i.recomendacao || i.prazo) && (
+        <p className="sub">
+          {i.recomendacao}
+          {i.prazo ? `${i.recomendacao ? '. ' : ''}Prazo: ${data(i.prazo)}` : ''}
+        </p>
+      )}
+      {i.status === 'nao' && responsavel && <p className="sub">Corrige: {responsavel}</p>}
+      <Fotos caminhos={i.fotos ?? []} links={links} />
+    </li>
   );
 }
 
-export function LeituraVistoria({ v, links, responsavel, canteiro = false }: { v: Vistoria; links: Record<string, string>; responsavel: string; canteiro?: boolean }) {
+function MoradoresLeitura({ pessoas, links, titulo }: { pessoas: Pessoa[]; links: Record<string, string>; titulo: string }) {
+  return <Assinaturas titulo={titulo} pessoas={pessoas.map((p) => ({ ...p, cargo: [p.empresa, situacaoMorador(p)].filter(Boolean).join('. ') || p.cargo }))} links={links} />;
+}
+
+export function LeituraVistoria({ v, links, responsavel, canteiro = false, naObra = false }: { v: Vistoria; links: Record<string, string>; responsavel: string; canteiro?: boolean; naObra?: boolean }) {
+  const comuns = v.itens.filter((i) => !i.quarto);
   return (
     <div className="vistoria">
       <dl className="vistoria-dados">
         <div><dt>Data</dt><dd>{data(v.data_vistoria)}{v.horario ? `, ${v.horario}` : ''}</dd></div>
         <div><dt>Responsável</dt><dd>{responsavel}</dd></div>
-        {!canteiro && <div><dt>Moradores</dt><dd>{v.qtd_funcionarios ?? '-'}</dd></div>}
+        {!canteiro && <div><dt>Moradores</dt><dd>{v.qtd_funcionarios ?? (naObra ? v.funcionarios.length : '-')}</dd></div>}
+        {naObra && <div><dt>Quartos</dt><dd>{v.quartos.length}</dd></div>}
         <div>
           <dt>Resultado</dt>
           <dd>
@@ -465,29 +430,43 @@ export function LeituraVistoria({ v, links, responsavel, canteiro = false }: { v
         <p className="aviso aviso-info">As fotos ficam no portal até {data(v.fotos_expiram_em)}. Baixe o PDF para guardar a vistoria com as fotos.</p>
       )}
       {v.fotos_excluidas_em && <p className="dica">As fotos desta vistoria foram excluídas em {data(v.fotos_excluidas_em)}. Ficou só a avaliação.</p>}
-      <ol className="vistoria-itens">
-        {v.itens.map((i, n) => (
-          <li key={n} className={i.status === 'nao' ? 'vistoria-item-nao' : undefined}>
-            <div className="vistoria-item-linha">
-              <span>{i.texto}</span>
-              <span className={`selo ${i.status === 'sim' ? 'selo-ok' : i.status === 'nao' ? 'selo-erro' : 'selo-fila'}`}>
-                {i.status ? NOMES_STATUS_VISTORIA[i.status] : 'sem resposta'}
-              </span>
-            </div>
-            {(i.recomendacao || i.prazo) && (
-              <p className="sub">
-                {i.recomendacao}
-                {i.prazo ? `${i.recomendacao ? '. ' : ''}Prazo: ${data(i.prazo)}` : ''}
-              </p>
-            )}
-            <Fotos caminhos={i.fotos ?? []} links={links} />
-          </li>
-        ))}
-      </ol>
-      <div className="duas-colunas">
-        {!canteiro && <Assinaturas titulo="Moradores" pessoas={v.funcionarios} links={links} />}
-        <Assinaturas titulo="Acompanharam a vistoria" pessoas={v.envolvidos} links={links} />
-      </div>
+      {naObra ? (
+        <>
+          {v.quartos.map((q) => {
+            const itens = v.itens.filter((i) => i.quarto === q.nome && !i.auto_na);
+            const nota = notaPrevia(itens);
+            return (
+              <section key={q.nome} className="bloco-quarto-leitura">
+                <h3 className="detalhe-subtitulo">
+                  {q.nome}
+                  <small className="sub"> {q.cama ? NOMES_CAMA[q.cama] : 'tipo de cama não informado'}{nota ? `. ${nota.classificacao}, ${Math.round(nota.pontuacao * 100)}%` : ''}</small>
+                </h3>
+                <ol className="vistoria-itens">
+                  {itens.map((i, k) => <ItemLeitura key={k} i={i} links={links} responsavel={responsavelItemQuarto(i, v.funcionarios)} />)}
+                </ol>
+                <MoradoresLeitura titulo={`Moradores do ${q.nome}`} pessoas={v.funcionarios.filter((p) => p.quarto === q.nome)} links={links} />
+              </section>
+            );
+          })}
+          <section className="bloco-quarto-leitura">
+            <h3 className="detalhe-subtitulo">Áreas comuns</h3>
+            <ol className="vistoria-itens">
+              {comuns.map((i, k) => <ItemLeitura key={k} i={i} links={links} responsavel="Emais (engenharia da obra)" />)}
+            </ol>
+          </section>
+          <Assinaturas titulo="Acompanharam a vistoria" pessoas={v.envolvidos} links={links} />
+        </>
+      ) : (
+        <>
+          <ol className="vistoria-itens">
+            {v.itens.map((i, n) => <ItemLeitura key={n} i={i} links={links} />)}
+          </ol>
+          <div className="duas-colunas">
+            {!canteiro && <MoradoresLeitura titulo="Moradores" pessoas={v.funcionarios} links={links} />}
+            <Assinaturas titulo="Acompanharam a vistoria" pessoas={v.envolvidos} links={links} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -38,8 +38,31 @@ export type Maquina = {
   fichas: Pick<Ficha, 'id' | 'competencia' | 'fechada_em' | 'fotos_excluidas_em'>[];
 };
 
-export type ItemVistoria = { texto: string; status: 'sim' | 'nao' | 'na' | null; recomendacao: string; prazo: string | null; fotos: string[] };
-export type Pessoa = { colaborador_id?: string | null; nome: string; cargo?: string; assinatura: string | null };
+// quarto: só no alojamento na obra (nulo = áreas comuns). auto_na: item do beliche marcado sozinho em quarto sem beliche.
+export type ItemVistoria = { texto: string; status: 'sim' | 'nao' | 'na' | null; recomendacao: string; prazo: string | null; fotos: string[]; quarto?: string | null; auto_na?: boolean };
+// Morador: empresa e quarto quando escolhido da lista da obra. ausente: não estava na hora. nao_assina: registro
+// eletrônico (o código sai na conclusão).
+export type Pessoa = {
+  colaborador_id?: string | null;
+  nome: string;
+  cargo?: string;
+  assinatura: string | null;
+  empresa_id?: string | null;
+  empresa?: string | null;
+  quarto?: string | null;
+  ausente?: boolean;
+  nao_assina?: boolean;
+  codigo?: string | null;
+  registrado_em?: string | null;
+};
+export type Cama = 'beliche' | 'simples' | 'ambas';
+export type Quarto = { nome: string; cama: Cama | '' };
+export const NOMES_CAMA: Record<Cama, string> = { beliche: 'Só beliche', simples: 'Só cama simples', ambas: 'Beliche e cama simples' };
+export const MODELO_QUARTO = 'alojamento:obra-quarto';
+export const MODELO_AREAS_COMUNS = 'alojamento:obra-areas-comuns';
+// Mesmas regras do banco (app.seg_item_ocupantes): limpeza e organização vão para as empresas do quarto.
+export const itemDosOcupantes = (texto: string) => /(limp|organiz)/i.test(texto);
+export const itemDoBeliche = (texto: string) => /beliche/i.test(texto);
 export type Vistoria = {
   id: string;
   obra_id: string;
@@ -51,6 +74,7 @@ export type Vistoria = {
   itens: ItemVistoria[];
   funcionarios: Pessoa[];
   envolvidos: Pessoa[];
+  quartos: Quarto[];
   pontuacao: number | null;
   classificacao: string | null;
   situacao: 'rascunho' | 'concluida';
@@ -61,11 +85,14 @@ export type Vistoria = {
   modelo_versao: number | null;
 };
 export type NaoConformidade = { id: string; vistoria_id: string; situacao: 'aberta' | 'respondida' | 'regularizada' | 'reaberta'; prazo: string };
+// padrao: checklist NR-18 do alojamento inteiro. obra: alojamento da Emais dentro da obra, vistoria por quarto.
+export type TipoAlojamento = 'padrao' | 'obra';
 export type Alojamento = {
   id: string;
   obra_id: string;
   nome: string;
   endereco: string | null;
+  tipo: TipoAlojamento;
   empresa_id: string | null;
   empresa_a_vincular: string | null;
   ativo: boolean;
@@ -129,7 +156,7 @@ export async function lerFicha(id: string): Promise<Ficha> {
 export async function lerAlojamentos(obraId: string): Promise<Alojamento[]> {
   const { data, error } = await supabase
     .from('seg_alojamentos')
-    .select('id, obra_id, nome, endereco, empresa_id, empresa_a_vincular, ativo, vistorias:seg_vistorias(id, data_vistoria, classificacao, situacao, pontuacao, fotos_expiram_em, fotos_excluidas_em)')
+    .select('id, obra_id, nome, endereco, tipo, empresa_id, empresa_a_vincular, ativo, vistorias:seg_vistorias(id, data_vistoria, classificacao, situacao, pontuacao, fotos_expiram_em, fotos_excluidas_em)')
     .eq('obra_id', obraId)
     .order('nome');
   if (error) throw error;
@@ -152,7 +179,7 @@ export async function lerNaoConformidadesDaObra(alojamentos: string[]): Promise<
 export async function lerVistoria(id: string): Promise<Vistoria> {
   const { data, error } = await supabase
     .from('seg_vistorias')
-    .select('id, obra_id, modelo_codigo, alojamento_id, data_vistoria, horario, qtd_funcionarios, itens, funcionarios, envolvidos, pontuacao, classificacao, situacao, concluida_em, fotos_expiram_em, fotos_excluidas_em, origem, modelo_versao')
+    .select('id, obra_id, modelo_codigo, alojamento_id, data_vistoria, horario, qtd_funcionarios, itens, funcionarios, envolvidos, quartos, pontuacao, classificacao, situacao, concluida_em, fotos_expiram_em, fotos_excluidas_em, origem, modelo_versao')
     .eq('id', id)
     .single();
   if (error) throw error;
@@ -180,10 +207,13 @@ export async function salvarMaquina(id: string, identificacao: string, r: Respon
   }
 }
 
-export async function salvarAlojamento(id: string, campos: { nome: string; endereco: string; empresaId: string | null; ativo: boolean }) {
+export async function salvarAlojamento(id: string, campos: { nome: string; endereco: string; empresaId: string | null; ativo: boolean; tipo?: TipoAlojamento }) {
   const { error } = await supabase
     .from('seg_alojamentos')
-    .update({ nome: campos.nome.trim(), endereco: campos.endereco.trim() || null, empresa_id: campos.empresaId, empresa_a_vincular: null, ativo: campos.ativo })
+    .update({
+      nome: campos.nome.trim(), endereco: campos.endereco.trim() || null, empresa_id: campos.tipo === 'obra' ? null : campos.empresaId, empresa_a_vincular: null, ativo: campos.ativo,
+      ...(campos.tipo ? { tipo: campos.tipo } : {}),
+    })
     .eq('id', id);
   if (error) {
     if (error.code === '23505') throw new Error('Já existe um alojamento com esse nome nesta obra.');
@@ -218,7 +248,7 @@ export type MaquinaComObra = Omit<Maquina, 'fichas'> & { obra: { nome: string } 
 export async function lerAlojamento(id: string): Promise<AlojamentoComObra> {
   const { data, error } = await supabase
     .from('seg_alojamentos')
-    .select('id, obra_id, nome, endereco, empresa_id, empresa_a_vincular, ativo, obra:obras(nome)')
+    .select('id, obra_id, nome, endereco, tipo, empresa_id, empresa_a_vincular, ativo, obra:obras(nome)')
     .eq('id', id)
     .single();
   if (error) throw error;
@@ -235,10 +265,10 @@ export async function lerMaquina(id: string): Promise<MaquinaComObra> {
   return data as unknown as MaquinaComObra;
 }
 
-export async function criarAlojamento(c: { obraId: string; nome: string; endereco: string; empresaId: string | null }): Promise<string> {
+export async function criarAlojamento(c: { obraId: string; nome: string; endereco: string; empresaId: string | null; tipo?: TipoAlojamento }): Promise<string> {
   const { data, error } = await supabase
     .from('seg_alojamentos')
-    .insert({ obra_id: c.obraId, nome: c.nome.trim(), endereco: c.endereco.trim() || null, empresa_id: c.empresaId })
+    .insert({ obra_id: c.obraId, nome: c.nome.trim(), endereco: c.endereco.trim() || null, empresa_id: c.tipo === 'obra' ? null : c.empresaId, tipo: c.tipo ?? 'padrao' })
     .select('id')
     .single();
   if (error) {
@@ -254,7 +284,7 @@ export type AlojamentoCadastro = Omit<Alojamento, 'vistorias'> & { obra: string;
 export async function lerCadastroAlojamentos(): Promise<AlojamentoCadastro[]> {
   const { data, error } = await supabase
     .from('seg_alojamentos')
-    .select('id, obra_id, nome, endereco, empresa_id, empresa_a_vincular, ativo, obra:obras(nome), empresa:empresas(razao_social), vistorias:seg_vistorias(count)')
+    .select('id, obra_id, nome, endereco, tipo, empresa_id, empresa_a_vincular, ativo, obra:obras(nome), empresa:empresas(razao_social), vistorias:seg_vistorias(count)')
     .order('nome');
   if (error) throw error;
   type Linha = Omit<Alojamento, 'vistorias'> & { obra: { nome: string } | null; empresa: { razao_social: string } | null; vistorias: { count: number }[] };
@@ -292,7 +322,11 @@ export async function criarMaquina(c: { obraId: string; modelo: string; identifi
   return data.id as string;
 }
 
-export async function criarVistoria(c: { obraId: string; alojamentoId: string | null; modelo: Modelo; data: string; horario: string; tst: string }): Promise<string> {
+export const novoItem = (texto: string, quarto?: string | null): ItemVistoria => ({ texto, status: null, recomendacao: '', prazo: null, fotos: [], ...(quarto !== undefined ? { quarto } : {}) });
+
+// Alojamento na obra: o formulário é o de quarto (os quartos entram depois, pelo "+ Incluir quarto") e a vistoria
+// já nasce com as perguntas das áreas comuns (quarto nulo).
+export async function criarVistoria(c: { obraId: string; alojamentoId: string | null; modelo: Modelo; areasComuns?: Modelo; data: string; horario: string; tst: string }): Promise<string> {
   const { data, error } = await supabase
     .from('seg_vistorias')
     .insert({
@@ -301,7 +335,7 @@ export async function criarVistoria(c: { obraId: string; alojamentoId: string | 
       alojamento_id: c.alojamentoId,
       data_vistoria: c.data,
       horario: c.horario || null,
-      itens: c.modelo.itens.map((texto) => ({ texto, status: null, recomendacao: '', prazo: null, fotos: [] })),
+      itens: c.areasComuns ? c.areasComuns.itens.map((texto) => novoItem(texto, null)) : c.modelo.itens.map((texto) => novoItem(texto)),
       envolvidos: [{ nome: c.tst, cargo: 'Técnico de Segurança do Trabalho', assinatura: null }],
     })
     .select('id')
@@ -310,12 +344,12 @@ export async function criarVistoria(c: { obraId: string; alojamentoId: string | 
   return data.id as string;
 }
 
-export type CamposVistoria = Pick<Vistoria, 'data_vistoria' | 'horario' | 'qtd_funcionarios' | 'itens' | 'funcionarios' | 'envolvidos'>;
+export type CamposVistoria = Pick<Vistoria, 'data_vistoria' | 'horario' | 'qtd_funcionarios' | 'itens' | 'funcionarios' | 'envolvidos' | 'quartos'>;
 
 export async function gravarVistoria(id: string, c: CamposVistoria) {
   const { error, count } = await supabase
     .from('seg_vistorias')
-    .update({ data_vistoria: c.data_vistoria, horario: c.horario || null, qtd_funcionarios: c.qtd_funcionarios, itens: c.itens, funcionarios: c.funcionarios, envolvidos: c.envolvidos }, { count: 'exact' })
+    .update({ data_vistoria: c.data_vistoria, horario: c.horario || null, qtd_funcionarios: c.qtd_funcionarios, itens: c.itens, funcionarios: c.funcionarios, envolvidos: c.envolvidos, quartos: c.quartos }, { count: 'exact' })
     .eq('id', id);
   if (error) throw error;
   if (count === 0) throw new Error('A vistoria não está mais em edição. Recarregue a página.');
@@ -355,6 +389,39 @@ export async function fecharFicha(fichaId: string, f: { operador_nome: string; o
 }
 
 export type ColaboradorAtivo = { id: string; nome: string; funcao: string | null };
+export type MoradorObra = ColaboradorAtivo & { empresa_id: string; empresa: string };
+
+// Colaboradores liberados na obra (de uma empresa, ou de todas no alojamento da Emais), para marcar como moradores.
+export async function lerMoradoresObra(obraId: string, empresaId: string | null): Promise<MoradorObra[]> {
+  const { data, error } = await supabase.rpc('seg_moradores_obra', { p_obra: obraId, p_empresa: empresaId });
+  if (error) throw error;
+  return (data ?? []) as MoradorObra[];
+}
+
+// Quartos das vistorias anteriores do alojamento na obra: nomes para sugerir e quem estava em cada um.
+export async function lerQuartosAnteriores(alojamentoId: string, menosVistoria: string): Promise<{ nome: string; cama: Quarto['cama']; moradores: Pessoa[] }[]> {
+  const { data, error } = await supabase
+    .from('seg_vistorias')
+    .select('id, data_vistoria, quartos, funcionarios')
+    .eq('alojamento_id', alojamentoId)
+    .neq('id', menosVistoria)
+    .order('data_vistoria', { ascending: false })
+    .limit(12);
+  if (error) throw error;
+  const vistos = new Map<string, { nome: string; cama: Quarto['cama']; moradores: Pessoa[] }>();
+  for (const v of (data ?? []) as Pick<Vistoria, 'quartos' | 'funcionarios'>[]) {
+    for (const q of v.quartos ?? []) {
+      const chave = q.nome.trim().toLowerCase();
+      if (!chave || vistos.has(chave)) continue;
+      vistos.set(chave, {
+        nome: q.nome.trim(),
+        cama: q.cama,
+        moradores: (v.funcionarios ?? []).filter((p) => p.quarto === q.nome),
+      });
+    }
+  }
+  return [...vistos.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }));
+}
 
 export async function colaboradoresAtivos(empresaId: string): Promise<ColaboradorAtivo[]> {
   const { data, error } = await supabase.rpc('colaboradores_ativos_empresa', { p_empresa: empresaId });
@@ -409,7 +476,8 @@ export type NcCompleta = {
   id: string;
   vistoria_id: string;
   item: number;
-  empresa_id: string;
+  empresa_id: string | null;
+  quarto: string | null;
   descricao: string;
   recomendacao: string | null;
   prazo: string;
@@ -421,7 +489,7 @@ export type NcCompleta = {
   motivo_reabertura: string | null;
   criado_em: string;
 };
-const CAMPOS_NC = 'id, vistoria_id, item, empresa_id, descricao, recomendacao, prazo, situacao, resposta, resposta_fotos, respondida_em, avaliada_em, motivo_reabertura, criado_em';
+const CAMPOS_NC = 'id, vistoria_id, item, empresa_id, quarto, descricao, recomendacao, prazo, situacao, resposta, resposta_fotos, respondida_em, avaliada_em, motivo_reabertura, criado_em';
 
 export const NOMES_SITUACAO_NC = {
   aberta: 'Aguardando o fornecedor',
@@ -466,6 +534,8 @@ export type BlocoResumo = {
 };
 export type AcaoObra = {
   alojamento: string;
+  quarto: string | null;
+  emais: boolean;
   fornecedor: string;
   descricao: string;
   recomendacao: string | null;
@@ -489,7 +559,7 @@ export async function lerResumoObra(obraId: string, desde: string): Promise<Resu
 export type AcaoFornecedor = Pick<
   NcCompleta,
   'id' | 'descricao' | 'recomendacao' | 'prazo' | 'situacao' | 'resposta' | 'resposta_fotos' | 'respondida_em' | 'motivo_reabertura' | 'avaliada_em'
-> & { alojamento: string; obra: string };
+> & { alojamento: string; obra: string; quarto?: string | null };
 export type ResumoFornecedor = {
   meta: number;
   periodo: BlocoResumo;
@@ -501,6 +571,15 @@ export async function lerResumoFornecedor(desde: string): Promise<ResumoForneced
   const { data, error } = await supabase.rpc('seg_resumo_fornecedor', { p_desde: desde });
   if (error) throw error;
   return data as ResumoFornecedor;
+}
+
+// Pendências da Emais (estrutura do alojamento da Emais): a engenharia da obra responde, o TST aceita ou devolve.
+export type PendenciaEmais = AcaoFornecedor & { vistoria_id: string; data_vistoria: string; fotos_problema: string[] };
+
+export async function lerPendenciasEmais(obraId: string): Promise<PendenciaEmais[]> {
+  const { data, error } = await supabase.rpc('seg_pendencias_emais', { p_obra: obraId });
+  if (error) throw error;
+  return (data ?? []) as PendenciaEmais[];
 }
 
 export async function contarNcsAbertas(): Promise<number> {

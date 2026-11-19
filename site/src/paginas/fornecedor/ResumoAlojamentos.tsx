@@ -96,7 +96,7 @@ export function PendenciasAlojamento() {
             <li key={n.id}>
               <div className="vistoria-item-linha">
                 <span>
-                  <strong>{n.alojamento}</strong>
+                  <strong>{n.alojamento}{n.quarto ? `, ${n.quarto}` : ''}</strong>
                   <small className="sub"> {n.obra}</small>
                 </span>
                 <span className={`selo ${dias < 0 ? 'selo-erro' : 'selo-teste'}`}>

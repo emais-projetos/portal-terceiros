@@ -4,7 +4,7 @@ import { Dialogo } from '../../componentes/Dialogo';
 import { mensagemDeErro } from '../../lib/supabase';
 import { hojeIso } from '../../lib/formato';
 import {
-  abrirFicha, criarMaquina, criarVistoria, salvarLocadora,
+  MODELO_AREAS_COMUNS, MODELO_QUARTO, abrirFicha, criarMaquina, criarVistoria, salvarLocadora,
   type Alojamento, type Fornecedor, type Locadora, type Maquina, type Modelo, type Responsavel,
 } from '../../lib/seguranca';
 
@@ -99,7 +99,13 @@ export function NovaInspecao({
         const id = await criarVistoria({ obraId, alojamentoId: null, modelo: modelosCanteiro.find((m) => m.codigo === alvo)!, data: dia, horario: hora, tst });
         navegar(`/seguranca/vistoria/${id}`);
       } else if (tipo === 'alojamento') {
-        const id = await criarVistoria({ obraId, alojamentoId: alvo, modelo: modeloAlojamento!, data: dia, horario: hora, tst });
+        const naObra = alojamentos.find((x) => x.id === alvo)?.tipo === 'obra';
+        const quarto = modelos.find((m) => m.codigo === MODELO_QUARTO);
+        const comuns = modelos.find((m) => m.codigo === MODELO_AREAS_COMUNS);
+        if (naObra && (!quarto || !comuns)) throw new Error('O formulário do alojamento na obra está desativado em Formulários.');
+        const id = naObra
+          ? await criarVistoria({ obraId, alojamentoId: alvo, modelo: quarto!, areasComuns: comuns!, data: dia, horario: hora, tst })
+          : await criarVistoria({ obraId, alojamentoId: alvo, modelo: modeloAlojamento!, data: dia, horario: hora, tst });
         navegar(`/seguranca/vistoria/${id}`);
       } else {
         const maquinaId = novo ? await criarMaquina({ obraId, modelo, identificacao, responsavel: await responsavel() }) : alvo;
@@ -150,7 +156,7 @@ export function NovaInspecao({
               <select value={alvo} onChange={(e) => setAlvo(e.target.value)} required>
                 <option value="">Escolha o alojamento</option>
                 {ativosAloj.map((a) => (
-                  <option key={a.id} value={a.id}>{a.nome}{a.endereco ? `, ${a.endereco}` : ''}</option>
+                  <option key={a.id} value={a.id}>{a.nome}{a.tipo === 'obra' ? ' (na obra, por quarto)' : a.endereco ? `, ${a.endereco}` : ''}</option>
                 ))}
               </select>
             </label>

@@ -28,7 +28,8 @@ function useResumoObra(obraId: string, desde: string) {
   useEffect(() => {
     setR(null);
     setErro(null);
-    lerResumoObra(obraId, desde).then(setR).catch((e) => setErro(mensagemDeErro(e as Error)));
+    // As pendências da Emais têm lista própria (PendenciasEmais); aqui ficam só as dos fornecedores.
+    lerResumoObra(obraId, desde).then((x) => setR({ ...x, acoes: (x.acoes ?? []).filter((a) => !a.emais) })).catch((e) => setErro(mensagemDeErro(e as Error)));
   }, [obraId, desde]);
   return { r, erro };
 }
@@ -157,7 +158,7 @@ function ConteudoResumo({ r, desde }: { r: ResumoObra; desde: string }) {
                   <div className="vistoria-item-linha">
                     <span>
                       <strong>{a.fornecedor}</strong>
-                      <small className="sub"> {a.alojamento}</small>
+                      <small className="sub"> {a.alojamento}{a.quarto ? `, ${a.quarto}` : ''}</small>
                     </span>
                     {seloNc(a.situacao)}
                   </div>

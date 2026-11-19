@@ -19,6 +19,7 @@ import { PainelResumoObra } from './seguranca/ResumoObra';
 import { ListaFormularios } from './seguranca/Formularios';
 import { NovaInspecao } from './seguranca/NovaInspecao';
 import { CadastroAlojamentos } from './seguranca/CadastroAlojamentos';
+import { PendenciasEmais } from './seguranca/PendenciasEmais';
 
 const CHAVE_OBRA = 'portal-terceiros:obra-seguranca';
 const ABAS = [
@@ -49,6 +50,7 @@ function SegurancaResumo() {
   const [obras, setObras] = useState<ObraDoPainel[] | null>(null);
   const [obra, setObra] = useState('');
   const [erro, setErro] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
 
   useEffect(() => {
     lerObrasDoPainel()
@@ -75,8 +77,9 @@ function SegurancaResumo() {
   }
 
   return (
-    <Pagina titulo="Segurança da obra" apoio="Conformidade das inspeções, itens que mais aparecem como não conformes e correções em aberto dos fornecedores.">
+    <Pagina titulo="Segurança da obra" apoio="Pendências da Emais nos alojamentos para a engenharia corrigir, conformidade das inspeções e correções em aberto dos fornecedores.">
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
+      {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
       {!obras && !erro && <Carregando />}
       {obras && (
         <div className="filtros">
@@ -89,6 +92,7 @@ function SegurancaResumo() {
           </label>
         </div>
       )}
+      {obra && <PendenciasEmais obraId={obra} ehTst={false} aoMensagem={(t, m) => (t === 'ok' ? (setErro(null), setOk(m)) : (setOk(null), setErro(m)))} />}
       {obra && <PainelResumoObra obraId={obra} />}
     </Pagina>
   );
@@ -219,7 +223,10 @@ function SegurancaCompleta() {
         </>
       ) : <Carregando />)}
       {aba === 'alojamentos' && obra && (alojamentos ? (
-        <Alojamentos lista={alojamentos} ncs={ncs} ctx={ctx} aoSalvar={recarregar} />
+        <>
+          <PendenciasEmais obraId={obra} ehTst aoMensagem={(t, m) => (t === 'ok' ? (setErro(null), setOk(m)) : (setOk(null), setErro(m)))} />
+          <Alojamentos lista={alojamentos} ncs={ncs} ctx={ctx} aoSalvar={recarregar} />
+        </>
       ) : <Carregando />)}
       {aba === 'maquinas' && obra && (maquinas ? (
         <Maquinas lista={maquinas} ctx={ctx} aoSalvar={recarregar} />

@@ -152,7 +152,7 @@ function CabecalhoNc({ n }: { n: AcaoFornecedor }) {
     <>
       <div className="vistoria-item-linha">
         <span>
-          <strong>{n.alojamento}</strong>
+          <strong>{n.alojamento}{n.quarto ? `, ${n.quarto}` : ''}</strong>
           <small className="sub"> {n.obra}</small>
         </span>
         {seloNc(n.situacao)}

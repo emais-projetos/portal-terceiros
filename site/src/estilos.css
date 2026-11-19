@@ -3150,3 +3150,11 @@ button.celula:hover {
 .menu-filho .contador { margin-left: auto; }
 .regras-senha { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; font-size: var(--fs-apoio); color: var(--texto-apoio, #5b6b74); }
 .regras-senha li.ok { color: #1f7a4d; }
+
+/* Alojamento na obra: blocos por quarto, quem corrige o item e presença do morador. */
+.bloco-quarto { border-left: 4px solid var(--petroleo); }
+.bloco-quarto-leitura { margin: 18px 0; padding-top: 10px; border-top: 1px solid var(--linha); }
+.item-inspecao-resp { margin: -2px 0 8px; font-size: 0.82rem; color: var(--petroleo-escuro); }
+.pessoa-presenca { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 4px 0; }
+.escolher-moradores { margin-bottom: 12px; }
+.nc-destino { margin: 8px 0 0 12px; padding-left: 10px; border-left: 2px solid var(--linha); }
