@@ -695,6 +695,41 @@ delete from seg_alojamentos where id = 'a1000000-0000-0000-0000-00000000000a';
 delete from alocacoes where id = '50000000-0000-0000-0000-00000000000a';
 delete from colaboradores where id = '40000000-0000-0000-0000-00000000000a';
 
+-- Conclusão da análise de documentos: um e-mail só por fornecedor, com o que precisa corrigir e o que foi aprovado.
+insert into documentos (id, tipo_codigo, empresa_id, colaborador_id, data_emissao, aceite_lgpd_em) values
+  ('60000000-0000-0000-0000-000000000009', 'aso', :E1, :C1, current_date - 2, now());
+select teste.entrar(:A);
+select devolver_documento('60000000-0000-0000-0000-000000000009', 'Arquivo ilegível ou cortado');
+select teste.sair();
+select teste.igual('Conclusão (controle): devolução fica aguardando conclusão', $q$select 1 from documentos where id = '60000000-0000-0000-0000-000000000009' and aguardando_conclusao and resultado_analise = 'devolvido'$q$, 1);
+select teste.entrar(:F1);
+select teste.bloqueado('Conclusão: fornecedor vê a prévia', $q$select previa_conclusao_analise('20000000-0000-0000-0000-000000000001')$q$);
+select teste.bloqueado('Conclusão: fornecedor conclui', $q$select concluir_analise('20000000-0000-0000-0000-000000000001', array['60000000-0000-0000-0000-000000000009']::uuid[])$q$);
+select teste.bloqueado('Conclusão: fornecedor lista', $q$select analises_para_concluir()$q$);
+select teste.entrar(:T1);
+select teste.bloqueado('Conclusão: TST conclui', $q$select concluir_analise('20000000-0000-0000-0000-000000000001', array['60000000-0000-0000-0000-000000000009']::uuid[])$q$);
+select teste.entrar(:A);
+select teste.igual('Conclusão (controle): empresa na lista para concluir', $q$select 1 from jsonb_array_elements(analises_para_concluir()) x where x->>'empresa_id' = '20000000-0000-0000-0000-000000000001'$q$, 1);
+select teste.bloqueado('Conclusão: fornecedor sem e-mail', $q$select concluir_analise('20000000-0000-0000-0000-000000000001', array['60000000-0000-0000-0000-000000000009']::uuid[])$q$);
+select teste.sair();
+update empresas set email_contato = 'contato@empresaum.test' where id = :E1;
+select teste.entrar(:A);
+select teste.igual('Conclusão (controle): prévia com o e-mail do fornecedor e a devolução', $q$select 1 where (previa_conclusao_analise('20000000-0000-0000-0000-000000000001')->>'para') = 'contato@empresaum.test' and (previa_conclusao_analise('20000000-0000-0000-0000-000000000001')->>'corpo') like '%COLAB UM: ASO (devolvido: arquivo ilegível ou cortado)%'$q$, 1);
+select concluir_analise(:E1, array['60000000-0000-0000-0000-000000000009']::uuid[]) as "CONC" \gset
+select teste.igual('Conclusão (controle): documento comunicado', $q$select 1 from documentos where id = '60000000-0000-0000-0000-000000000009' and not aguardando_conclusao and conclusao_id is not null$q$, 1);
+select teste.igual('Conclusão (controle): e-mail na fila para o fornecedor', $q$select 1 from analises_conclusoes where para = 'contato@empresaum.test' and situacao_envio = 'aguardando' and devolvidos = 1$q$, 1);
+select teste.bloqueado('Conclusão: concluir de novo o mesmo documento', $q$select concluir_analise('20000000-0000-0000-0000-000000000001', array['60000000-0000-0000-0000-000000000009']::uuid[])$q$);
+select teste.entrar(:F1);
+select teste.igual('Conclusão (controle): fornecedor vê a análise da empresa dele', 'select 1 from analises_conclusoes', 1);
+select teste.entrar(:F2);
+select teste.igual('Conclusão: outro fornecedor vê a análise', 'select 1 from analises_conclusoes', 0);
+select teste.entrar(:T1);
+select teste.igual('Conclusão: TST vê a análise', 'select 1 from analises_conclusoes', 0);
+select teste.sair();
+delete from documentos where id = '60000000-0000-0000-0000-000000000009';
+delete from analises_conclusoes;
+update empresas set email_contato = null where id = :E1;
+
 -- ============================================================================================
 -- 4. Admin desativado perde tudo
 -- ============================================================================================

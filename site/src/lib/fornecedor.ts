@@ -381,3 +381,18 @@ export async function enviarDocumento(dados: {
   }
   return id;
 }
+
+// Última análise de documentos concluída pela Emais para as empresas do fornecedor (aviso em "O que falta").
+export type UltimaAnalise = { concluida_em: string; aprovados: number; devolvidos: number; colaboradores: number; para: string; empresa: string };
+export async function lerUltimaAnalise(): Promise<UltimaAnalise | null> {
+  const { data, error } = await supabase
+    .from('analises_conclusoes')
+    .select('concluida_em, aprovados, devolvidos, colaboradores, para, empresas(razao_social)')
+    .gte('concluida_em', new Date(Date.now() - 30 * 864e5).toISOString())
+    .order('concluida_em', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const x = data as unknown as Omit<UltimaAnalise, 'empresa'> & { empresas: { razao_social: string } | null };
+  return { ...x, empresa: x.empresas?.razao_social ?? '' };
+}

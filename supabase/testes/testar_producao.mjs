@@ -76,7 +76,7 @@ const codigoAleatorio = () => randomBytes(32).toString('base64url');
 // 2. Sem login, nenhuma tabela ou view devolve dados.
 // ------------------------------------------------------------------------------------------
 const TABELAS = [
-  'alocacoes', 'arquivos', 'avisos_liberacao', 'cobrancas', 'cobrancas_envios', 'colaboradores', 'colaboradores_bloqueios',
+  'alocacoes', 'analises_conclusoes', 'arquivos', 'avisos_liberacao', 'cobrancas', 'cobrancas_envios', 'colaboradores', 'colaboradores_bloqueios',
   'colaboradores_documentos_extras', 'conversas', 'convites_acesso', 'documentos', 'empresas', 'empresas_obras', 'eventos', 'exportacoes',
   'funcoes', 'funcoes_documentos', 'integracoes', 'integracoes_participantes', 'liberacoes_pendencia', 'medicoes', 'medicoes_arquivos',
   'medicoes_colaboradores', 'medicoes_itens', 'mensagens', 'modelos_documento', 'modelos_email', 'modelos_email_revisoes',
@@ -129,6 +129,9 @@ const FUNCOES = {
   juntar_alojamentos: 'p_origem uuid, p_destino uuid',
   seg_moradores_obra: 'p_obra uuid, p_empresa uuid',
   seg_pendencias_emais: 'p_obra uuid',
+  previa_conclusao_analise: 'p_empresa uuid',
+  concluir_analise: 'p_empresa uuid, p_documentos uuid[]',
+  analises_para_concluir: '',
   bloquear_colaborador: 'p_colaborador uuid, p_bloquear boolean, p_motivo text',
   cadastrar_subcontratada: 'p_principal uuid, p_cnpj text, p_razao_social text, p_email text, p_obras uuid[]',
   cancelar_integracao: 'p_integracao uuid',

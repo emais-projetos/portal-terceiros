@@ -8,7 +8,7 @@ import type { Cor } from '../../lib/farois';
 import { EnvioDocumento, type PedidoDeEnvio } from '../../componentes/EnvioDocumento';
 import { mensagemDeErro } from '../../lib/supabase';
 import { data, diasAte, rotuloSituacao, rotuloStatus } from '../../lib/formato';
-import { enviarParaAnalise, lerDocumentosDaEmpresa, precisaAcao, type DocumentoEmpresa, type PendenciaFornecedor } from '../../lib/fornecedor';
+import { enviarParaAnalise, lerDocumentosDaEmpresa, lerUltimaAnalise, precisaAcao, type DocumentoEmpresa, type PendenciaFornecedor, type UltimaAnalise } from '../../lib/fornecedor';
 import { documentosDoColaborador, nomeDoDocumento, podeEnviarParaAnalise, travasDaAlocacao, useFornecedor } from '../../lib/useFornecedor';
 
 // Ordem do que pedir primeiro: devolvido e vencido travam e já foram cobrados; depois o que nunca foi enviado.
@@ -21,6 +21,10 @@ export function OQueFalta() {
   const [ok, setOk] = useState<string | null>(null);
   const [enviandoAnalise, setEnviandoAnalise] = useState<string | null>(null);
   const [aberta, setAberta] = useState<string | null>(null);
+  const [ultima, setUltima] = useState<UltimaAnalise | null>(null);
+  useEffect(() => {
+    lerUltimaAnalise().then(setUltima).catch(() => undefined);
+  }, []);
   const alternar = (id: string) => setAberta((a) => (a === id ? null : id));
 
   useEffect(() => {
@@ -124,6 +128,16 @@ export function OQueFalta() {
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
       {!dados && !erro && <Carregando />}
+      {ultima && (
+        <div className={`aviso ${ultima.devolvidos ? 'aviso-alerta' : 'aviso-info'}`} role="status">
+          Análise da Emais concluída em {data(ultima.concluida_em)}
+          {ultima.empresa ? ` (${ultima.empresa})` : ''}:{' '}
+          {ultima.devolvidos
+            ? `${ultima.devolvidos} ${ultima.devolvidos === 1 ? 'colaborador precisa' : 'colaboradores precisam'} de correção, marcada como "Devolvido" abaixo com o motivo.`
+            : 'documentos aprovados.'}
+          {' '}O resumo também vai por e-mail para {ultima.para}.
+        </div>
+      )}
       <PendenciasAlojamento />
 
       {comPrazo.length > 0 && (

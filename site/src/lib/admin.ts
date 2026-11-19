@@ -862,3 +862,147 @@ export async function lerEmailsTst(obraId: string): Promise<string[]> {
     .filter((u): u is { email: string; perfil: string; ativo: boolean } => !!u && u.perfil === 'tst' && u.ativo)
     .map((u) => u.email);
 }
+
+// ---------------------------------------------------------------- Conclusão da análise de documentos
+// O administrativo conclui a análise por empresa: um e-mail só para o fornecedor (e-mail cadastrado no portal), com o
+// que precisa corrigir e o que foi aprovado. O e-mail entra na fila que o n8n envia (respeita pausa e modo teste).
+
+export type ParaConcluir = {
+  empresa_id: string;
+  empresa: string;
+  cnpj: string;
+  aprovados: number;
+  devolvidos: number;
+  colaboradores: number;
+  desde: string;
+  na_fila: number;
+  tem_email: boolean;
+};
+export type PreviaConclusao = {
+  para: string | null;
+  assunto: string;
+  corpo: string;
+  documentos: string[];
+  aprovados: number;
+  devolvidos: number;
+  colaboradores: number;
+  modelo_ativo: boolean;
+  na_fila: number;
+};
+export type SituacaoEnvioConclusao = 'aguardando' | 'enviando' | 'enviado' | 'erro' | 'sem_email';
+export type ConclusaoAnalise = {
+  id: string;
+  empresa_id: string;
+  empresa: string;
+  concluida_em: string;
+  quem: string | null;
+  aprovados: number;
+  devolvidos: number;
+  colaboradores: number;
+  para: string;
+  assunto: string;
+  corpo: string;
+  situacao_envio: SituacaoEnvioConclusao;
+  enviado_em: string | null;
+  envio_erro: string | null;
+  envio_teste: boolean | null;
+};
+export type DocumentoAnalisado = {
+  id: string;
+  empresa_id: string;
+  empresa: string;
+  colaborador_id: string | null;
+  colaborador: string | null;
+  cpf: string | null;
+  documento: string;
+  status: 'aprovado' | 'devolvido' | 'substituido' | 'em_analise';
+  resultado: 'aprovado' | 'devolvido';
+  motivo: string | null;
+  analisado_em: string;
+  quem: string | null;
+  aguardando: boolean;
+  conclusao_id: string | null;
+};
+
+export const NOMES_ENVIO_CONCLUSAO: Record<SituacaoEnvioConclusao, string> = {
+  aguardando: 'na fila de e-mails',
+  enviando: 'enviando',
+  enviado: 'e-mail enviado',
+  erro: 'erro no envio',
+  sem_email: 'sem e-mail (modelo desativado)',
+};
+
+export async function lerParaConcluir(): Promise<ParaConcluir[]> {
+  const { data, error } = await supabase.rpc('analises_para_concluir');
+  if (error) throw error;
+  return (data ?? []) as ParaConcluir[];
+}
+
+export async function lerPreviaConclusao(empresaId: string): Promise<PreviaConclusao> {
+  const { data, error } = await supabase.rpc('previa_conclusao_analise', { p_empresa: empresaId });
+  if (error) throw error;
+  return data as PreviaConclusao;
+}
+
+export async function concluirAnalise(empresaId: string, documentos: string[]): Promise<string> {
+  const { data, error } = await supabase.rpc('concluir_analise', { p_empresa: empresaId, p_documentos: documentos });
+  if (error) throw error;
+  return data as string;
+}
+
+async function nomesDeUsuarios(ids: (string | null)[]): Promise<Map<string, string>> {
+  const unicos = [...new Set(ids.filter((x): x is string => !!x))];
+  if (!unicos.length) return new Map();
+  const { data, error } = await supabase.from('usuarios').select('id, nome').in('id', unicos);
+  if (error) throw error;
+  return new Map((data ?? []).map((u) => [u.id as string, u.nome as string]));
+}
+
+// Histórico: documentos analisados (aprovados e devolvidos) e as conclusões, desde a data.
+export async function lerHistoricoAnalises(desde: string): Promise<{ documentos: DocumentoAnalisado[]; conclusoes: ConclusaoAnalise[] }> {
+  const [d, c] = await Promise.all([
+    supabase
+      .from('documentos')
+      .select('id, empresa_id, colaborador_id, status, resultado_analise, motivo_devolucao, analisado_em, analisado_por, aguardando_conclusao, conclusao_id, tipos_documento(nome), colaboradores(nome, cpf), empresas(razao_social)')
+      .not('resultado_analise', 'is', null)
+      .gte('analisado_em', desde)
+      .order('analisado_em', { ascending: false })
+      .limit(3000),
+    supabase
+      .from('analises_conclusoes')
+      .select('id, empresa_id, concluida_em, concluida_por, aprovados, devolvidos, colaboradores, para, assunto, corpo, situacao_envio, enviado_em, envio_erro, envio_teste, empresas(razao_social)')
+      .gte('concluida_em', desde)
+      .order('concluida_em', { ascending: false })
+      .limit(500),
+  ]);
+  if (d.error) throw d.error;
+  if (c.error) throw c.error;
+  type LinhaDoc = {
+    id: string; empresa_id: string; colaborador_id: string | null; status: DocumentoAnalisado['status']; resultado_analise: 'aprovado' | 'devolvido';
+    motivo_devolucao: string | null; analisado_em: string; analisado_por: string | null; aguardando_conclusao: boolean; conclusao_id: string | null;
+    tipos_documento: { nome: string } | null; colaboradores: { nome: string; cpf: string } | null; empresas: { razao_social: string } | null;
+  };
+  type LinhaConc = Omit<ConclusaoAnalise, 'empresa' | 'quem'> & { concluida_por: string | null; empresas: { razao_social: string } | null };
+  const docs = (d.data ?? []) as unknown as LinhaDoc[];
+  const concs = (c.data ?? []) as unknown as LinhaConc[];
+  const nomes = await nomesDeUsuarios([...docs.map((x) => x.analisado_por), ...concs.map((x) => x.concluida_por)]);
+  return {
+    documentos: docs.map((x) => ({
+      id: x.id,
+      empresa_id: x.empresa_id,
+      empresa: x.empresas?.razao_social ?? '',
+      colaborador_id: x.colaborador_id,
+      colaborador: x.colaboradores?.nome ?? null,
+      cpf: x.colaboradores?.cpf ?? null,
+      documento: x.tipos_documento?.nome ?? 'Documento',
+      status: x.status,
+      resultado: x.resultado_analise,
+      motivo: x.motivo_devolucao,
+      analisado_em: x.analisado_em,
+      quem: x.analisado_por ? nomes.get(x.analisado_por) ?? null : null,
+      aguardando: x.aguardando_conclusao,
+      conclusao_id: x.conclusao_id,
+    })),
+    conclusoes: concs.map(({ concluida_por, empresas, ...x }) => ({ ...x, empresa: empresas?.razao_social ?? '', quem: concluida_por ? nomes.get(concluida_por) ?? null : null })),
+  };
+}

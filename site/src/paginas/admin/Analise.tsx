@@ -6,10 +6,11 @@ import { mensagemDeErro } from '../../lib/supabase';
 import { formatarCnpj } from '../../lib/consultas';
 import { data, diasAte, formatarCpf, tamanhoArquivo } from '../../lib/formato';
 import {
-  abrirArquivo, aprovarDocumento, baixarArquivo, baixarTodos, devolverDocumento, lerAlocacoes, lerFilaAnalise, nomeDoZip, nomePadronizado, vencimentoDoDocumento,
-  type AlocacaoResumo, type DocumentoEmAnalise,
+  abrirArquivo, aprovarDocumento, baixarArquivo, baixarTodos, devolverDocumento, lerAlocacoes, lerFilaAnalise, lerParaConcluir, nomeDoZip, nomePadronizado, vencimentoDoDocumento,
+  type AlocacaoResumo, type DocumentoEmAnalise, type ParaConcluir,
 } from '../../lib/admin';
 import { Detalhe } from './Colaboradores';
+import { AnalisesParaConcluir, HistoricoAnalises } from './AnaliseConclusao';
 
 const MOTIVOS_COMUNS = [
   'Arquivo ilegível ou cortado',
@@ -127,6 +128,10 @@ export function Analise() {
   const [baixando, setBaixando] = useState<string | null>(null);
   // Cadastro do colaborador aberto daqui (o mesmo da aba Colaboradores): editar, pedir outro documento, bloquear.
   const [cadastro, setCadastro] = useState<AlocacaoResumo | null>(null);
+  const [aba, setAba] = useState<'fila' | 'historico'>('fila');
+  const [paraConcluir, setParaConcluir] = useState<ParaConcluir[]>([]);
+  const [versao, setVersao] = useState(0);
+  const atualizarConcluir = () => lerParaConcluir().then(setParaConcluir).catch(() => undefined);
 
   async function abrirCadastro(colaboradorId: string) {
     setErro(null);
@@ -154,6 +159,7 @@ export function Analise() {
 
   useEffect(() => {
     carregar();
+    atualizarConcluir();
   }, []);
 
   // Empresa > colaborador (os documentos da empresa ficam num grupo próprio). Dentro do grupo, a ordem da fila:
@@ -203,6 +209,8 @@ export function Analise() {
       await acao();
       setOk(sucesso);
       setFila((f) => (f ?? []).filter((d) => d.id !== id));
+      atualizarConcluir();
+      setVersao((v) => v + 1);
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
     } finally {
@@ -242,8 +250,20 @@ export function Analise() {
   return (
     <Pagina
       titulo="Análise de documentos"
+      abas={
+        <nav className="abas abas-botoes" aria-label="Análise de documentos">
+          <button type="button" aria-current={aba === 'fila' ? 'page' : undefined} onClick={() => setAba('fila')}>
+            Na fila{total ? ` (${total})` : ''}
+          </button>
+          <button type="button" aria-current={aba === 'historico' ? 'page' : undefined} onClick={() => setAba('historico')}>
+            Histórico
+          </button>
+        </nav>
+      }
       apoio={
-        fila
+        aba === 'historico'
+          ? 'Tudo o que foi aprovado e devolvido, por quem, quando e se o fornecedor já recebeu o e-mail da análise.'
+          : fila
           ? total === 0
             ? 'Nenhum documento esperando análise.'
             : `${total} ${total === 1 ? 'documento enviado espera' : 'documentos enviados esperam'} conferência, do mais antigo para o mais novo.`
@@ -252,7 +272,17 @@ export function Analise() {
     >
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
-
+      <AnalisesParaConcluir
+        lista={paraConcluir}
+        aoConcluir={(m) => {
+          setErro(null);
+          setOk(m);
+          atualizarConcluir();
+          setVersao((v) => v + 1);
+        }}
+      />
+      {aba === 'historico' && <HistoricoAnalises recarregarEm={versao} />}
+      {aba === 'fila' && <>
       {total > 0 && (
         <div className="filtros">
           <label className="campo campo-busca">
@@ -397,6 +427,7 @@ export function Analise() {
           </section>
         );
       })}
+      </>}
 
       <Detalhe ehAdmin alocacao={cadastro} aoFechar={() => setCadastro(null)} aoMudar={async () => { await carregar(); }} />
 

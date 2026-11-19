@@ -198,7 +198,7 @@ async function resumo(dataRef: string) {
 // ---------------------------------------------------------------- Aviso de liberação
 
 type ItemLiberacao = {
-  tipo?: 'aviso_liberacao' | 'convite_acesso' | 'ajuda';
+  tipo?: 'aviso_liberacao' | 'convite_acesso' | 'ajuda' | 'analise_documentos';
   id: string;
   obra_id: string;
   titulo: string;
@@ -239,7 +239,67 @@ async function liberacoes() {
   const avisos = await avisosDeLiberacao(cfg);
   const convites = await convitesDeAcesso(cfg);
   const ajuda = await avisosDeAjuda(cfg);
-  return { ...base, itens: [...avisos, ...convites, ...ajuda] };
+  const analises = await conclusoesDeAnalise(cfg);
+  return { ...base, itens: [...avisos, ...convites, ...ajuda, ...analises] };
+}
+
+// ---------------------------------------------------------------- Conclusão da análise de documentos
+
+// Um e-mail por conclusão (o administrativo clica em Concluir análise na Análise de documentos), para o e-mail do
+// fornecedor cadastrado no portal. Quem ficou "enviando" por mais de 30 minutos volta para a fila.
+async function conclusoesDeAnalise(cfg: Awaited<ReturnType<typeof parametros>>): Promise<ItemLiberacao[]> {
+  const limite = new Date(Date.now() - 30 * 60000).toISOString();
+  const { data, error } = await supabase
+    .from('analises_conclusoes')
+    .select('id, empresa_id, para, assunto, corpo, empresas(razao_social)')
+    .or(`situacao_envio.eq.aguardando,and(situacao_envio.eq.enviando,envio_iniciado_em.lt."${limite}")`)
+    .order('concluida_em')
+    .limit(25);
+  if (error) throw error;
+  const lista = (data ?? []) as unknown as { id: string; empresa_id: string; para: string; assunto: string; corpo: string; empresas: { razao_social: string } | null }[];
+  if (!lista.length) return [];
+  const { error: e1 } = await supabase
+    .from('analises_conclusoes')
+    .update({ situacao_envio: 'enviando', envio_iniciado_em: new Date().toISOString() })
+    .in('id', lista.map((x) => x.id));
+  if (e1) throw e1;
+  const teste = !!cfg.testePara;
+  return lista.map((x) => ({
+    tipo: 'analise_documentos' as const,
+    id: x.id,
+    obra_id: '',
+    titulo: x.empresas?.razao_social ?? '',
+    para: teste ? cfg.testePara : x.para,
+    para_original: x.para,
+    assunto: teste ? `[TESTE · para ${x.para}] ${x.assunto}` : x.assunto,
+    corpo: x.corpo,
+    empresa_ids: [x.empresa_id],
+    teste,
+  }));
+}
+
+async function registrarAnalise(item: ItemLiberacao, situacao: 'enviada' | 'erro', erro?: string) {
+  const { error } = await supabase.from('cobrancas_envios').insert({
+    chave: `analise|${item.id}`,
+    tipo: 'analise_documentos',
+    titulo: item.titulo,
+    empresa_ids: item.empresa_ids,
+    obra_id: null,
+    para: item.para,
+    para_original: item.para_original,
+    assunto: item.assunto,
+    corpo: item.corpo,
+    situacao,
+    erro: situacao === 'erro' ? (erro ?? 'Erro no envio') : null,
+    teste: item.teste,
+  });
+  if (error) throw error;
+  const mudanca: Record<string, unknown> =
+    situacao === 'enviada'
+      ? { situacao_envio: 'enviado', enviado_em: new Date().toISOString(), envio_erro: null, envio_teste: item.teste, envio_para: item.para }
+      : { situacao_envio: 'erro', envio_erro: erro ?? 'Erro no envio' };
+  const { error: e2 } = await supabase.from('analises_conclusoes').update(mudanca).eq('id', item.id).eq('situacao_envio', 'enviando');
+  if (e2) throw e2;
 }
 
 async function avisosDeLiberacao(cfg: Awaited<ReturnType<typeof parametros>>): Promise<ItemLiberacao[]> {
@@ -572,6 +632,7 @@ async function registrarConvite(item: ItemLiberacao, situacao: 'enviada' | 'erro
 async function registrarLiberacao(item: ItemLiberacao, situacao: 'enviada' | 'erro', erro?: string) {
   if (item.tipo === 'convite_acesso') return registrarConvite(item, situacao, erro);
   if (item.tipo === 'ajuda') return registrarAjuda(item, situacao, erro);
+  if (item.tipo === 'analise_documentos') return registrarAnalise(item, situacao, erro);
   const agora = new Date().toISOString();
   const { error } = await supabase.from('cobrancas_envios').insert({
     chave: `liberacao|${item.id}`,

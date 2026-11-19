@@ -13,6 +13,8 @@ export type TipoModelo =
   | 'vencimento_vencido'
   | 'integracao_documentos'
   | 'aviso_liberacao'
+  | 'analise_documentos'
+  | 'analise_aprovada'
   | 'convite_acesso'
   | 'nova_senha_acesso'
   | 'ajuda_para_emais'
@@ -97,6 +99,9 @@ export function aplicarModelo(m: { assunto: string; corpo: string }, valores: Re
 // O que cada campo traz, com um exemplo para a prévia da tela.
 export const CAMPOS: Record<string, { descricao: string; exemplo: string }> = {
   '{empresa}': { descricao: 'Nome da empresa', exemplo: 'Construtora Exemplo' },
+  '{corrigir}': { descricao: 'Colaboradores e documentos devolvidos na análise, com o motivo', exemplo: '- JOAO DA SILVA: ASO (devolvido: arquivo ilegível ou cortado); NR-35 (devolvido: documento vencido)\n- Documentos da empresa: PGR (devolvido: falta assinatura)' },
+  '{bloco_aprovados}': { descricao: 'Título "Documentos aprovados" e a lista (some quando ninguém foi aprovado)', exemplo: 'Documentos aprovados:\n- MARIA SOUZA: segue para a validação do TST da obra' },
+  '{aprovados}': { descricao: 'Colaboradores com os documentos aprovados na análise', exemplo: '- MARIA SOUZA: segue para a validação do TST da obra\n- PEDRO LIMA: documentos aprovados' },
   '{obra}': { descricao: 'Nome da obra', exemplo: 'Residencial Jardim' },
   '{mes}': { descricao: 'Mês da medição com o ano', exemplo: 'outubro/2026' },
   '{mes_nome}': { descricao: 'Só o nome do mês', exemplo: 'outubro' },

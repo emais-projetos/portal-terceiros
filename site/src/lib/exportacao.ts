@@ -9,7 +9,7 @@ export type ProgressoExportacao = { etapa: 'tabelas' | 'arquivos' | 'zip'; feito
 // Tabelas conhecidas; as novas que a API mostrar entram sozinhas. Visões (v_*) ficam de fora: são calculadas a
 // partir das tabelas.
 const TABELAS = [
-  'alocacoes', 'arquivos', 'avisos_liberacao', 'cobrancas', 'cobrancas_envios', 'colaboradores', 'colaboradores_bloqueios',
+  'alocacoes', 'analises_conclusoes', 'arquivos', 'avisos_liberacao', 'cobrancas', 'cobrancas_envios', 'colaboradores', 'colaboradores_bloqueios',
   'colaboradores_documentos_extras', 'conversas', 'convites_acesso', 'documentos', 'empresas', 'empresas_obras', 'eventos', 'exportacoes',
   'funcoes', 'funcoes_documentos', 'integracoes', 'integracoes_participantes', 'liberacoes_pendencia', 'medicoes', 'medicoes_arquivos',
   'medicoes_colaboradores', 'medicoes_itens', 'mensagens', 'modelos_documento', 'modelos_email', 'modelos_email_revisoes',
