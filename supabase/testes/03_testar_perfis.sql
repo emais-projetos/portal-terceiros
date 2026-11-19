@@ -572,6 +572,14 @@ update alocacoes set pendencia_prazo = current_date - 1 where id = :AL2;
 select processar_pendencias_liberacao();
 select teste.igual('Pendência: prazo vencido volta para o fornecedor', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-000000000002' and status = 'pendente_fornecedor' and pendencia_prazo is null and validado_tst_em is null$q$, 1);
 select teste.igual('Pendência (controle): registro encerrado como vencido', $q$select 1 from liberacoes_pendencia where resultado = 'vencida' and encerrada_em is not null$q$, 1);
+select teste.entrar(:A);
+select teste.bloqueado('Pendência: pendente do fornecedor sem anotação', $q$select aprovar_alocacao('50000000-0000-0000-0000-000000000002')$q$);
+select teste.permitido('Pendência (controle): libera com pendência estando pendente do fornecedor', $q$select aprovar_alocacao('50000000-0000-0000-0000-000000000002', 'Engenharia pediu de novo, fornecedor não reenviou')$q$);
+select teste.sair();
+update alocacoes set status = 'em_cadastro' where id = :AL2;
+select teste.entrar(:A);
+select teste.bloqueado('Pendência: em cadastro', $q$select aprovar_alocacao('50000000-0000-0000-0000-000000000002', 'pedido da engenharia')$q$);
+select teste.sair();
 update alocacoes set status = 'liberado', observacao = null where id = :AL2;
 
 -- --------------------------------------------------------------------------------------------

@@ -452,10 +452,11 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
           </div>
         )}
 
-        {ehAdmin && alocacao.status === 'em_analise' && pend && travas.length > 0 && (
+        {ehAdmin && (alocacao.status === 'em_analise' || alocacao.status === 'pendente_fornecedor') && pend && travas.length > 0 && (
           <div className={`caixa${comPendencia ? ' caixa-alerta' : ''}`}>
             <p className="caixa-texto">
               {travas.length === 1 ? 'Falta 1 documento obrigatório' : `Faltam ${travas.length} documentos obrigatórios`}: {travas.map((p) => p.documento).join(', ')}.
+              {alocacao.status === 'pendente_fornecedor' && ' Está com o fornecedor para corrigir; se a engenharia pediu, dá para liberar sem esperar o reenvio.'}
             </p>
             <label className="opcao opcao-destaque">
               <input type="checkbox" checked={comPendencia} onChange={(e) => setComPendencia(e.target.checked)} />
