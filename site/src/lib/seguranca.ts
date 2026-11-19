@@ -84,7 +84,7 @@ export type Vistoria = {
   origem: string;
   modelo_versao: number | null;
 };
-export type NaoConformidade = { id: string; vistoria_id: string; situacao: 'aberta' | 'respondida' | 'regularizada' | 'reaberta'; prazo: string };
+export type NaoConformidade = { id: string; vistoria_id: string; situacao: 'aberta' | 'respondida' | 'regularizada' | 'reaberta'; prazo: string; seg_vistorias?: { alojamento_id: string | null } };
 // padrao: checklist NR-18 do alojamento inteiro. obra: alojamento da Emais dentro da obra, vistoria por quarto.
 export type TipoAlojamento = 'padrao' | 'obra';
 export type Alojamento = {
@@ -133,11 +133,11 @@ export async function salvarLocadora(l: { id?: string; nome: string; cnpj: strin
   return data as Locadora;
 }
 
-export async function lerMaquinas(obraId: string): Promise<Maquina[]> {
+export async function lerMaquinas(obras: string | string[]): Promise<Maquina[]> {
   const { data, error } = await supabase
     .from('seg_maquinas')
     .select('id, obra_id, modelo_codigo, identificacao, empresa_id, locadora_id, empresa_a_vincular, ativo, fichas:seg_fichas_maquina(id, competencia, fechada_em, fotos_excluidas_em)')
-    .eq('obra_id', obraId)
+    .in('obra_id', Array.isArray(obras) ? obras : [obras])
     .order('identificacao');
   if (error) throw error;
   return (data ?? []) as Maquina[];
@@ -153,11 +153,11 @@ export async function lerFicha(id: string): Promise<Ficha> {
   return data as Ficha;
 }
 
-export async function lerAlojamentos(obraId: string): Promise<Alojamento[]> {
+export async function lerAlojamentos(obras: string | string[]): Promise<Alojamento[]> {
   const { data, error } = await supabase
     .from('seg_alojamentos')
     .select('id, obra_id, nome, endereco, tipo, empresa_id, empresa_a_vincular, ativo, vistorias:seg_vistorias(id, data_vistoria, classificacao, situacao, pontuacao, fotos_expiram_em, fotos_excluidas_em)')
-    .eq('obra_id', obraId)
+    .in('obra_id', Array.isArray(obras) ? obras : [obras])
     .order('nome');
   if (error) throw error;
   return ((data ?? []) as Alojamento[]).map((a) => ({

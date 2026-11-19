@@ -3158,3 +3158,4 @@ button.celula:hover {
 .pessoa-presenca { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 4px 0; }
 .escolher-moradores { margin-bottom: 12px; }
 .nc-destino { margin: 8px 0 0 12px; padding-left: 10px; border-left: 2px solid var(--linha); }
+.botao-link { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }

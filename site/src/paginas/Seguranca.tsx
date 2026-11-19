@@ -119,6 +119,8 @@ function SegurancaCompleta() {
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [nova, setNova] = useState(false);
+  // "Todas as obras" (aba Inspeções sem obra escolhida): total e tabela por obra.
+  const [todas, setTodas] = useState<{ alojamentos: Alojamento[]; maquinas: Maquina[]; fornecedores: Fornecedor[]; ncs: NaoConformidade[] } | null>(null);
 
   useEffect(() => {
     Promise.all([lerObrasDoPainel(), lerModelos(), lerLocadoras()])
@@ -149,6 +151,17 @@ function SegurancaCompleta() {
       setErro(mensagemDeErro(e as Error));
     }
   }
+
+  const verTodas = !obra && aba === 'inspecoes' && !!obras && obras.length > 1;
+  useEffect(() => {
+    if (!verTodas || todas || !obras) return;
+    const ids = obras.map((o) => o.id);
+    (async () => {
+      const [a, m, fs] = await Promise.all([lerAlojamentos(ids), lerMaquinas(ids), Promise.all(ids.map((o) => lerFornecedoresDaObra(o).catch(() => [] as Fornecedor[])))]);
+      const unicos = new Map(fs.flat().map((f) => [f.id, f]));
+      setTodas({ alojamentos: a, maquinas: m, fornecedores: [...unicos.values()], ncs: await lerNaoConformidadesDaObra(a.map((x) => x.id)) });
+    })().catch((e) => setErro(mensagemDeErro(e as Error)));
+  }, [verTodas, obras]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setAlojamentos(null);
@@ -198,8 +211,20 @@ function SegurancaCompleta() {
         <div className="filtros">
           <label className="campo">
             <span>Obra</span>
-            <select value={obra} onChange={(e) => setObra(e.target.value)}>
-              <option value="">Escolha a obra</option>
+            <select
+              value={obra}
+              onChange={(e) => {
+                setObra(e.target.value);
+                if (!e.target.value) {
+                  try {
+                    window.localStorage.removeItem(CHAVE_OBRA);
+                  } catch {
+                    // segue sem lembrar
+                  }
+                }
+              }}
+            >
+              <option value="">{aba === 'inspecoes' && obras.length > 1 ? 'Todas as obras' : 'Escolha a obra'}</option>
               {obras.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
             </select>
           </label>
@@ -216,6 +241,19 @@ function SegurancaCompleta() {
         </div>
       )}
 
+      {verTodas && (todas ? (
+        <PainelConformidade
+          obraId={obras!.map((o) => o.id)}
+          obras={obras!}
+          aoEscolherObra={setObra}
+          alojamentos={todas.alojamentos}
+          maquinas={todas.maquinas}
+          fornecedores={todas.fornecedores}
+          ncs={todas.ncs}
+          temCanteiro={modelos.some((m) => m.grupo === 'canteiro')}
+        />
+      ) : <Carregando />)}
+      {!semObra && !obra && !verTodas && obras && obras.length > 0 && <p className="vazio">Escolha a obra para ver {aba === 'maquinas' ? 'as máquinas' : 'os alojamentos'}.</p>}
       {aba === 'inspecoes' && obra && (alojamentos && maquinas ? (
         <>
         <PainelConformidade obraId={obra} alojamentos={alojamentos} maquinas={maquinas} fornecedores={fornecedores} ncs={ncs} temCanteiro={modelos.some((m) => m.grupo === 'canteiro')} />

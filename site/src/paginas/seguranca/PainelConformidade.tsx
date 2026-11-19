@@ -7,6 +7,7 @@ import {
   classificar, indicadoresAlojamento, indicadoresCanteiro, indicadoresMaquinas, lerDadosIndicadores, lerMetas, type FichaIndicador, type VistoriaIndicador,
 } from '../../lib/indicadoresSeguranca';
 import type { Alojamento, Fornecedor, Maquina, NaoConformidade } from '../../lib/seguranca';
+import type { ObraDoPainel } from '../../lib/painelObra';
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 export const mesCurto = (m: string) => `${MESES[Number(m.slice(5, 7)) - 1]}/${m.slice(2, 4)}`;
@@ -48,11 +49,14 @@ export function SeletorPeriodo({ meses, aoMudar }: { meses: number; aoMudar: (m:
 }
 
 // Painel da aba Inspeções: conformidade dos alojamentos (indicador principal) e das máquinas.
+// Com várias obras ("Todas as obras"), mostra o total e uma tabela por obra; clicar na obra abre o painel dela.
 export function PainelConformidade({
-  obraId, alojamentos, maquinas, fornecedores, ncs, temCanteiro,
+  obraId, obras, aoEscolherObra, alojamentos, maquinas, fornecedores, ncs, temCanteiro,
 }: {
   temCanteiro: boolean;
-  obraId: string;
+  obraId: string | string[];
+  obras?: ObraDoPainel[];
+  aoEscolherObra?: (id: string) => void;
   alojamentos: Alojamento[];
   maquinas: Maquina[];
   fornecedores: Fornecedor[];
@@ -68,13 +72,42 @@ export function PainelConformidade({
     lerMetas().then(setMetas).catch(() => undefined);
   }, []);
 
+  const chave = Array.isArray(obraId) ? obraId.join(',') : obraId;
   useEffect(() => {
     setDados(null);
     setErro(null);
     lerDadosIndicadores(obraId, desde).then(setDados).catch((e) => setErro(mensagemDeErro(e as Error)));
-  }, [obraId, desde]);
+  }, [chave, desde]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const aloj = useMemo(() => (dados ? indicadoresAlojamento(dados.vistorias, alojamentos, fornecedores, ncs, desde) : null), [dados, alojamentos, fornecedores, ncs, desde]);
+  const varias = !!obras && obras.length > 1;
+  const nomeObra = useMemo(() => new Map((obras ?? []).map((o) => [o.id, o.nome])), [obras]);
+  // Com várias obras, o nome do alojamento leva a obra junto nos gráficos.
+  const alojNomes = useMemo(
+    () => (varias ? alojamentos.map((a) => ({ ...a, nome: `${a.nome} (${nomeObra.get(a.obra_id) ?? 'obra'})` })) : alojamentos),
+    [varias, alojamentos, nomeObra],
+  );
+  const aloj = useMemo(() => (dados ? indicadoresAlojamento(dados.vistorias, alojNomes, fornecedores, ncs, desde) : null), [dados, alojNomes, fornecedores, ncs, desde]);
+  const porObra = useMemo(() => {
+    if (!dados || !varias || !obras) return null;
+    const obraDoAloj = new Map(alojamentos.map((a) => [a.id, a.obra_id]));
+    const obraDaMaq = new Map(maquinas.map((m) => [m.id, m.obra_id]));
+    return obras
+      .map((o) => {
+        const al = alojamentos.filter((a) => a.obra_id === o.id);
+        const mq = maquinas.filter((m) => m.obra_id === o.id);
+        const a = indicadoresAlojamento(
+          dados.vistorias.filter((v) => v.obra_id === o.id),
+          al,
+          fornecedores,
+          ncs.filter((n) => obraDoAloj.get(n.seg_vistorias?.alojamento_id ?? '') === o.id),
+          desde,
+        );
+        const m = indicadoresMaquinas(dados.fichas.filter((f) => obraDaMaq.get(f.maquina_id) === o.id), mq, desde);
+        const c = indicadoresCanteiro(dados.vistorias.filter((v) => v.obra_id === o.id), desde);
+        return { obra: o, a, m, c };
+      })
+      .sort((x, y) => (x.a.conformidade ?? 999) - (y.a.conformidade ?? 999) || x.obra.nome.localeCompare(y.obra.nome, 'pt-BR'));
+  }, [dados, varias, obras, alojamentos, maquinas, fornecedores, ncs, desde]);
   const cant = useMemo(() => (dados ? indicadoresCanteiro(dados.vistorias, desde) : null), [dados, desde]);
   const maq = useMemo(() => (dados ? indicadoresMaquinas(dados.fichas, maquinas, desde) : null), [dados, maquinas, desde]);
 
@@ -98,9 +131,58 @@ export function PainelConformidade({
       {erro && <p className="aviso aviso-erro">{erro}</p>}
       {!dados && !erro && <Carregando />}
 
+      {porObra && (
+        <section className="bloco">
+          <h2 className="bloco-titulo">Por obra</h2>
+          <p className="dica">Total das {porObra.length} obras abaixo. Clique na obra para ver o painel dela, as inspeções e os cadastros.</p>
+          <div className="tabela-rolagem">
+            <table className="tabela tabela-lista">
+              <thead>
+                <tr>
+                  <th scope="col">Obra</th>
+                  <th scope="col">Alojamentos</th>
+                  <th scope="col">Vistoriados</th>
+                  <th scope="col">Itens a regularizar</th>
+                  <th scope="col">Máquinas</th>
+                  <th scope="col">Checklist no mês</th>
+                </tr>
+              </thead>
+              <tbody>
+                {porObra.map(({ obra, a, m, c }) => (
+                  <tr key={obra.id} className="linha-clicavel" onClick={() => aoEscolherObra?.(obra.id)}>
+                    <th scope="row">
+                      <button type="button" className="link-forte botao-link" onClick={(e) => { e.stopPropagation(); aoEscolherObra?.(obra.id); }}>{obra.nome}</button>
+                      {c.concluidas > 0 && <small className="sub">canteiro {c.conformidade === null ? '-' : porcento(c.conformidade)}</small>}
+                    </th>
+                    <td>
+                      {a.conformidade === null ? (
+                        <span className="sub">sem vistoria</span>
+                      ) : (
+                        <span className={`selo ${a.conformidade < metas.alojamento ? 'selo-erro' : 'selo-ok'}`}>{porcento(a.conformidade)}</span>
+                      )}
+                      {a.concluidas > 0 && <small className="sub"> {a.concluidas} {a.concluidas === 1 ? 'vistoria' : 'vistorias'}</small>}
+                    </td>
+                    <td>
+                      {a.ativos ? `${a.vistoriados} de ${a.ativos}` : <span className="sub">sem alojamento</span>}
+                      {a.semVistoria30 > 0 && <small className="sub texto-alerta">{a.semVistoria30} sem vistoria há 30 dias</small>}
+                    </td>
+                    <td>
+                      {a.ncsAbertas}
+                      {a.ncsVencidas > 0 && <small className="sub texto-erro">{a.ncsVencidas} {a.ncsVencidas === 1 ? 'vencido' : 'vencidos'}</small>}
+                    </td>
+                    <td>{m.conformidade === null ? <span className="sub">sem checklist</span> : porcento(m.conformidade)}</td>
+                    <td>{m.ativas ? `${m.comChecklistNoMes} de ${m.ativas}` : <span className="sub">sem máquina</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {aloj && (
         <section className="bloco">
-          <h2 className="bloco-titulo">Alojamentos</h2>
+          <h2 className="bloco-titulo">Alojamentos{varias ? ': todas as obras' : ''}</h2>
           <div className="cartoes">
             <Cartao
               rotulo="Conformidade das vistorias"
@@ -157,7 +239,7 @@ export function PainelConformidade({
 
       {cant && (temCanteiro || cant.concluidas > 0 || cant.emAndamento > 0) && (
         <section className="bloco">
-          <h2 className="bloco-titulo">Canteiro</h2>
+          <h2 className="bloco-titulo">Canteiro{varias ? ': todas as obras' : ''}</h2>
           <div className="cartoes">
             <Cartao
               rotulo="Conformidade das vistorias"
@@ -188,7 +270,7 @@ export function PainelConformidade({
 
       {maq && (
         <section className="bloco">
-          <h2 className="bloco-titulo">Máquinas</h2>
+          <h2 className="bloco-titulo">Máquinas{varias ? ': todas as obras' : ''}</h2>
           <div className="cartoes">
             <Cartao
               rotulo="Conformidade dos checklists"

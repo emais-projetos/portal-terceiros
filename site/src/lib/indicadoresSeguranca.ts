@@ -8,6 +8,7 @@ import type { Alojamento, Fornecedor, Maquina, NaoConformidade } from './seguran
 
 export type VistoriaIndicador = {
   id: string;
+  obra_id: string;
   alojamento_id: string | null;
   data_vistoria: string;
   situacao: 'rascunho' | 'concluida';
@@ -15,17 +16,19 @@ export type VistoriaIndicador = {
 };
 export type FichaIndicador = { id: string; maquina_id: string; competencia: string; itens: string[]; dias: Record<string, { statuses: ('ok' | 'nc' | 'na' | null)[] }> };
 
-export async function lerDadosIndicadores(obraId: string, desde: string) {
+// Uma obra ou várias (aba Inspeções com "Todas as obras").
+export async function lerDadosIndicadores(obras: string | string[], desde: string) {
+  const ids = Array.isArray(obras) ? obras : [obras];
   const [v, f] = await Promise.all([
     supabase
       .from('seg_vistorias')
-      .select('id, alojamento_id, data_vistoria, situacao, itens')
-      .eq('obra_id', obraId)
+      .select('id, obra_id, alojamento_id, data_vistoria, situacao, itens')
+      .in('obra_id', ids)
       .gte('data_vistoria', desde),
     supabase
       .from('seg_fichas_maquina')
       .select('id, maquina_id, competencia, itens, dias, seg_maquinas!inner(obra_id)')
-      .eq('seg_maquinas.obra_id', obraId)
+      .in('seg_maquinas.obra_id', ids)
       .gte('competencia', `${desde.slice(0, 7)}-01`),
   ]);
   if (v.error) throw v.error;
