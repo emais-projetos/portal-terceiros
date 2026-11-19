@@ -595,17 +595,16 @@ select teste.entrar(:F1);
 select teste.igual('Exportação: fornecedor não vê o registro', 'select 1 from exportacoes', 0);
 select teste.sair();
 
--- Cadastro de alojamentos: só o administrativo cadastra, renomeia e junta duplicados.
+-- Cadastro de alojamentos: o TST cadastra e corrige os das obras dele; juntar duplicados só o administrativo.
 select teste.entrar(:T1);
+select teste.permitido('Alojamento (controle): TST cadastra na obra dele', $q$insert into seg_alojamentos (obra_id, nome, endereco) values ('10000000-0000-0000-0000-000000000001', 'CASA NOVA', 'Rua W, 4')$q$);
+select teste.bloqueado('Alojamento: TST cadastra em outra obra', $q$insert into seg_alojamentos (obra_id, nome) values ('10000000-0000-0000-0000-000000000002', 'CASA NOVA')$q$);
 do $$
-declare t text := 'Alojamento: TST da obra';
 begin
-  perform teste.bloqueado(t, $q$insert into seg_alojamentos (obra_id, nome) values ('10000000-0000-0000-0000-000000000001', 'CASA NOVA')$q$);
-  if teste.linhas($q$update seg_alojamentos set nome = 'OUTRO NOME' where id = 'a1000000-0000-0000-0000-000000000001'$q$) > 0 then perform teste.falha(t, 'renomeia o alojamento'); end if;
-  if teste.linhas($q$update seg_alojamentos set endereco = 'Rua X, 1' where id = 'a1000000-0000-0000-0000-000000000001'$q$) > 0 then perform teste.falha(t, 'altera o endereço'); end if;
-  if teste.linhas($q$update seg_alojamentos set empresa_id = null where id = 'a1000000-0000-0000-0000-000000000001'$q$) > 0 then perform teste.falha(t, 'troca o fornecedor'); end if;
+  if teste.linhas($q$update seg_alojamentos set nome = 'OUTRO NOME', endereco = 'Rua X, 1' where id = 'a1000000-0000-0000-0000-000000000001'$q$) = 0 then perform teste.falha('Alojamento (controle): TST corrige nome e endereço', 'não alterou'); end if;
+  if teste.linhas($q$update seg_alojamentos set nome = 'OUTRO NOME' where id = 'a1000000-0000-0000-0000-000000000002'$q$) > 0 then perform teste.falha('Alojamento: TST altera outra obra', 'alterou'); end if;
   if teste.linhas($q$update seg_alojamentos set ativo = false where id = 'a1000000-0000-0000-0000-000000000001'$q$) = 0 then perform teste.falha('Alojamento (controle): TST desativa', 'não desativou'); end if;
-  perform teste.bloqueado(t, $q$select juntar_alojamentos('a1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001')$q$);
+  perform teste.bloqueado('Alojamento: TST junta', $q$select juntar_alojamentos('a1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001')$q$);
 end $$;
 select teste.entrar(:F1);
 select teste.bloqueado('Alojamento: fornecedor', $q$select juntar_alojamentos('a1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001')$q$);

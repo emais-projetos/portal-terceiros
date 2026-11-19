@@ -16,7 +16,7 @@ type Edicao = { id?: string; obra: string; empresa: string; nome: string; endere
 
 // Segurança da obra > Cadastro (administrativo): a lista oficial de alojamentos de cada obra, com fornecedor,
 // nome e endereço. O TST só escolhe um alojamento desta lista em "Realizar inspeção".
-export function CadastroAlojamentos({ obras }: { obras: ObraDoPainel[] }) {
+export function CadastroAlojamentos({ obras, podeJuntar }: { obras: ObraDoPainel[]; podeJuntar: boolean }) {
   const [lista, setLista] = useState<AlojamentoCadastro[] | null>(null);
   const [obra, setObra] = useState('');
   const [busca, setBusca] = useState('');
@@ -27,7 +27,8 @@ export function CadastroAlojamentos({ obras }: { obras: ObraDoPainel[] }) {
 
   async function carregar() {
     try {
-      setLista(await lerCadastroAlojamentos());
+      const ids = new Set(obras.map((o) => o.id));
+      setLista((await lerCadastroAlojamentos()).filter((a) => ids.has(a.obra_id)));
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
     }
@@ -68,7 +69,7 @@ export function CadastroAlojamentos({ obras }: { obras: ObraDoPainel[] }) {
       <div className="barra-lista">
         <p className="apoio">
           Lista oficial dos alojamentos de cada obra. Em "Realizar inspeção" o TST só escolhe um alojamento daqui, então mantenha o nome e o endereço
-          padronizados. Cadastro repetido se corrige com "Juntar", dentro de Editar.
+          padronizados.{podeJuntar ? ' Cadastro repetido se corrige com "Juntar", dentro de Editar.' : ' Achou cadastro repetido? Peça ao administrativo para juntar os dois.'}
         </p>
         <button
           type="button"
@@ -163,6 +164,7 @@ export function CadastroAlojamentos({ obras }: { obras: ObraDoPainel[] }) {
         edicao={editando}
         obras={obras}
         lista={lista ?? []}
+        podeJuntar={podeJuntar}
         aoFechar={() => setEditando(null)}
         aoSalvar={salvo}
       />
@@ -171,11 +173,12 @@ export function CadastroAlojamentos({ obras }: { obras: ObraDoPainel[] }) {
 }
 
 function EditarCadastro({
-  edicao, obras, lista, aoFechar, aoSalvar,
+  edicao, obras, lista, podeJuntar, aoFechar, aoSalvar,
 }: {
   edicao: Edicao | null;
   obras: ObraDoPainel[];
   lista: AlojamentoCadastro[];
+  podeJuntar: boolean;
   aoFechar: () => void;
   aoSalvar: (m: string) => Promise<void>;
 }) {
@@ -294,7 +297,7 @@ function EditarCadastro({
           <button className="botao botao-discreto" type="button" onClick={aoFechar}>Cancelar</button>
         </div>
 
-        {f.id && outros.length > 0 && (
+        {podeJuntar && f.id && outros.length > 0 && (
           <fieldset className="campo-grupo caixa">
             <legend>Juntar com outro alojamento (cadastro repetido)</legend>
             <p className="dica">

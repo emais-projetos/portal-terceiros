@@ -99,7 +99,7 @@ function SegurancaCompleta() {
   const podeEditar = usuario?.perfil === 'admin' || usuario?.perfil === 'tst';
   const [params, setParams] = useSearchParams();
   const ehAdmin = usuario?.perfil === 'admin';
-  const abas = ABAS.filter(([a]) => (a !== 'formularios' && a !== 'cadastro') || ehAdmin);
+  const abas = ABAS.filter(([a]) => (a !== 'formularios' || ehAdmin) && (a !== 'cadastro' || podeEditar));
   const aba = (abas.find(([a]) => a === params.get('aba'))?.[0] ?? 'inspecoes') as Aba;
   const semObra = aba === 'locadoras' || aba === 'formularios' || aba === 'cadastro';
 
@@ -226,7 +226,7 @@ function SegurancaCompleta() {
       ) : <Carregando />)}
       {aba === 'locadoras' && obras && <Locadoras lista={locadoras} podeEditar={podeEditar} aoSalvar={recarregar} />}
       {aba === 'formularios' && ehAdmin && <ListaFormularios />}
-      {aba === 'cadastro' && ehAdmin && obras && <CadastroAlojamentos obras={obras} />}
+      {aba === 'cadastro' && podeEditar && obras && <CadastroAlojamentos obras={obras} podeJuntar={ehAdmin} />}
 
       {obra && alojamentos && maquinas && (
         <NovaInspecao
@@ -239,7 +239,7 @@ function SegurancaCompleta() {
           fornecedores={fornecedores}
           locadoras={locadoras}
           tst={usuario?.nome ?? ''}
-          ehAdmin={ehAdmin}
+          podeCadastrar={podeEditar}
           aoFechar={() => setNova(false)}
         />
       )}
@@ -342,7 +342,7 @@ function Alojamentos({ lista, ncs, ctx, aoSalvar }: { lista: Alojamento[]; ncs: 
                   <td className="acoes">
                     <div className="acoes-coluna">
                       <Link className="botao botao-secundario botao-pequeno" to={`/seguranca/alojamento/${a.id}/termos`}>Termos de uso</Link>
-                      {(ctx.ehAdmin || (ctx.podeEditar && a.empresa_a_vincular)) && (
+                      {ctx.podeEditar && (
                         <button type="button" className={`botao botao-pequeno${a.empresa_a_vincular ? ' botao-secundario' : ' botao-discreto'}`} onClick={() => setEditando(a)}>
                           {a.empresa_a_vincular ? 'Vincular' : 'Editar cadastro'}
                         </button>
@@ -415,13 +415,12 @@ function EditarAlojamento({ alojamento, ctx, aoFechar, aoSalvar }: { alojamento:
         {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
         <label className="campo">
           <span>Nome do alojamento</span>
-          <input value={nome} onChange={(e) => setNome(e.target.value)} required disabled={!ctx.ehAdmin} />
+          <input value={nome} onChange={(e) => setNome(e.target.value)} required />
         </label>
         <label className="campo">
           <span>Endereço</span>
-          <input value={endereco} onChange={(e) => setEndereco(e.target.value)} disabled={!ctx.ehAdmin} />
+          <input value={endereco} onChange={(e) => setEndereco(e.target.value)} />
         </label>
-        {!ctx.ehAdmin && <p className="dica">Nome e endereço são padronizados pelo administrativo. Se estiverem errados, peça a correção.</p>}
         <fieldset className="campo-grupo opcoes-empilhadas">
           <legend>Quem responde pelo alojamento</legend>
           <label className="opcao">

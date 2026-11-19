@@ -17,7 +17,7 @@ function agoraHora() {
 
 // "Realizar inspeção": escolhe o tipo e o que vai ser inspecionado (ou cadastra na hora) e abre o formulário.
 export function NovaInspecao({
-  aberto, obraId, obraNome, alojamentos, maquinas, modelos, fornecedores, locadoras, tst, ehAdmin, aoFechar,
+  aberto, obraId, obraNome, alojamentos, maquinas, modelos, fornecedores, locadoras, tst, podeCadastrar, aoFechar,
 }: {
   aberto: boolean;
   obraId: string;
@@ -28,7 +28,7 @@ export function NovaInspecao({
   fornecedores: Fornecedor[];
   locadoras: Locadora[];
   tst: string;
-  ehAdmin: boolean;
+  podeCadastrar: boolean;
   aoFechar: () => void;
 }) {
   const navegar = useNavigate();
@@ -155,16 +155,16 @@ export function NovaInspecao({
               </select>
             </label>
             <p className="dica">
-              O alojamento não está na lista? {ehAdmin ? (
+              O alojamento não está na lista? {podeCadastrar ? (
                 <>Cadastre em <Link to="/seguranca?aba=cadastro" onClick={aoFechar}>Segurança da obra &gt; Cadastro</Link>.</>
-              ) : 'Peça ao administrativo para cadastrar, com o nome, o endereço e o fornecedor.'}
+              ) : 'Peça ao TST da obra ou ao administrativo para cadastrar.'}
             </p>
           </>
         ) : (
           <p className="aviso aviso-alerta">
-            Nenhum alojamento cadastrado nesta obra. {ehAdmin ? (
+            Nenhum alojamento cadastrado nesta obra. {podeCadastrar ? (
               <>Cadastre em <Link to="/seguranca?aba=cadastro" onClick={aoFechar}>Segurança da obra &gt; Cadastro</Link> antes de fazer a vistoria.</>
-            ) : 'Peça ao administrativo para cadastrar o alojamento, com o nome, o endereço e o fornecedor, antes de fazer a vistoria.'}
+            ) : 'Peça ao TST da obra ou ao administrativo para cadastrar o alojamento antes da vistoria.'}
           </p>
         ))}
 
