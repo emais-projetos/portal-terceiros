@@ -21,6 +21,7 @@ type ValorSessao = {
   sessao: Session | null;
   usuario: Usuario | null;
   recuperandoSenha: boolean;
+  iniciarRecuperacao: () => void;
   concluirRecuperacao: () => void;
   sair: () => Promise<void>;
 };
@@ -90,6 +91,8 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
     sessao,
     usuario,
     recuperandoSenha,
+    // Primeiro acesso por código: a sessão que chega com o código vai direto para a criação da senha.
+    iniciarRecuperacao: () => setRecuperandoSenha(true),
     concluirRecuperacao: () => setRecuperandoSenha(false),
     sair: async () => {
       await supabase.auth.signOut();

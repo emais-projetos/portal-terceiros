@@ -1,0 +1,210 @@
+{
+  "name": "Portal de Terceiros - Código de acesso",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Código de acesso do Portal de Terceiros\nA função enviar-codigo do Supabase chama este webhook na hora em que a pessoa clica em **Primeiro acesso ou esqueci a senha**.\n\n- A chamada só entra com o cabeçalho x-chave-n8n (credencial CHAVE_N8N_PORTAL_TERCEIROS, a mesma das cobranças).\n- O texto vem pronto do portal (Acessos > E-mails > Código de acesso).\n- Este fluxo precisa ficar sempre ativo: se for desligado, os códigos param de chegar.\n- Não guarda as execuções que deram certo, para o código não ficar salvo aqui.",
+        "height": 300,
+        "width": 420
+      },
+      "name": "Leia antes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "terceiros-codigo-adc779038bea",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Pedido do portal",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "terceiros-codigo-adc779038bea",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ExpxXIP7kOba4dcy",
+          "name": "CHAVE_N8N_PORTAL_TERCEIROS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "para",
+              "leftValue": "={{ String($json.body.para || '') }}",
+              "rightValue": "^[^\\s@,;]+@[^\\s@,;]+\\.[^\\s@,;]+$",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            },
+            {
+              "id": "corpo",
+              "leftValue": "={{ String($json.body.corpo || '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Pedido completo",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "gente10@emais.com",
+        "toEmail": "={{ $json.body.para }}",
+        "subject": "={{ $json.body.assunto }}",
+        "emailFormat": "both",
+        "text": "={{ $json.body.corpo }}",
+        "html": "={{ $json.body.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "name": "Enviar código",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        440,
+        -100
+      ],
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "smtp": {
+          "id": "ysuGL6pPB1QbTxrj",
+          "name": "Email_Jana_Treinamentos"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\": true}",
+        "options": {}
+      },
+      "name": "Responder ok",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        680,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\": false, \"erro\": \"envio\"}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "name": "Responder erro no envio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\": false, \"erro\": \"pedido incompleto\"}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "name": "Recusar",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        140
+      ]
+    }
+  ],
+  "connections": {
+    "Pedido do portal": {
+      "main": [
+        [
+          {
+            "node": "Pedido completo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pedido completo": {
+      "main": [
+        [
+          {
+            "node": "Enviar código",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recusar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar código": {
+      "main": [
+        [
+          {
+            "node": "Responder ok",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder erro no envio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none"
+  },
+  "active": false
+}

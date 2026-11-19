@@ -18,7 +18,8 @@ export const enderecoDoSite = new URL(import.meta.env.BASE_URL, window.location.
 export function mensagemDeErro(erro: { message?: string; status?: number } | null | undefined): string {
   const m = erro?.message ?? '';
   if (/invalid login credentials/i.test(m)) return 'E-mail ou senha incorretos.';
-  if (/email not confirmed/i.test(m)) return 'Este e-mail ainda não foi confirmado. Procure o link de confirmação na sua caixa de entrada.';
+  if (/email not confirmed/i.test(m)) return 'Este acesso ainda não tem senha. Clique em Primeiro acesso ou esqueci a senha para receber um código.';
+  if (/token has expired|otp.*(expired|invalid)|invalid.*(token|otp)/i.test(m)) return 'Código errado ou vencido. Confira o último e-mail que chegou ou peça outro código.';
   if (/rate limit|too many/i.test(m) || erro?.status === 429) return 'Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.';
   if (/password should be at least/i.test(m)) return 'A senha precisa ter pelo menos 10 caracteres.';
   if (/same.*password|different from the old/i.test(m)) return 'A nova senha precisa ser diferente da atual.';

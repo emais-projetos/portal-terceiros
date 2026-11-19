@@ -3173,3 +3173,9 @@ button.celula:hover {
 .previa-assunto { font-weight: 600; margin: 8px 0 4px; }
 .previa-corpo { white-space: pre-wrap; font: inherit; font-size: 0.9rem; background: var(--fundo); border: 1px solid var(--linha); border-radius: 8px; padding: 12px; max-height: 360px; overflow: auto; margin: 6px 0; }
 @media (max-width: 640px) { .lista-concluir > li { flex-direction: column; } .acoes-concluir { align-items: flex-start; } }
+
+/* Primeiro acesso por código */
+.campo-codigo { font-size: 1.5rem; letter-spacing: 0.4em; text-align: center; font-variant-numeric: tabular-nums; }
+.acoes-codigo { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 0.875rem; }
+.acoes-codigo .botao-link { color: var(--petroleo); font-weight: 600; }
+.acoes-codigo .botao-link:disabled { color: var(--suave); cursor: default; }

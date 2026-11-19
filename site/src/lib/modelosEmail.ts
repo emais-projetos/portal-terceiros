@@ -17,6 +17,7 @@ export type TipoModelo =
   | 'analise_aprovada'
   | 'convite_acesso'
   | 'nova_senha_acesso'
+  | 'codigo_acesso'
   | 'ajuda_para_emais'
   | 'ajuda_resposta'
   | 'ajuda_automatica'
@@ -145,6 +146,7 @@ export const CAMPOS: Record<string, { descricao: string; exemplo: string }> = {
   '{horario}': { descricao: 'Horário de atendimento da Ajuda, conforme Regras', exemplo: 'de segunda a sexta, das 8h às 18h' },
   '{mensagens}': { descricao: 'Mensagens ainda não lidas, com a hora', exemplo: '13/11 10:42: Bom dia, como envio o ASO do João?' },
   '{validade}': { descricao: 'Por quanto tempo o link vale, conforme Regras', exemplo: '7 dias' },
+  '{codigo}': { descricao: 'Código de 6 dígitos para criar a senha (sempre vai, mesmo se sair do texto)', exemplo: '482915' },
   '{email}': { descricao: 'E-mail de acesso (o login)', exemplo: 'maria@construtoraexemplo.com.br' },
   '{endereco_portal}': { descricao: 'Endereço do portal', exemplo: 'https://emais-projetos.github.io/portal-terceiros/' },
   '{link_medicao}': { descricao: 'Link da medição no portal', exemplo: 'https://emais-projetos.github.io/portal-terceiros/medicao' },

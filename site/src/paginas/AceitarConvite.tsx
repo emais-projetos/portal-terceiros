@@ -68,6 +68,10 @@ export function AceitarConvite() {
           <>
             <h2>Não foi possível usar este link</h2>
             <p className="apoio">{erro ?? problema[info?.situacao ?? 'invalido'] ?? problema.invalido}</p>
+            {info?.situacao !== 'desativado' && (
+              <p className="apoio">Você também pode criar a senha com um código enviado para o seu e-mail.</p>
+            )}
+            {info?.situacao !== 'desativado' && <Link className="botao" to="/esqueci-senha">Receber código no e-mail</Link>}
             <Link className="link" to="/entrar">Ir para a entrada do portal</Link>
           </>
         )}

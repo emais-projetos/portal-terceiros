@@ -77,7 +77,7 @@ const codigoAleatorio = () => randomBytes(32).toString('base64url');
 // ------------------------------------------------------------------------------------------
 const TABELAS = [
   'alocacoes', 'analises_conclusoes', 'arquivos', 'avisos_liberacao', 'cobrancas', 'cobrancas_envios', 'colaboradores', 'colaboradores_bloqueios',
-  'colaboradores_documentos_extras', 'conversas', 'convites_acesso', 'documentos', 'empresas', 'empresas_obras', 'eventos', 'exportacoes',
+  'colaboradores_documentos_extras', 'codigos_acesso_envios', 'conversas', 'convites_acesso', 'documentos', 'empresas', 'empresas_obras', 'eventos', 'exportacoes',
   'funcoes', 'funcoes_documentos', 'integracoes', 'integracoes_participantes', 'liberacoes_pendencia', 'medicoes', 'medicoes_arquivos',
   'medicoes_colaboradores', 'medicoes_itens', 'mensagens', 'modelos_documento', 'modelos_email', 'modelos_email_revisoes',
   'obras', 'parametros', 'parametros_historico', 'pedidos_obra', 'seg_alojamentos', 'seg_fichas_maquina',
@@ -226,6 +226,20 @@ for (const [nome, args] of Object.entries(FUNCOES)) {
   ok(get.status !== 200, 'Convite', `GET respondeu 200 (esperado recusar)`);
   const lixo = await chamar(fn, { metodo: 'POST', corpo: 'não é json' });
   ok(lixo.status === 400 || lixo.status === 401, 'Convite', `pedido malformado respondeu ${lixo.status}`);
+}
+
+// ------------------------------------------------------------------------------------------
+// 5b. Código de primeiro acesso: e-mail sem acesso recebe a resposta de sempre, sem código nem link.
+// ------------------------------------------------------------------------------------------
+{
+  const fn = '/functions/v1/enviar-codigo';
+  const invalido = await chamar(fn, { metodo: 'POST', corpo: { email: 'nao-e-email' } });
+  ok(invalido.status === 400, 'Código de acesso', `e-mail inválido respondeu ${invalido.status}`);
+  const r = await chamar(fn, { metodo: 'POST', corpo: { email: 'teste-seguranca-codigo@example.com' } });
+  ok(r.status === 200 || r.status === 429, 'Código de acesso', `e-mail sem acesso respondeu ${r.status} ${r.texto.slice(0, 120)}`);
+  ok(!/codigo"|token|link|otp/i.test(r.texto), 'Código de acesso', 'a resposta trouxe código, token ou link');
+  const get = await chamar(fn);
+  ok(get.status !== 200, 'Código de acesso', 'GET respondeu 200 (esperado recusar)');
 }
 
 // ------------------------------------------------------------------------------------------

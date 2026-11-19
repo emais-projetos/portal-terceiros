@@ -69,10 +69,10 @@ export function Entrar() {
           {enviando ? 'Entrando' : 'Entrar'}
         </button>
 
-        <Link className="link link-centro" to="/esqueci-senha">Esqueci minha senha</Link>
+        <Link className="link link-centro" to="/esqueci-senha">Primeiro acesso ou esqueci a senha</Link>
 
         <p className="formulario-nota">
-          <strong>Primeiro acesso?</strong> Crie sua senha pelo convite enviado ao seu e-mail.
+          <strong>Primeiro acesso?</strong> Clique acima, digite o e-mail cadastrado pela Emais e receba um código para criar a sua senha.
         </p>
       </form>
     </Moldura>

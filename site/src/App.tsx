@@ -31,13 +31,14 @@ import { AlojamentosFornecedor } from './paginas/fornecedor/Alojamentos';
 import { Carregando } from './componentes/Carregando';
 
 export function App() {
-  const { recuperandoSenha } = useSessao();
+  const { recuperandoSenha, sessao } = useSessao();
   const navegar = useNavigate();
+  const temSessao = !!sessao;
 
-  // Quem chega pelo link de redefinição de senha vai direto para a tela de nova senha.
+  // Quem chega pelo link de redefinição ou confirma o código do e-mail vai direto para a tela de nova senha.
   useEffect(() => {
-    if (recuperandoSenha) navegar('/nova-senha', { replace: true });
-  }, [recuperandoSenha, navegar]);
+    if (recuperandoSenha && temSessao) navegar('/nova-senha', { replace: true });
+  }, [recuperandoSenha, temSessao, navegar]);
 
   return (
     <Routes>
