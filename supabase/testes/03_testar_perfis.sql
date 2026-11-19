@@ -730,6 +730,42 @@ delete from documentos where id = '60000000-0000-0000-0000-000000000009';
 delete from analises_conclusoes;
 update empresas set email_contato = null where id = :E1;
 
+-- Administrativo corrige a data de um documento (e aprova junto) e dispensa documento que não se aplica.
+insert into documentos (id, tipo_codigo, empresa_id, colaborador_id, data_emissao, aceite_lgpd_em) values
+  ('60000000-0000-0000-0000-00000000000a', 'aso', :E1, :C1, current_date - 400, now());
+select teste.entrar(:F1);
+select teste.bloqueado('Correção: fornecedor corrige', $q$select corrigir_documento('60000000-0000-0000-0000-00000000000a', current_date - 10, null, 'data digitada errada')$q$);
+select teste.bloqueado('Dispensa: fornecedor dispensa pela Emais', $q$select dispensar_documento('20000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'epi', 'não se aplica')$q$);
+select teste.bloqueado('Dispensa: fornecedor dispensa documento que não pode', $q$insert into documentos (tipo_codigo, empresa_id, colaborador_id, dispensado, aceite_lgpd_em) values ('epi', '20000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', true, now())$q$);
+select teste.entrar(:T1);
+select teste.bloqueado('Correção: TST corrige', $q$select corrigir_documento('60000000-0000-0000-0000-00000000000a', current_date - 10, null, 'data digitada errada')$q$);
+select teste.bloqueado('Dispensa: TST dispensa', $q$select dispensar_documento('20000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'epi', 'não se aplica')$q$);
+select teste.entrar(:A);
+select teste.bloqueado('Correção: sem motivo', $q$select corrigir_documento('60000000-0000-0000-0000-00000000000a', current_date - 10, null, ' ')$q$);
+select teste.bloqueado('Correção: data futura', $q$select corrigir_documento('60000000-0000-0000-0000-00000000000a', current_date + 1, null, 'data digitada errada')$q$);
+select teste.bloqueado('Correção: vigência em documento que vence pela emissão', $q$select corrigir_documento('60000000-0000-0000-0000-00000000000a', current_date - 10, current_date + 300, 'data digitada errada')$q$);
+select teste.sair();
+update alocacoes set status = 'pendente_fornecedor' where id = :AL1;
+select teste.entrar(:A);
+select corrigir_documento('60000000-0000-0000-0000-00000000000a', current_date - 10, null, 'Data de emissão digitada errada pelo fornecedor');
+select teste.sair();
+select teste.igual('Correção (controle): data corrigida e aprovado', $q$select 1 from documentos where id = '60000000-0000-0000-0000-00000000000a' and status = 'aprovado' and data_emissao = current_date - 10 and aguardando_conclusao$q$, 1);
+select teste.igual('Correção (controle): histórico com a data antiga', $q$select 1 from eventos where registro_id = '60000000-0000-0000-0000-00000000000a' and acao = 'corrigido' and (detalhe->'de'->>'emissao')::date = current_date - 400$q$, 1);
+select teste.igual('Correção (controle): alocação volta para análise só sem pendência impeditiva',
+  $q$select 1 from alocacoes a where a.id = '50000000-0000-0000-0000-000000000001' and (a.status = 'em_analise') = not exists (select 1 from v_pendencias p where p.alocacao_id = a.id and p.impeditivo and p.situacao in ('nao_enviado', 'devolvido', 'vencido'))$q$, 1);
+select teste.entrar(:A);
+select dispensar_documento(:E1, :C1, 'epi', 'Colaborador administrativo, não usa EPI') as "DISP" \gset
+select teste.permitido('Dispensa (controle): documento da empresa', $q$select dispensar_documento('20000000-0000-0000-0000-000000000001', null, 'pgr', 'Empresa sem atividade de risco nesta obra')$q$);
+select teste.bloqueado('Dispensa: documento da empresa com colaborador', $q$select dispensar_documento('20000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000001', 'pgr', 'motivo qualquer')$q$);
+select teste.sair();
+select teste.igual('Dispensa (controle): pendência sai como dispensado', $q$select 1 from v_pendencias where colaborador_id = '40000000-0000-0000-0000-000000000001' and tipo_codigo = 'epi' and situacao = 'dispensado'$q$, 1);
+select teste.entrar(:A);
+select desfazer_dispensa(:'DISP', 'Colaborador mudou de função');
+select teste.sair();
+select teste.igual('Dispensa (controle): desfeita volta a exigir', $q$select 1 from v_pendencias where colaborador_id = '40000000-0000-0000-0000-000000000001' and tipo_codigo = 'epi' and situacao = 'dispensado'$q$, 0);
+update alocacoes set status = 'liberado' where id = :AL1;
+delete from documentos where id in ('60000000-0000-0000-0000-00000000000a', :'DISP');
+
 -- ============================================================================================
 -- 4. Admin desativado perde tudo
 -- ============================================================================================

@@ -10,6 +10,7 @@ import {
   type AlocacaoResumo, type DocumentoEmAnalise, type ParaConcluir,
 } from '../../lib/admin';
 import { Detalhe } from './Colaboradores';
+import { AjusteDocumento, type Ajuste } from '../../componentes/AjusteDocumento';
 import { AnalisesParaConcluir, HistoricoAnalises } from './AnaliseConclusao';
 
 const MOTIVOS_COMUNS = [
@@ -34,13 +35,14 @@ function resumoDoGrupo(docs: DocumentoEmAnalise[]) {
   };
 }
 
-function LinhaDocumento({ d, ocupado, aoAbrir, aoBaixar, aoAprovar, aoDevolver }: {
+function LinhaDocumento({ d, ocupado, aoAbrir, aoBaixar, aoAprovar, aoDevolver, aoCorrigir }: {
   d: DocumentoEmAnalise;
   ocupado: boolean;
   aoAbrir: (a: Arquivo) => void;
   aoBaixar: (a: Arquivo) => void;
   aoAprovar: (vencimento?: string) => void;
   aoDevolver: () => void;
+  aoCorrigir: () => void;
 }) {
   const [vigencia, setVigencia] = useState('');
   // Documento sem vencimento próprio (ex.: outro documento): a vigência pode ser informada aqui, ao aprovar.
@@ -113,6 +115,11 @@ function LinhaDocumento({ d, ocupado, aoAbrir, aoBaixar, aoAprovar, aoDevolver }
         <button type="button" className="botao botao-secundario botao-pequeno" disabled={ocupado} onClick={aoDevolver}>
           Devolver
         </button>
+        {!d.dispensado && (
+          <button type="button" className="botao botao-discreto botao-pequeno" disabled={ocupado} title="Data de emissão ou vigência errada: corrige e aprova sem devolver" onClick={aoCorrigir}>
+            Corrigir data e aprovar
+          </button>
+        )}
       </td>
     </tr>
   );
@@ -129,6 +136,7 @@ export function Analise() {
   // Cadastro do colaborador aberto daqui (o mesmo da aba Colaboradores): editar, pedir outro documento, bloquear.
   const [cadastro, setCadastro] = useState<AlocacaoResumo | null>(null);
   const [aba, setAba] = useState<'fila' | 'historico'>('fila');
+  const [ajuste, setAjuste] = useState<Ajuste | null>(null);
   const [paraConcluir, setParaConcluir] = useState<ParaConcluir[]>([]);
   const [versao, setVersao] = useState(0);
   const atualizarConcluir = () => lerParaConcluir().then(setParaConcluir).catch(() => undefined);
@@ -414,6 +422,17 @@ export function Analise() {
                                   )
                                 }
                                 aoDevolver={() => setDevolvendo(d)}
+                                aoCorrigir={() =>
+                                  setAjuste({
+                                    modo: 'corrigir',
+                                    colaborador: d.colaboradores?.nome ?? null,
+                                    doc: {
+                                      id: d.id, nome: d.tipos_documento.nome, grupo: d.tipos_documento.grupo, regra: d.tipos_documento.regra,
+                                      validade_dias: d.tipos_documento.validade_dias, status: 'em_analise', data_emissao: d.data_emissao,
+                                      data_vencimento_informada: d.data_vencimento_informada, dispensado: d.dispensado, motivo_dispensa: null, dispensado_por: null,
+                                    },
+                                  })
+                                }
                               />
                             ))}
                           </tbody>
@@ -429,6 +448,19 @@ export function Analise() {
       })}
       </>}
 
+      <AjusteDocumento
+        ajuste={ajuste}
+        aoFechar={() => setAjuste(null)}
+        aoConcluir={(m) => {
+          const id = ajuste?.modo === 'corrigir' ? ajuste.doc.id : null;
+          setAjuste(null);
+          setErro(null);
+          setOk(m);
+          if (id) setFila((f) => (f ?? []).filter((x) => x.id !== id));
+          atualizarConcluir();
+          setVersao((v) => v + 1);
+        }}
+      />
       <Detalhe ehAdmin alocacao={cadastro} aoFechar={() => setCadastro(null)} aoMudar={async () => { await carregar(); }} />
 
       <Devolucao

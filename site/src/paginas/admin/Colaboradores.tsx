@@ -3,13 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import { useSessao } from '../../lib/sessao';
 import { Pagina, Mensagem } from '../../componentes/Pagina';
 import { Dialogo } from '../../componentes/Dialogo';
+import { AjusteDocumento, type Ajuste } from '../../componentes/AjusteDocumento';
 import { Carregando } from '../../componentes/Carregando';
 import { mensagemDeErro } from '../../lib/supabase';
 import {
   cpfValido, data, diasAte, erroDatasColaborador, formatarCpf, hojeIso, somarDias, ordemSituacao, rotuloSituacao, rotuloStatus, soDigitos,
 } from '../../lib/formato';
 import {
-  abrirArquivo, alocarComoAdmin, aprovarAlocacao, devolverAlocacaoTst, excecoesNovas, lerAlocacoes, lerAnexos, lerBaseTreinamentos, lerColaborador,
+  abrirArquivo, alocarComoAdmin, lerDocumentoParaAjuste, aprovarAlocacao, devolverAlocacaoTst, excecoesNovas, lerAlocacoes, lerAnexos, lerBaseTreinamentos, lerColaborador,
   lerDevolucaoTst, lerEmailEmpresa, lerExcecoes, lerIdsComPendenciaCadastro, lerObrasCadastro, lerPendenciaLiberacao, lerPendencias, linkOutlook, registrarIntegracao,
   salvarCadastro, salvarTreinamentos, validarAlocacao,
   type AlocacaoResumo, type BaseTreinamentos, type Colaborador, type Excecao, type ObraCadastro, type Pendencia, type PendenciaLiberacao,
@@ -228,6 +229,7 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
   const [obsPendencia, setObsPendencia] = useState('');
   const [ciente, setCiente] = useState(false);
   const [pendLib, setPendLib] = useState<PendenciaLiberacao | null>(null);
+  const [ajuste, setAjuste] = useState<Ajuste | null>(null);
   const [devolucaoTst, setDevolucaoTst] = useState<{ motivo: string; em: string } | null>(null);
   const [excecoes, setExcecoes] = useState<Excecao[]>([]);
   const [bloqueios, setBloqueios] = useState<Bloqueio[]>([]);
@@ -303,6 +305,26 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
 
   const travas = (pend ?? []).filter((p) => p.impeditivo && ['nao_enviado', 'em_analise', 'devolvido', 'vencido'].includes(p.situacao));
   const bloqueado = colab?.bloqueado ?? alocacao.bloqueado;
+
+  // Corrigir a data, dispensar ou desfazer a dispensa de um documento exigido (administrativo).
+  async function abrirAjuste(p: Pendencia, modo: Ajuste['modo']) {
+    setErro(null);
+    const colaboradorId = p.grupo === 'empresa' ? null : alocacao!.colaborador_id;
+    if (modo === 'dispensar') {
+      setAjuste({ modo, tipo: p.tipo_codigo, nome: p.documento, grupo: p.grupo, empresaId: alocacao!.empresa_id, empresa: alocacao!.empresa, colaboradorId, colaborador: alocacao!.colaborador });
+      return;
+    }
+    try {
+      const doc = await lerDocumentoParaAjuste(alocacao!.empresa_id, colaboradorId, p.tipo_codigo);
+      if (!doc) {
+        setErro('Não achei o envio deste documento.');
+        return;
+      }
+      setAjuste({ modo, doc, colaborador: p.grupo === 'empresa' ? null : alocacao!.colaborador });
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    }
+  }
 
   async function verAnexo(tipo: string) {
     setErro(null);
@@ -661,6 +683,17 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
                     {(ehAdmin || ehNr(p.tipo_codigo)) && p.grupo === 'colaborador' && !['nao_enviado', 'dispensado'].includes(p.situacao) && (
                       <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => verAnexo(p.tipo_codigo)}>Ver anexo</button>
                     )}
+                    {ehAdmin && p.situacao !== 'nao_enviado' && p.situacao !== 'dispensado' && (
+                      <button type="button" className="botao botao-discreto botao-pequeno" disabled={ocupado} onClick={() => void abrirAjuste(p, 'corrigir')}>
+                        {p.situacao === 'em_analise' || p.situacao === 'devolvido' || p.status_envio_aberto ? 'Corrigir e aprovar' : 'Corrigir'}
+                      </button>
+                    )}
+                    {ehAdmin && ['nao_enviado', 'vencido', 'devolvido', 'em_analise'].includes(p.situacao) && (
+                      <button type="button" className="botao botao-discreto botao-pequeno" disabled={ocupado} onClick={() => void abrirAjuste(p, 'dispensar')}>Dispensar</button>
+                    )}
+                    {ehAdmin && p.situacao === 'dispensado' && (
+                      <button type="button" className="botao botao-discreto botao-pequeno" disabled={ocupado} onClick={() => void abrirAjuste(p, 'desfazer')}>Desfazer dispensa</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -668,6 +701,14 @@ export function Detalhe({ ehAdmin, alocacao, aoFechar, aoMudar }: { ehAdmin: boo
           </table>
         )}
       </div>
+      <AjusteDocumento
+        ajuste={ajuste}
+        aoFechar={() => setAjuste(null)}
+        aoConcluir={async (m) => {
+          setAjuste(null);
+          await agir(async () => undefined, m);
+        }}
+      />
     </Dialogo>
   );
 }

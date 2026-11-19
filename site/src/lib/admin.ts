@@ -1006,3 +1006,74 @@ export async function lerHistoricoAnalises(desde: string): Promise<{ documentos:
     conclusoes: concs.map(({ concluida_por, empresas, ...x }) => ({ ...x, empresa: empresas?.razao_social ?? '', quem: concluida_por ? nomes.get(concluida_por) ?? null : null })),
   };
 }
+
+// ---------------------------------------------------------------- Corrigir e dispensar documento (administrativo)
+
+export type DocumentoAjuste = {
+  id: string;
+  nome: string;
+  grupo: 'empresa' | 'colaborador' | 'obra';
+  regra: 'emissao_mais_prazo' | 'vigencia_informada' | 'sem_vencimento';
+  validade_dias: number | null;
+  status: 'em_analise' | 'aprovado' | 'devolvido' | 'substituido';
+  data_emissao: string | null;
+  data_vencimento_informada: string | null;
+  dispensado: boolean;
+  motivo_dispensa: string | null;
+  dispensado_por: string | null;
+};
+
+// O documento que a correção mexe: o envio em aberto (em análise ou devolvido) ou, se não houver, o aprovado atual.
+export async function lerDocumentoParaAjuste(empresaId: string, colaboradorId: string | null, tipo: string): Promise<DocumentoAjuste | null> {
+  let q = supabase
+    .from('documentos')
+    .select('id, status, data_emissao, data_vencimento_informada, dispensado, dados, analisado_em, tipos_documento(nome, grupo, regra, validade_dias)')
+    .eq('empresa_id', empresaId)
+    .eq('tipo_codigo', tipo)
+    .in('status', ['em_analise', 'devolvido', 'aprovado']);
+  q = colaboradorId ? q.eq('colaborador_id', colaboradorId) : q.is('colaborador_id', null);
+  const { data, error } = await q.limit(200);
+  if (error) throw error;
+  type Linha = {
+    id: string; status: DocumentoAjuste['status']; data_emissao: string | null; data_vencimento_informada: string | null; dispensado: boolean;
+    dados: Record<string, unknown> | null; analisado_em: string | null;
+    tipos_documento: { nome: string; grupo: DocumentoAjuste['grupo']; regra: DocumentoAjuste['regra']; validade_dias: number | null } | null;
+  };
+  const linhas = (data ?? []) as unknown as Linha[];
+  const aberto = linhas.find((l) => l.status === 'em_analise' || l.status === 'devolvido');
+  // Mesma ordem do "documento atual" do banco: data mais recente, depois a análise mais recente.
+  const aprovado = linhas
+    .filter((l) => l.status === 'aprovado')
+    .sort((a, b) => (b.data_emissao ?? b.data_vencimento_informada ?? '').localeCompare(a.data_emissao ?? a.data_vencimento_informada ?? '') || (b.analisado_em ?? '').localeCompare(a.analisado_em ?? ''))[0];
+  const l = aberto ?? aprovado;
+  if (!l || !l.tipos_documento) return null;
+  const texto = (k: string) => (typeof l.dados?.[k] === 'string' ? (l.dados[k] as string) : null);
+  return {
+    id: l.id,
+    nome: l.tipos_documento.nome,
+    grupo: l.tipos_documento.grupo,
+    regra: l.tipos_documento.regra,
+    validade_dias: l.tipos_documento.validade_dias,
+    status: l.status,
+    data_emissao: l.data_emissao,
+    data_vencimento_informada: l.data_vencimento_informada,
+    dispensado: l.dispensado,
+    motivo_dispensa: texto('motivo_dispensa'),
+    dispensado_por: l.dados?.dispensa_emais ? texto('dispensado_por') ?? 'Emais' : null,
+  };
+}
+
+export async function corrigirDocumento(id: string, emissao: string | null, vigencia: string | null, motivo: string, aprovar = true) {
+  const { error } = await supabase.rpc('corrigir_documento', { p_documento: id, p_data_emissao: emissao, p_vigencia: vigencia, p_motivo: motivo, p_aprovar: aprovar });
+  if (error) throw error;
+}
+
+export async function dispensarDocumento(empresaId: string, colaboradorId: string | null, tipo: string, motivo: string) {
+  const { error } = await supabase.rpc('dispensar_documento', { p_empresa: empresaId, p_colaborador: colaboradorId, p_tipo: tipo, p_motivo: motivo });
+  if (error) throw error;
+}
+
+export async function desfazerDispensa(id: string, motivo: string) {
+  const { error } = await supabase.rpc('desfazer_dispensa', { p_documento: id, p_motivo: motivo });
+  if (error) throw error;
+}
