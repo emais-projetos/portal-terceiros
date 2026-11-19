@@ -766,6 +766,20 @@ select teste.igual('Dispensa (controle): desfeita volta a exigir', $q$select 1 f
 update alocacoes set status = 'liberado' where id = :AL1;
 delete from documentos where id in ('60000000-0000-0000-0000-00000000000a', :'DISP');
 
+-- E-mails da empresa: o administrativo edita os "a mais"; as notificações vão para o do acesso e os a mais.
+select teste.entrar(:F1);
+select teste.bloqueado('E-mails da empresa: fornecedor altera', $q$select salvar_emails_empresa('20000000-0000-0000-0000-000000000001', 'outro@empresa.test')$q$);
+select teste.entrar(:T1);
+select teste.bloqueado('E-mails da empresa: TST altera', $q$select salvar_emails_empresa('20000000-0000-0000-0000-000000000001', 'outro@empresa.test')$q$);
+select teste.entrar(:A);
+select teste.bloqueado('E-mails da empresa: e-mail inválido', $q$select salvar_emails_empresa('20000000-0000-0000-0000-000000000001', 'financeiro@empresa.test; rh-sem-arroba')$q$);
+select salvar_emails_empresa(:E1, 'Financeiro@Empresa.test; rh@empresa.test, financeiro@empresa.test');
+select teste.sair();
+select teste.igual('E-mails da empresa (controle): salvos sem repetir', $q$select 1 from empresas where id = '20000000-0000-0000-0000-000000000001' and email_contato = 'financeiro@empresa.test; rh@empresa.test'$q$, 1);
+select teste.igual('E-mails da empresa (controle): notificação com o do acesso e os a mais',
+  $q$select 1 where app.emails_notificacao('login@empresa.test', 'financeiro@empresa.test; rh@empresa.test; login@empresa.test') = 'login@empresa.test, financeiro@empresa.test, rh@empresa.test'$q$, 1);
+update empresas set email_contato = null where id = :E1;
+
 -- ============================================================================================
 -- 4. Admin desativado perde tudo
 -- ============================================================================================

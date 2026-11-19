@@ -121,3 +121,13 @@ export const ordemSituacao: Record<SituacaoPendencia, number> = {
   vigente: 5,
   dispensado: 6,
 };
+
+// E-mails das notificações do fornecedor: o do acesso (login) e os "a mais" da empresa, sem repetir.
+// Mesma regra do banco (app.emails_notificacao).
+export function emailsNotificacao(acesso: string | null | undefined, contato: string | null | undefined): string {
+  const lista: string[] = [];
+  for (const e of `${acesso ?? ''} ${contato ?? ''}`.toLowerCase().split(/[,;\s]+/)) {
+    if (/^[^@]+@[^@]+\.[^@]+$/.test(e) && !lista.includes(e)) lista.push(e);
+  }
+  return lista.join(', ');
+}

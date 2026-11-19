@@ -18,6 +18,13 @@ function hojeIso() {
   const local = new Date(h.getTime() - h.getTimezoneOffset() * 6e4);
   return local.toISOString().slice(0, 10);
 }
+function emailsNotificacao(acesso, contato) {
+  const lista = [];
+  for (const e of `${acesso ?? ""} ${contato ?? ""}`.toLowerCase().split(/[,;\s]+/)) {
+    if (/^[^@]+@[^@]+\.[^@]+$/.test(e) && !lista.includes(e)) lista.push(e);
+  }
+  return lista.join(", ");
+}
 
 // site/src/lib/admin.ts
 import { FunctionsHttpError } from "npm:@supabase/supabase-js@2.117.2";
@@ -274,7 +281,7 @@ function modeloAtivo(base, tipo) {
 var LINK_MEDICAO = () => `${enderecoDoSite}medicao`;
 var LINK_PENDENCIAS = () => `${enderecoDoSite}pendencias`;
 function emailDaEmpresa(e) {
-  return (e?.email_contato ?? e?.email_acesso ?? "").trim();
+  return emailsNotificacao(e?.email_acesso, e?.email_contato);
 }
 function esperadas(base, competencia) {
   const doMes = base.medicoes.filter((m) => m.competencia === competencia);

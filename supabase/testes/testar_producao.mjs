@@ -135,6 +135,7 @@ const FUNCOES = {
   corrigir_documento: 'p_documento uuid, p_data_emissao date, p_vigencia date, p_motivo text, p_aprovar boolean',
   dispensar_documento: 'p_empresa uuid, p_colaborador uuid, p_tipo text, p_motivo text',
   desfazer_dispensa: 'p_documento uuid, p_motivo text',
+  salvar_emails_empresa: 'p_empresa uuid, p_emails text',
   bloquear_colaborador: 'p_colaborador uuid, p_bloquear boolean, p_motivo text',
   cadastrar_subcontratada: 'p_principal uuid, p_cnpj text, p_razao_social text, p_email text, p_obras uuid[]',
   cancelar_integracao: 'p_integracao uuid',

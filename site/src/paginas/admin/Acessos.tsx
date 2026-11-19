@@ -11,11 +11,14 @@ import { formatarCnpj } from '../../lib/consultas';
 import { cnpjValido, soDigitos } from '../../lib/formato';
 import {
   alterarAtivo, cadastrarEmpresa, copiarTexto, criarAcesso, editarAcesso, enviarAcesso, gerarLinkAcesso, lerAcessos, lerEmpresas, lerEnvioAutomatico,
-  lerObras, ligarEmpresasObras, linkOutlook,
+  lerEmailsDasEmpresas, lerObras, ligarEmpresasObras, linkOutlook, salvarEmailsEmpresa, type EmailsEmpresa,
   type Acesso, type EmpresaOpcao, type LinkAcesso, type Obra,
 } from '../../lib/admin';
 
 const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Um ou vários e-mails separados por ponto e vírgula, vírgula ou espaço (vazio vale).
+const listaEmails = (t: string) => t.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+const emailsOk = (t: string) => listaEmails(t).every((x) => EMAIL_OK.test(x));
 
 const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Sao_Paulo' });
 const hora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
@@ -596,7 +599,7 @@ function NovaEmpresa({
   const digitos = soDigitos(cnpj);
   const cnpjOk = cnpjValido(digitos);
   const existente = empresas.find((e) => e.cnpj === digitos);
-  const emailOk = !emailContato.trim() || EMAIL_OK.test(emailContato.trim());
+  const emailOk = emailsOk(emailContato);
   const valido = razao.trim().length >= 3 && cnpjOk && !existente && emailOk && selObras.length > 0 && (!sub || !!principal);
 
   async function salvar() {
@@ -607,7 +610,7 @@ function NovaEmpresa({
       const e = await cadastrarEmpresa({
         razao_social: razao.trim().replace(/\s+/g, ' ').toUpperCase(),
         cnpj: digitos,
-        email_contato: emailContato.trim().toLowerCase() || null,
+        email_contato: [...new Set(listaEmails(emailContato.toLowerCase()))].join('; ') || null,
         obras: selObras,
         subcontratada: sub,
         empresa_principal_id: sub ? principal : null,
@@ -645,10 +648,10 @@ function NovaEmpresa({
         </label>
       </div>
       <label className="campo">
-        <span>E-mail de contato da empresa (opcional)</span>
-        <input type="email" inputMode="email" value={emailContato} onChange={(e) => setEmailContato(e.target.value)} autoComplete="off" />
-        <small className="dica">Usado nas cobranças de documentos e medição. Se ficar em branco, vale o e-mail do acesso.</small>
-        {!emailOk && <small className="campo-erro">E-mail inválido.</small>}
+        <span>E-mails a mais para as notificações (opcional)</span>
+        <input inputMode="email" value={emailContato} onChange={(e) => setEmailContato(e.target.value)} autoComplete="off" placeholder="financeiro@empresa.com.br; rh@empresa.com.br" />
+        <small className="dica">As cobranças e avisos vão para o e-mail do acesso e também para estes. Separe por ponto e vírgula. O login continua sendo só o e-mail do acesso.</small>
+        {!emailOk && <small className="campo-erro">Há e-mail inválido.</small>}
       </label>
       <div className="campo">
         <span>Obras onde vai trabalhar</span>
@@ -706,6 +709,23 @@ function EditarAcesso({
   const [obrasForn, setObrasForn] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // E-mails a mais de cada empresa do acesso (para as notificações).
+  const [emailsEmp, setEmailsEmp] = useState<EmailsEmpresa[]>([]);
+  const [extras, setExtras] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!acesso || acesso.perfil !== 'fornecedor') {
+      setEmailsEmp([]);
+      setExtras({});
+      return;
+    }
+    lerEmailsDasEmpresas(acesso.empresas.map((e) => e.id))
+      .then((l) => {
+        setEmailsEmp(l);
+        setExtras(Object.fromEntries(l.map((e) => [e.id, e.email_contato ?? ''])));
+      })
+      .catch(() => setEmailsEmp([]));
+  }, [acesso]);
 
   useEffect(() => {
     if (!acesso) return;
@@ -724,7 +744,9 @@ function EditarAcesso({
     nome.trim().length >= 2 &&
     EMAIL_OK.test(email.trim()) &&
     (perfil !== 'fornecedor' || selEmpresas.length > 0) &&
-    ((perfil !== 'tst' && perfil !== 'engenharia') || selObras.length > 0);
+    ((perfil !== 'tst' && perfil !== 'engenharia') || selObras.length > 0) &&
+    Object.values(extras).every(emailsOk);
+  const extrasMudados = emailsEmp.filter((e) => selEmpresas.includes(e.id) && (extras[e.id] ?? '').trim() !== (e.email_contato ?? '').trim());
 
   async function enviar(e: FormEvent) {
     e.preventDefault();
@@ -740,6 +762,7 @@ function EditarAcesso({
         empresas: perfil === 'fornecedor' ? selEmpresas : [],
         obras: perfil === 'tst' || perfil === 'engenharia' ? selObras : [],
       });
+      for (const e of extrasMudados) await salvarEmailsEmpresa(e.id, extras[e.id] ?? '');
       aoSalvar(
         r.trocou_email
           ? `Acesso de ${r.nome} atualizado. O login agora é ${r.email}; a senha continua a mesma. Se a pessoa ainda não entrou, use "Enviar acesso" para mandar um novo convite.`
@@ -784,6 +807,32 @@ function EditarAcesso({
         {perfil === 'fornecedor' && <ObrasDoFornecedor empresas={empresas} selecionadas={selEmpresas} obras={obras} marcadas={obrasForn} aoMudar={setObrasForn} />}
         {(perfil === 'tst' || perfil === 'engenharia') && <SeletorObras perfil={perfil} obras={obras} selecionadas={selObras} aoMudar={setSelObras} />}
         {perfil === 'admin' && <p className="dica">O administrativo vê todas as obras.</p>}
+
+        {perfil === 'fornecedor' && emailsEmp.some((e) => selEmpresas.includes(e.id)) && (
+          <fieldset className="campo-grupo">
+            <legend>E-mails para as notificações</legend>
+            <p className="dica">
+              Cobranças, avisos de vencimento e o resumo da análise de documentos vão para o e-mail do acesso e para os e-mails a mais de cada empresa.
+              O login no portal é só o e-mail do acesso.
+            </p>
+            {emailsEmp.filter((e) => selEmpresas.includes(e.id)).map((e) => (
+              <label key={e.id} className="campo">
+                <span>
+                  {e.razao_social}
+                  <small className="sub"> e-mail do acesso: {e.email_acesso ?? email.trim().toLowerCase()}</small>
+                </span>
+                <input
+                  inputMode="email"
+                  value={extras[e.id] ?? ''}
+                  onChange={(ev) => setExtras((x) => ({ ...x, [e.id]: ev.target.value }))}
+                  placeholder="E-mails a mais, separados por ponto e vírgula"
+                  autoComplete="off"
+                />
+                {!emailsOk(extras[e.id] ?? '') && <small className="campo-erro">Há e-mail inválido.</small>}
+              </label>
+            ))}
+          </fieldset>
+        )}
 
         {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
         <div className="linha-botoes">

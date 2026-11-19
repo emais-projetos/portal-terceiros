@@ -1,5 +1,5 @@
 import { supabase, enderecoDoSite } from './supabase';
-import { data, hojeIso } from './formato';
+import { data, hojeIso, emailsNotificacao } from './formato';
 import { lerAlocacoes, type AlocacaoResumo } from './admin';
 import { lerTiposMedicao, lerTodasMedicoes, type Medicao, type TipoMedicao } from './medicao';
 import { lerRegras, prazoDe, toleranciaDe, type Regras } from './regras';
@@ -295,8 +295,9 @@ function modeloAtivo(base: Base, tipo: TipoModelo): Modelo | null {
 const LINK_MEDICAO = () => `${enderecoDoSite}medicao`;
 const LINK_PENDENCIAS = () => `${enderecoDoSite}pendencias`;
 
+// Notificação vai para o e-mail do acesso e para os e-mails a mais da empresa.
 function emailDaEmpresa(e: Empresa | undefined): string {
-  return (e?.email_contato ?? e?.email_acesso ?? '').trim();
+  return emailsNotificacao(e?.email_acesso, e?.email_contato);
 }
 
 type Esperada = { empresa_id: string; empresa: string; obra_id: string | null; obra: string; medicao: Medicao | null };

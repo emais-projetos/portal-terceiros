@@ -1,3 +1,4 @@
+import { emailsNotificacao } from './formato';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase, enderecoDoSite } from './supabase';
 import type { StatusAlocacao } from './consultas';
@@ -842,14 +843,14 @@ export async function alocarComoAdmin(colaboradorId: string, empresaId: string, 
 export async function lerEmailEmpresa(empresaId: string): Promise<string> {
   const { data, error } = await supabase.from('empresas').select('email_contato, email_acesso').eq('id', empresaId).maybeSingle();
   if (error) throw error;
-  return ((data?.email_contato as string | null) ?? (data?.email_acesso as string | null) ?? '').trim();
+  return emailsNotificacao(data?.email_acesso as string | null, data?.email_contato as string | null);
 }
 
 // E-mails das empresas (contato ou acesso), para pré-preencher avisos.
 export async function lerEmailsEmpresas(): Promise<Map<string, string>> {
   const { data, error } = await supabase.from('empresas').select('id, email_contato, email_acesso').limit(5000);
   if (error) throw error;
-  return new Map((data ?? []).map((e) => [e.id as string, ((e.email_contato as string | null) ?? (e.email_acesso as string | null) ?? '').trim()]));
+  return new Map((data ?? []).map((e) => [e.id as string, emailsNotificacao(e.email_acesso as string | null, e.email_contato as string | null)]));
 }
 
 // E-mails dos TSTs ativos de uma obra.
@@ -1076,4 +1077,18 @@ export async function dispensarDocumento(empresaId: string, colaboradorId: strin
 export async function desfazerDispensa(id: string, motivo: string) {
   const { error } = await supabase.rpc('desfazer_dispensa', { p_documento: id, p_motivo: motivo });
   if (error) throw error;
+}
+
+// E-mails da empresa: o do acesso (login, só leitura aqui) e os "a mais" para as notificações.
+export type EmailsEmpresa = { id: string; razao_social: string; email_acesso: string | null; email_contato: string | null };
+export async function lerEmailsDasEmpresas(ids: string[]): Promise<EmailsEmpresa[]> {
+  if (!ids.length) return [];
+  const { data, error } = await supabase.from('empresas').select('id, razao_social, email_acesso, email_contato').in('id', ids);
+  if (error) throw error;
+  return (data ?? []) as EmailsEmpresa[];
+}
+export async function salvarEmailsEmpresa(empresaId: string, emails: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('salvar_emails_empresa', { p_empresa: empresaId, p_emails: emails });
+  if (error) throw error;
+  return (data as string | null) ?? null;
 }
