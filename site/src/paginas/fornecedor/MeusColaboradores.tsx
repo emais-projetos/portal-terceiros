@@ -79,7 +79,7 @@ export function MeusColaboradores() {
   return (
     <Pagina
       titulo="Colaboradores"
-      apoio={dados ? `${ativos} ${ativos === 1 ? 'colaborador ativo' : 'colaboradores ativos'}. Clique no nome para ver os documentos e enviar para análise.` : undefined}
+      apoio={dados ? `${ativos} ${ativos === 1 ? 'colaborador ativo' : 'colaboradores ativos'}. Clique no nome para ver e enviar os documentos.` : undefined}
       acoes={
         dados && dados.empresas.length > 0 ? (
           <>
@@ -176,7 +176,7 @@ export function MeusColaboradores() {
             aoFechar={() => setNovoAberto(false)}
             aoCriar={async (id, nome) => {
               setNovoAberto(false);
-              setOk(`${nome} cadastrado. Envie os documentos dele e, no fim, clique em "Enviar para análise".`);
+              setOk(`${nome} cadastrado. Envie os documentos dele: quando todos os obrigatórios estiverem enviados, ele vai sozinho para a análise da Emais.`);
               await recarregar();
               abrir(id);
             }}
@@ -394,10 +394,10 @@ function DetalheColaborador({
   const sit = situacaoGeral(colaborador, alocs);
   const emCadastro = alocs.filter((a) => podeEnviarParaAnalise(a));
 
-  // Ao fechar um cadastro que ainda não foi enviado, lembra que ele só vai para a Emais com "Enviar para análise".
+  // Ao fechar um cadastro que ainda não foi para a análise, lembra que ele vai sozinho quando os obrigatórios forem enviados.
   function fechar() {
     if (ativo && emCadastro.length > 0) {
-      aoFechar(`Cadastro de ${colaborador!.nome} salvo. Ele só vai para a análise da Emais depois que todos os documentos obrigatórios forem enviados e você clicar em "Enviar para análise".`);
+      aoFechar(`Cadastro de ${colaborador!.nome} salvo. Ele vai sozinho para a análise da Emais assim que todos os documentos obrigatórios forem enviados.`);
     } else {
       aoFechar();
     }
@@ -515,12 +515,12 @@ function DetalheColaborador({
                       <span>
                         <strong>{a.obra}</strong> <span className={`selo selo-${a.status}`}>{rotuloStatus[a.status]}</span>
                         {podeEnviarParaAnalise(a) && travas.length > 0 && (
-                          <small className="sub">Para enviar à análise, falta: {travas.map((t) => nomeDoDocumento(t, dados.incluidos)).join(', ')}</small>
+                          <small className="sub">Para ir para a análise da Emais, falta: {travas.map((t) => nomeDoDocumento(t, dados.incluidos)).join(', ')}</small>
                         )}
                         {a.status === 'em_analise' && <small className="sub">A Emais está conferindo os documentos.</small>}
                         {a.status === 'aprovado_admin' && <small className="sub">Aprovado pela Emais, aguardando a segurança do trabalho da obra.</small>}
                       </span>
-                      {podeEnviarParaAnalise(a) && (
+                      {podeEnviarParaAnalise(a) && (a.status === 'pendente_fornecedor' || travas.length === 0) && (
                         <button
                           type="button"
                           className="botao botao-pequeno"

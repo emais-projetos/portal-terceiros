@@ -780,6 +780,37 @@ select teste.igual('E-mails da empresa (controle): notificação com o do acesso
   $q$select 1 where app.emails_notificacao('login@empresa.test', 'financeiro@empresa.test; rh@empresa.test; login@empresa.test') = 'login@empresa.test, financeiro@empresa.test, rh@empresa.test'$q$, 1);
 update empresas set email_contato = null where id = :E1;
 
+-- Análise automática: alocação em cadastro vai sozinha para análise quando não falta documento obrigatório.
+insert into colaboradores (id, empresa_id, nome, cpf, funcao_id)
+  select '40000000-0000-0000-0000-00000000000b', :E1, 'COLAB AUTOMATICO', '44444444444', funcao_id from colaboradores where id = :C1;
+select teste.entrar(:F1);
+insert into alocacoes (id, colaborador_id, obra_id) values ('50000000-0000-0000-0000-00000000000b', '40000000-0000-0000-0000-00000000000b', :O1);
+select teste.sair();
+select teste.igual('Análise automática (controle): sem documento fica em cadastro', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-00000000000b' and status = 'em_cadastro'$q$, 1);
+select teste.entrar(:A);
+select count(dispensar_documento(:E1, case when grupo = 'colaborador' then '40000000-0000-0000-0000-00000000000b'::uuid end, tipo_codigo, 'teste da análise automática'))
+  from v_pendencias where alocacao_id = '50000000-0000-0000-0000-00000000000b' and impeditivo and situacao in ('nao_enviado', 'devolvido', 'vencido') and grupo = 'colaborador'
+  and tipo_codigo <> (select min(tipo_codigo) from v_pendencias where alocacao_id = '50000000-0000-0000-0000-00000000000b' and impeditivo and grupo = 'colaborador' and situacao = 'nao_enviado');
+select teste.sair();
+select teste.igual('Análise automática (controle): faltando um documento continua em cadastro', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-00000000000b' and status = 'em_cadastro'$q$, 1);
+update colaboradores set bloqueado = true, bloqueio_motivo = 'teste', bloqueado_em = now() where id = '40000000-0000-0000-0000-00000000000b';
+select teste.entrar(:A);
+select count(dispensar_documento(:E1, case when grupo = 'colaborador' then '40000000-0000-0000-0000-00000000000b'::uuid end, tipo_codigo, 'teste da análise automática'))
+  from v_pendencias where alocacao_id = '50000000-0000-0000-0000-00000000000b' and impeditivo and situacao in ('nao_enviado', 'devolvido', 'vencido');
+select teste.sair();
+select teste.igual('Análise automática (controle): nada pendente', $q$select 1 from v_pendencias where alocacao_id = '50000000-0000-0000-0000-00000000000b' and impeditivo and situacao in ('nao_enviado', 'devolvido', 'vencido')$q$, 0);
+select teste.igual('Análise automática: colaborador bloqueado vai para análise', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-00000000000b' and status = 'em_cadastro'$q$, 1);
+update colaboradores set bloqueado = false, bloqueio_motivo = null, bloqueado_em = null where id = '40000000-0000-0000-0000-00000000000b';
+select teste.igual('Análise automática (controle): com tudo em dia vai para análise', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-00000000000b' and status = 'em_analise' and inicio_conferencia is not null$q$, 1);
+select teste.igual('Análise automática (controle): fica no histórico', $q$select 1 from eventos where registro_id = '50000000-0000-0000-0000-00000000000b' and acao = 'enviada_analise_automatica'$q$, 1);
+update alocacoes set status = 'pendente_fornecedor' where id = '50000000-0000-0000-0000-00000000000b';
+update colaboradores set situacao = 'ativo' where id = '40000000-0000-0000-0000-00000000000b';
+select teste.igual('Análise automática: pendente do fornecedor volta sozinho para análise', $q$select 1 from alocacoes where id = '50000000-0000-0000-0000-00000000000b' and status = 'pendente_fornecedor'$q$, 1);
+delete from eventos where registro_id in ('50000000-0000-0000-0000-00000000000b', '50000000-0000-0000-0000-00000000000c');
+delete from documentos where colaborador_id = '40000000-0000-0000-0000-00000000000b' or (colaborador_id is null and dados->>'motivo_dispensa' = 'teste da análise automática');
+delete from alocacoes where colaborador_id = '40000000-0000-0000-0000-00000000000b';
+delete from colaboradores where id = '40000000-0000-0000-0000-00000000000b';
+
 -- ============================================================================================
 -- 4. Admin desativado perde tudo
 -- ============================================================================================

@@ -165,7 +165,7 @@ function documentos(colabs: ColaboradorObra[]) {
     tarefas.push({
       cor: 'amarelo',
       titulo: `Completar ${plural(comFornecedor, 'colaborador aguardando', 'colaboradores aguardando')} liberação`,
-      detalhe: 'Faltam documentos para enviar para análise da Emais.',
+      detalhe: 'Faltam documentos obrigatórios para ir para a análise da Emais.',
       acao: 'pendencias',
       rotulo: 'Ver o que falta',
     });
