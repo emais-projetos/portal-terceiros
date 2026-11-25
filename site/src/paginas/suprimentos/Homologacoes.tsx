@@ -7,11 +7,11 @@ import { data, diasAte } from '../../lib/formato';
 import { useSessao } from '../../lib/sessao';
 import {
   ITENS_QUALIFICACAO, NOMES_SITUACAO_HOMOLOGACAO, abrirArquivoHomologacao, analisarDocumentoHomologacao, devolverHomologacao, documentoAtual,
-  encerrarContrato, formatarCnpj, homologarFornecedor, lerDetalheHomologacao, lerListaHomologacoes, lerTiposHomologacao, reenviarConvite, lerCamposHomologacao, respostaAdicional,
+  encerrarContrato, formatarCnpj, homologarFornecedor, lerDetalheHomologacao, lerListaHomologacoes, lerTiposHomologacao, reenviarConvite, lerCamposHomologacao, respostaAdicional, lerFornecedoresCadastro, resumoDocsFornecedor,
   reprovarHomologacao,
-  type CampoHomologacao, type DetalheHomologacao, type DocumentoHomologacao, type ItemHomologacao, type RespostaQualificacao, type SituacaoHomologacao, type TipoHomologacao,
+  type CampoHomologacao, type DetalheHomologacao, type FornecedorCadastro, type DocumentoHomologacao, type ItemHomologacao, type RespostaQualificacao, type SituacaoHomologacao, type TipoHomologacao,
 } from '../../lib/homologacao';
-import { NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
+import { EditarCadastro, NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
 
 export const SELO_HOMOLOGACAO: Record<SituacaoHomologacao, string> = {
   anterior: 'selo-aprovado_admin',
@@ -145,6 +145,8 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
   const [d, setD] = useState<DetalheHomologacao | null>(null);
   const [tipos, setTipos] = useState<TipoHomologacao[]>([]);
   const [campos, setCampos] = useState<CampoHomologacao[]>([]);
+  const [cad, setCad] = useState<FornecedorCadastro | null>(null);
+  const [editando, setEditando] = useState<FornecedorCadastro | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -158,8 +160,9 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
 
   const carregar = useCallback(async () => {
     try {
-      const [x, t, c] = await Promise.all([lerDetalheHomologacao(empresaId), lerTiposHomologacao(true), lerCamposHomologacao()]);
+      const [x, t, c, f] = await Promise.all([lerDetalheHomologacao(empresaId), lerTiposHomologacao(true), lerCamposHomologacao(), lerFornecedoresCadastro(empresaId)]);
       setD(x);
+      setCad(f[0] ?? null);
       // Documento removido da configuração só aparece se este fornecedor já tinha enviado.
       setTipos(t.filter((tp) => tp.ativo || x.documentos.some((doc) => doc.tipo === tp.codigo)));
       setCampos(c);
@@ -273,63 +276,74 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
         )}
       </section>
 
-      {d.situacao !== 'anterior' && (
-        <section className="bloco">
-          <h2 className="bloco-titulo">Dados do F.31</h2>
-          {!d.dados || Object.keys(dados).filter((k) => k !== 'email').length === 0 ? (
-            <p className="vazio">O fornecedor ainda não preencheu os dados.</p>
-          ) : (
-            <>
-              <div className="grade-3">
-                {valor('Razão social', dados.razao_social)}
-                {valor('Nome fantasia', dados.nome_fantasia)}
-                {valor('Ramo de atividade', dados.ramo)}
-                {valor('Endereço', [dados.endereco, dados.numero, dados.complemento].filter(Boolean).join(', '))}
-                {valor('Bairro', dados.bairro)}
-                {valor('Cidade/UF', [dados.cidade, dados.estado].filter(Boolean).join('/'))}
-                {valor('CEP', dados.cep)}
-                {valor('Contato', dados.contato)}
-                {valor('Telefone', [dados.telefone, dados.celular].filter(Boolean).join(' / '))}
-                {valor('E-mail da empresa', dados.email_empresa)}
-                {valor('Praça de atuação', dados.praca)}
-                {valor('Inscrição estadual', dados.inscricao_estadual)}
-                {valor('Inscrição municipal', dados.inscricao_municipal)}
-                {valor('Banco', dados.banco)}
-                {valor('Agência e conta', [dados.agencia, dados.conta].filter(Boolean).join(' / '))}
-              </div>
-              {campos.some((c) => c.personalizado && (c.ativo || respostaAdicional(dados, c))) && (
-                <>
-                  <h3 className="detalhe-subtitulo">Perguntas adicionais</h3>
-                  <div className="grade-2">
-                    {campos.filter((c) => c.personalizado && (c.ativo || respostaAdicional(dados, c))).map((c) => (
-                      <div key={c.campo}>{valor(c.rotulo, respostaAdicional(dados, c))}</div>
-                    ))}
-                  </div>
-                </>
-              )}
-              <h3 className="detalhe-subtitulo">Referências comerciais</h3>
-              {(dados.referencias ?? []).filter((r) => r.empresa).length === 0 ? (
-                <p className="dica">Nenhuma referência informada.</p>
-              ) : (
-                <ul className="lista-simples">
-                  {(dados.referencias ?? []).filter((r) => r.empresa).map((r, i) => (
-                    <li key={i}>
-                      <span>
-                        <strong>{r.empresa}</strong>
-                        {[r.contato, r.telefone, r.email, [r.cidade, r.estado].filter(Boolean).join('/')].filter(Boolean).map((x) => ` · ${x}`).join('')}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
-        </section>
-      )}
+      <section className="bloco">
+        <div className="barra-lista">
+          <h2 className="bloco-titulo">Cadastro da empresa</h2>
+          {cad && <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => setEditando(cad)}>Editar cadastro</button>}
+        </div>
+        {Object.keys(dados).filter((k) => !['email', 'razao_social', 'referencias'].includes(k)).length === 0 && (
+          <p className="dica">
+            {d.situacao === 'anterior'
+              ? 'Fornecedor anterior ao portal: o cadastro ainda não tem endereço, contato e dados bancários. Use Editar cadastro para completar.'
+              : 'O fornecedor ainda não preencheu os dados.'}
+          </p>
+        )}
+        <div className="grade-3">
+          {valor('Razão social', d.razao_social)}
+          {valor('Nome fantasia', dados.nome_fantasia)}
+          {valor('Ramo de atividade', dados.ramo)}
+          {valor('Endereço', [dados.endereco, dados.numero, dados.complemento].filter(Boolean).join(', '))}
+          {valor('Bairro', dados.bairro)}
+          {valor('Cidade/UF', [dados.cidade, dados.estado].filter(Boolean).join('/'))}
+          {valor('CEP', dados.cep)}
+          {valor('Contato', dados.contato)}
+          {valor('Telefone', [dados.telefone, dados.celular].filter(Boolean).join(' / '))}
+          {valor('E-mail da empresa', dados.email_empresa)}
+          {valor('E-mail de acesso ao portal', cad?.email_acesso)}
+          {valor('Outros e-mails para avisos', cad?.emails_contato)}
+          {valor('Praça de atuação', dados.praca)}
+          {valor('Inscrição estadual', dados.inscricao_estadual)}
+          {valor('Inscrição municipal', dados.inscricao_municipal)}
+          {valor('Banco', dados.banco)}
+          {valor('Agência e conta', [dados.agencia, dados.conta].filter(Boolean).join(' / '))}
+          {valor('Código BP (SAP)', d.codigo_bp)}
+        </div>
+        {campos.some((c) => c.personalizado && respostaAdicional(dados, c)) || (d.situacao !== 'anterior' && campos.some((c) => c.personalizado && c.ativo)) ? (
+          <>
+            <h3 className="detalhe-subtitulo">Perguntas adicionais</h3>
+            <div className="grade-2">
+              {campos.filter((c) => c.personalizado && (respostaAdicional(dados, c) || (d.situacao !== 'anterior' && c.ativo))).map((c) => (
+                <div key={c.campo}>{valor(c.rotulo, respostaAdicional(dados, c))}</div>
+              ))}
+            </div>
+          </>
+        ) : null}
+        {d.situacao !== 'anterior' && (
+          <>
+            <h3 className="detalhe-subtitulo">Referências comerciais</h3>
+            {(dados.referencias ?? []).filter((r) => r.empresa).length === 0 ? (
+              <p className="dica">Nenhuma referência informada.</p>
+            ) : (
+              <ul className="lista-simples">
+                {(dados.referencias ?? []).filter((r) => r.empresa).map((r, i) => (
+                  <li key={i}>
+                    <span>
+                      <strong>{r.empresa}</strong>
+                      {[r.contato, r.telefone, r.email, [r.cidade, r.estado].filter(Boolean).join('/')].filter(Boolean).map((x) => ` · ${x}`).join('')}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </section>
+
+      {cad && cad.liberado_em && <SituacaoNoPortal f={cad} />}
 
       {d.situacao !== 'anterior' && (
         <section className="bloco">
-          <h2 className="bloco-titulo">Documentos</h2>
+          <h2 className="bloco-titulo">Documentos da homologação</h2>
           <div className="lista-pendencias">
             {tipos.map((t) => {
               const doc = documentoAtual(d.documentos, t.codigo);
@@ -583,6 +597,15 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
           setEncerrar(null);
         }}
       />
+      <EditarCadastro
+        fornecedor={editando}
+        aoFechar={() => setEditando(null)}
+        aoSalvar={async (msg) => {
+          setEditando(null);
+          setOk(msg);
+          await carregar();
+        }}
+      />
       <RegistrarContrato
         pedido={contrato}
         aoFechar={() => setContrato(null)}
@@ -593,5 +616,77 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
         }}
       />
     </Pagina>
+  );
+}
+
+const ROTULO_PORTAL: Record<string, string> = {
+  vencido: 'Vencido', a_vencer: 'Vencendo', nao_enviado: 'Não enviado', devolvido: 'Devolvido', em_analise: 'Em análise', vigente: 'Em dia', dispensado: 'Dispensado',
+};
+const CLASSE_PORTAL: Record<string, string> = {
+  vencido: 'selo-doc-vencido', a_vencer: 'selo-doc-a_vencer', nao_enviado: 'selo-doc-nao_enviado', devolvido: 'selo-doc-devolvido',
+  em_analise: 'selo-doc-em_analise', vigente: 'selo-doc-vigente', dispensado: 'selo-doc-dispensado',
+};
+const ORDEM_PORTAL: Record<string, number> = { vencido: 1, nao_enviado: 2, devolvido: 3, a_vencer: 4, em_analise: 5, vigente: 6, dispensado: 7 };
+
+// Documentos da empresa no portal e números dos colaboradores (sem nome nem arquivo: isso fica com o administrativo).
+export function SituacaoNoPortal({ f }: { f: FornecedorCadastro }) {
+  const r = resumoDocsFornecedor(f);
+  const docs = [...f.documentos].sort((a, b) => ORDEM_PORTAL[a.situacao] - ORDEM_PORTAL[b.situacao] || a.nome.localeCompare(b.nome, 'pt-BR'));
+  return (
+    <section className="bloco">
+      <h2 className="bloco-titulo">Situação no portal</h2>
+      <div className="cartoes">
+        <div className={`cartao${r.vencidos.length ? ' cartao-alerta' : ''}`}>
+          <span className="cartao-rotulo">Documentos da empresa vencidos</span>
+          <span className="cartao-valor">{r.vencidos.length}</span>
+        </div>
+        <div className="cartao">
+          <span className="cartao-rotulo">Vencendo</span>
+          <span className="cartao-valor">{r.vencendo.length}</span>
+        </div>
+        <div className={`cartao${r.faltando.length ? ' cartao-alerta' : ''}`}>
+          <span className="cartao-rotulo">Obrigatórios faltando</span>
+          <span className="cartao-valor">{r.faltando.length}</span>
+        </div>
+        <div className={`cartao${f.colaboradores.com_vencido ? ' cartao-alerta' : ''}`}>
+          <span className="cartao-rotulo">Colaboradores em obra</span>
+          <span className="cartao-valor">{f.colaboradores.em_obra}</span>
+          <span className="cartao-apoio">
+            {f.colaboradores.liberados} liberados · {f.colaboradores.com_vencido} com documento vencido · {f.colaboradores.com_vencendo} vencendo
+          </span>
+        </div>
+      </div>
+      {f.obras.length > 0 && <p className="dica">Obras: {f.obras.join(', ')}</p>}
+      {docs.length === 0 ? (
+        <p className="dica">Sem colaborador em obra no momento, então o portal ainda não cobra documentos da empresa.</p>
+      ) : (
+        <div className="tabela-rolagem">
+          <table className="tabela tabela-compacta">
+            <thead>
+              <tr>
+                <th scope="col">Documento da empresa</th>
+                <th scope="col">Situação</th>
+                <th scope="col">Vencimento</th>
+              </tr>
+            </thead>
+            <tbody>
+              {docs.map((x) => (
+                <tr key={x.nome}>
+                  <th scope="row">{x.nome}{!x.impeditivo && <small className="sub">Não trava a liberação</small>}</th>
+                  <td><span className={`selo ${CLASSE_PORTAL[x.situacao]}`}>{ROTULO_PORTAL[x.situacao]}</span></td>
+                  <td>{x.vencimento ? data(x.vencimento) : '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {f.certidoes.length > 0 && (
+        <p className="dica">
+          Certidões da homologação: {f.certidoes.map((c) => `${c.nome} (${c.vencimento < new Date().toISOString().slice(0, 10) ? 'venceu' : 'vence'} em ${data(c.vencimento)})`).join('; ')}
+        </p>
+      )}
+      <p className="dica">A cobrança e a análise desses documentos são feitas pelo administrativo. Aqui é só para acompanhar.</p>
+    </section>
   );
 }

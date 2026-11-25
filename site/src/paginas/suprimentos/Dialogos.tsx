@@ -2,7 +2,10 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Dialogo } from '../../componentes/Dialogo';
 import { mensagemDeErro } from '../../lib/supabase';
 import { cnpjValido, hojeIso, somarDias, soDigitos, tamanhoArquivo } from '../../lib/formato';
-import { cadastrarFornecedor, registrarContrato, lerObrasAtivas, formatarCnpj, type ContratoFornecedor, type ObraSimples } from '../../lib/homologacao';
+import {
+  cadastrarFornecedor, registrarContrato, lerObrasAtivas, formatarCnpj, salvarCadastroFornecedor,
+  type ContratoFornecedor, type DadosF31, type FornecedorCadastro, type ObraSimples,
+} from '../../lib/homologacao';
 
 // Janelas do Suprimentos: cadastrar fornecedor novo (manda o convite da homologação) e registrar o contrato assinado.
 
@@ -269,6 +272,95 @@ export function PedirMotivo({ aberto, titulo, apoio, botao, minimo = 3, rotulo =
           <button className="botao botao-discreto" type="button" onClick={aoFechar}>Cancelar</button>
         </div>
       </form>
+    </Dialogo>
+  );
+}
+
+// Campos que o Suprimentos edita no cadastro. CNPJ e e-mail de acesso ficam com o administrativo (Acessos).
+const GRUPOS_CADASTRO: { titulo: string; campos: [keyof DadosF31, string, { max?: number; tipo?: string; dica?: string }?][] }[] = [
+  { titulo: 'Dados da empresa', campos: [['nome_fantasia', 'Nome fantasia'], ['ramo', 'Ramo de atividade'], ['praca', 'Praça de atuação'], ['inscricao_estadual', 'Inscrição estadual'], ['inscricao_municipal', 'Inscrição municipal']] },
+  { titulo: 'Endereço', campos: [['cep', 'CEP', { max: 9 }], ['endereco', 'Endereço'], ['numero', 'Número', { max: 20 }], ['complemento', 'Complemento'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['estado', 'Estado', { max: 2, dica: 'Sigla, ex.: SP' }]] },
+  { titulo: 'Contato', campos: [['contato', 'Pessoa de contato'], ['telefone', 'Telefone', { tipo: 'tel', max: 20 }], ['celular', 'Celular', { tipo: 'tel', max: 20 }], ['email_empresa', 'E-mail da empresa', { tipo: 'email' }]] },
+  { titulo: 'Dados bancários', campos: [['banco', 'Banco'], ['agencia', 'Agência', { max: 20 }], ['conta', 'Conta', { max: 30 }]] },
+];
+
+export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor: FornecedorCadastro | null; aoFechar: () => void; aoSalvar: (msg: string) => void }) {
+  const [razao, setRazao] = useState('');
+  const [emails, setEmails] = useState('');
+  const [dados, setDados] = useState<Partial<DadosF31>>({});
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!fornecedor) return;
+    setRazao(fornecedor.razao_social);
+    setEmails(fornecedor.emails_contato ?? '');
+    setDados({ ...fornecedor.dados });
+    setErro(null);
+  }, [fornecedor]);
+
+  async function enviar(e: FormEvent) {
+    e.preventDefault();
+    if (!fornecedor || razao.trim().length < 3) return;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const saida: Partial<DadosF31> = {};
+      for (const g of GRUPOS_CADASTRO) for (const [c] of g.campos) (saida as Record<string, string>)[c] = String(dados[c] ?? '').trim();
+      await salvarCadastroFornecedor(fornecedor.empresa_id, razao.trim(), emails, saida);
+      aoSalvar('Cadastro atualizado.');
+    } catch (er) {
+      setErro(mensagemDeErro(er as Error));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Dialogo aberto={!!fornecedor} titulo="Editar cadastro" aoFechar={aoFechar} largura="larga">
+      {fornecedor && (
+        <form className="formulario formulario-largo" onSubmit={enviar} noValidate>
+          <p className="apoio">
+            CNPJ {formatarCnpj(fornecedor.cnpj)}{fornecedor.email_acesso ? ` · acesso ao portal: ${fornecedor.email_acesso}` : ''}.
+            O CNPJ e o e-mail de acesso são alterados pelo administrativo, em Acessos.
+          </p>
+          <div className="grade-2">
+            <label className="campo">
+              <span>Razão social</span>
+              <input value={razao} maxLength={200} aria-invalid={razao.trim().length < 3} onChange={(e) => setRazao(e.target.value)} />
+            </label>
+            <label className="campo">
+              <span>Outros e-mails para avisos</span>
+              <input value={emails} maxLength={600} placeholder="financeiro@empresa.com; rh@empresa.com" onChange={(e) => setEmails(e.target.value)} />
+              <small className="dica">Recebem os avisos junto com o e-mail de acesso. Separe por ponto e vírgula, até 10.</small>
+            </label>
+          </div>
+          {GRUPOS_CADASTRO.map((g) => (
+            <fieldset key={g.titulo} className="campo-grupo">
+              <legend>{g.titulo}</legend>
+              <div className="grade-3">
+                {g.campos.map(([c, rotulo, extra]) => (
+                  <label key={c} className="campo">
+                    <span>{rotulo}</span>
+                    <input
+                      type={extra?.tipo ?? 'text'}
+                      value={String(dados[c] ?? '')}
+                      maxLength={extra?.max ?? 200}
+                      onChange={(e) => setDados((d) => ({ ...d, [c]: e.target.value }))}
+                    />
+                    {extra?.dica && <small className="dica">{extra.dica}</small>}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+          {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
+          <div className="linha-botoes">
+            <button className="botao" type="submit" disabled={razao.trim().length < 3 || enviando}>{enviando ? 'Salvando' : 'Salvar cadastro'}</button>
+            <button className="botao botao-discreto" type="button" onClick={aoFechar}>Cancelar</button>
+          </div>
+        </form>
+      )}
     </Dialogo>
   );
 }

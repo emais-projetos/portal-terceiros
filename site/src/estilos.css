@@ -3187,3 +3187,4 @@ button.celula:hover {
   .grade-3 { grid-template-columns: 1fr; }
 }
 .campo-validade input { max-width: 140px; }
+.selos-linha { display: flex; flex-wrap: wrap; gap: 4px; }

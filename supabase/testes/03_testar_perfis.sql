@@ -830,6 +830,22 @@ select teste.contar(), case when teste.linhas(format($q$update empresas set homo
 select teste.bloqueado('Suprimentos: não cria colaborador', format($q$insert into colaboradores (empresa_id, nome, cpf) values (%L, 'X', '12345678909')$q$, :E1));
 select teste.igual('Suprimentos: não lê documentos de colaborador', $q$select 1 from documentos$q$, 0);
 select teste.igual('Suprimentos: lê as empresas', format($q$select 1 from empresas where id = %L$q$, :E1), 1);
+-- Cadastro do fornecedor pelo Suprimentos
+select teste.igual('Cadastro: Suprimentos vê o fornecedor com documentos e colaboradores', format($q$select 1 from jsonb_array_elements(fornecedores_cadastro()) x where x->>'empresa_id' = %L and jsonb_typeof(x->'documentos') = 'array' and x->'colaboradores' ? 'em_obra'$q$, :E1), 1);
+select teste.igual('Cadastro: sem nome de colaborador na lista', $q$select 1 from jsonb_array_elements(fornecedores_cadastro()) x where x::text ilike '%cpf%'$q$, 0);
+select teste.bloqueado('Cadastro: e-mail da empresa inválido', format($q$select salvar_cadastro_fornecedor(%L, 'EMPRESA UM', null, '{"email_empresa":"sem-arroba"}')$q$, :E1));
+select teste.bloqueado('Cadastro: estado inválido', format($q$select salvar_cadastro_fornecedor(%L, 'EMPRESA UM', null, '{"estado":"Sao Paulo"}')$q$, :E1));
+select salvar_cadastro_fornecedor(:E1, (select razao_social from empresas where id = :E1), 'avisos@empresa.com', '{"telefone":"11 4000-0000","cidade":"Campinas","estado":"SP","cnpj":"00000000000000"}'::jsonb);
+select teste.sair();
+select teste.igual('Cadastro: dados gravados sem convite e sem campo fora da lista', format($q$select 1 from homologacoes h join empresas e on e.id = h.empresa_id where h.empresa_id = %L and h.convidada_em is null and h.dados->>'telefone' = '11 4000-0000' and not h.dados ? 'cnpj' and e.email_contato = 'avisos@empresa.com' and e.homologacao = 'anterior'$q$, :E1), 1);
+select teste.entrar(:F1);
+select teste.bloqueado('Cadastro: fornecedor não edita pelo Suprimentos', format($q$select salvar_cadastro_fornecedor(%L, 'X LTDA', null, '{}')$q$, :E1));
+select teste.igual('Cadastro: fornecedor não lista fornecedores', $q$select jsonb_array_elements(fornecedores_cadastro())$q$, 0);
+select teste.sair();
+select teste.entrar(:T1);
+select teste.bloqueado('Cadastro: TST não altera e-mails da empresa', format($q$select salvar_emails_empresa(%L, 'x@x.com')$q$, :E1));
+select teste.sair();
+select teste.entrar(:S1);
 select teste.bloqueado('Homologação: CNPJ repetido', $q$select cadastrar_fornecedor_homologacao('OUTRA', '11111111000111', 'x@x.com', null, null)$q$);
 select cadastrar_fornecedor_homologacao('Fornecedor Homologado Ltda', '99.888.777/0001-66', 'Novo@Fornecedor.com', 'Fulano', array[:O9]::uuid[]) as "EH" \gset
 select teste.sair();

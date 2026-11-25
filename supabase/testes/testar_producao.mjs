@@ -190,6 +190,8 @@ const FUNCOES = {
   enviar_documento_homologacao: 'p_empresa uuid, p_tipo text, p_data_emissao date, p_arquivos jsonb',
   enviar_homologacao: 'p_empresa uuid',
   fornecedores_a_regularizar: '',
+  fornecedores_cadastro: '',
+  salvar_cadastro_fornecedor: 'p_empresa uuid, p_razao text, p_emails text, p_dados jsonb',
   fornecedores_para_liberar: '',
   homologar_fornecedor: 'p_empresa uuid, p_qualificacao jsonb, p_comentarios text, p_responsavel text',
   liberar_portal_fornecedor: 'p_empresa uuid',

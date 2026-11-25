@@ -446,3 +446,45 @@ export async function lerObrasAtivas(): Promise<ObraSimples[]> {
   if (error) throw error;
   return (data ?? []) as ObraSimples[];
 }
+
+// ---------------------------------------------------------------- Cadastro do fornecedor (Suprimentos)
+
+export type SituacaoDocPortal = 'vigente' | 'a_vencer' | 'vencido' | 'nao_enviado' | 'devolvido' | 'em_analise' | 'dispensado';
+export type FornecedorCadastro = {
+  empresa_id: string;
+  razao_social: string;
+  cnpj: string;
+  ativa: boolean;
+  homologacao: SituacaoHomologacao;
+  codigo_bp: string | null;
+  liberado_em: string | null;
+  email_acesso: string | null;
+  emails_contato: string | null;
+  dados: DadosF31;
+  subcontratada: boolean;
+  obras: string[];
+  contratos_ativos: number;
+  proximo_termino: string | null;
+  documentos: { nome: string; situacao: SituacaoDocPortal; vencimento: string | null; impeditivo: boolean }[];
+  certidoes: { nome: string; vencimento: string }[];
+  colaboradores: { em_obra: number; liberados: number; com_vencido: number; com_vencendo: number };
+};
+
+export async function lerFornecedoresCadastro(empresaId?: string): Promise<FornecedorCadastro[]> {
+  const { data, error } = await supabase.rpc('fornecedores_cadastro', empresaId ? { p_empresa: empresaId } : {});
+  if (error) throw error;
+  return (data ?? []) as FornecedorCadastro[];
+}
+
+export async function salvarCadastroFornecedor(empresaId: string, razao: string, emails: string, dados: Partial<DadosF31>) {
+  const { error } = await supabase.rpc('salvar_cadastro_fornecedor', { p_empresa: empresaId, p_razao: razao, p_emails: emails, p_dados: dados });
+  if (error) throw error;
+}
+
+// Resumo dos documentos da empresa no portal, para a lista e o detalhe.
+export function resumoDocsFornecedor(f: FornecedorCadastro) {
+  const vencidos = f.documentos.filter((d) => d.situacao === 'vencido');
+  const vencendo = f.documentos.filter((d) => d.situacao === 'a_vencer');
+  const faltando = f.documentos.filter((d) => (d.situacao === 'nao_enviado' || d.situacao === 'devolvido') && d.impeditivo);
+  return { vencidos, vencendo, faltando, certidoesVencidas: f.certidoes.filter((c) => c.vencimento < new Date().toISOString().slice(0, 10)) };
+}
