@@ -3,7 +3,7 @@ import { Dialogo } from '../../componentes/Dialogo';
 import { mensagemDeErro } from '../../lib/supabase';
 import { cnpjValido, hojeIso, somarDias, soDigitos, tamanhoArquivo } from '../../lib/formato';
 import {
-  cadastrarFornecedor, registrarContrato, lerObrasAtivas, formatarCnpj, salvarCadastroFornecedor,
+  cadastrarFornecedor, registrarContrato, lerObrasAtivas, formatarCnpj, salvarCadastroFornecedor, trocarEmailAcesso,
   type ContratoFornecedor, type DadosF31, type FornecedorCadastro, type ObraSimples,
 } from '../../lib/homologacao';
 
@@ -286,6 +286,8 @@ const GRUPOS_CADASTRO: { titulo: string; campos: [keyof DadosF31, string, { max?
 
 export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor: FornecedorCadastro | null; aoFechar: () => void; aoSalvar: (msg: string) => void }) {
   const [razao, setRazao] = useState('');
+  const [cnpj, setCnpj] = useState('');
+  const [acesso, setAcesso] = useState('');
   const [emails, setEmails] = useState('');
   const [dados, setDados] = useState<Partial<DadosF31>>({});
   const [enviando, setEnviando] = useState(false);
@@ -294,21 +296,36 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
   useEffect(() => {
     if (!fornecedor) return;
     setRazao(fornecedor.razao_social);
+    setCnpj(formatarCnpj(fornecedor.cnpj));
+    setAcesso(fornecedor.email_acesso ?? '');
     setEmails(fornecedor.emails_contato ?? '');
     setDados({ ...fornecedor.dados });
     setErro(null);
   }, [fornecedor]);
 
+  const cnpjOk = cnpjValido(cnpj) || soDigitos(cnpj) === fornecedor?.cnpj;
+  const acessoMudou = !!fornecedor?.email_acesso && acesso.trim().toLowerCase() !== fornecedor.email_acesso;
+  const acessoOk = !fornecedor?.email_acesso || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(acesso.trim());
+  const pronto = razao.trim().length >= 3 && cnpjOk && acessoOk;
+
   async function enviar(e: FormEvent) {
     e.preventDefault();
-    if (!fornecedor || razao.trim().length < 3) return;
+    if (!fornecedor || !pronto) return;
     setEnviando(true);
     setErro(null);
     try {
       const saida: Partial<DadosF31> = {};
       for (const g of GRUPOS_CADASTRO) for (const [c] of g.campos) (saida as Record<string, string>)[c] = String(dados[c] ?? '').trim();
-      await salvarCadastroFornecedor(fornecedor.empresa_id, razao.trim(), emails, saida);
-      aoSalvar('Cadastro atualizado.');
+      await salvarCadastroFornecedor(fornecedor.empresa_id, razao.trim(), soDigitos(cnpj), emails, saida);
+      if (acessoMudou) {
+        try {
+          await trocarEmailAcesso(fornecedor.empresa_id, acesso.trim().toLowerCase());
+        } catch (er) {
+          setErro(`O cadastro foi salvo, mas o e-mail de acesso não mudou: ${mensagemDeErro(er as Error)}`);
+          return;
+        }
+      }
+      aoSalvar(acessoMudou ? `Cadastro atualizado. O fornecedor agora entra no portal com ${acesso.trim().toLowerCase()}, com a mesma senha.` : 'Cadastro atualizado.');
     } catch (er) {
       setErro(mensagemDeErro(er as Error));
     } finally {
@@ -320,14 +337,29 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
     <Dialogo aberto={!!fornecedor} titulo="Editar cadastro" aoFechar={aoFechar} largura="larga">
       {fornecedor && (
         <form className="formulario formulario-largo" onSubmit={enviar} noValidate>
-          <p className="apoio">
-            CNPJ {formatarCnpj(fornecedor.cnpj)}{fornecedor.email_acesso ? ` · acesso ao portal: ${fornecedor.email_acesso}` : ''}.
-            O CNPJ e o e-mail de acesso são alterados pelo administrativo, em Acessos.
-          </p>
+          <p className="apoio">Tudo o que for salvo aqui aparece na hora para o administrativo, para o fornecedor e nos e-mails do portal.</p>
           <div className="grade-2">
             <label className="campo">
               <span>Razão social</span>
               <input value={razao} maxLength={200} aria-invalid={razao.trim().length < 3} onChange={(e) => setRazao(e.target.value)} />
+            </label>
+            <label className="campo">
+              <span>CNPJ</span>
+              <input value={cnpj} inputMode="numeric" maxLength={18} aria-invalid={!cnpjOk} onChange={(e) => setCnpj(e.target.value)} onBlur={() => cnpjValido(cnpj) && setCnpj(formatarCnpj(soDigitos(cnpj)))} />
+              {!cnpjOk && <small className="campo-erro">CNPJ inválido. Confira os números.</small>}
+            </label>
+            <label className="campo">
+              <span>E-mail de acesso ao portal</span>
+              {fornecedor.email_acesso ? (
+                <>
+                  <input type="email" value={acesso} maxLength={200} aria-invalid={!acessoOk} onChange={(e) => setAcesso(e.target.value)} />
+                  <small className={acessoMudou ? 'texto-alerta' : 'dica'}>
+                    {acessoMudou ? 'É o login do fornecedor: ele passa a entrar com o e-mail novo, com a mesma senha.' : 'É o login do fornecedor no portal.'}
+                  </small>
+                </>
+              ) : (
+                <span className="valor-fixo">Sem acesso ao portal. O acesso é criado pelo administrativo, em Acessos.</span>
+              )}
             </label>
             <label className="campo">
               <span>Outros e-mails para avisos</span>
@@ -356,7 +388,7 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
           ))}
           {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
           <div className="linha-botoes">
-            <button className="botao" type="submit" disabled={razao.trim().length < 3 || enviando}>{enviando ? 'Salvando' : 'Salvar cadastro'}</button>
+            <button className="botao" type="submit" disabled={!pronto || enviando}>{enviando ? 'Salvando' : 'Salvar cadastro'}</button>
             <button className="botao botao-discreto" type="button" onClick={aoFechar}>Cancelar</button>
           </div>
         </form>

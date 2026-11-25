@@ -476,9 +476,15 @@ export async function lerFornecedoresCadastro(empresaId?: string): Promise<Forne
   return (data ?? []) as FornecedorCadastro[];
 }
 
-export async function salvarCadastroFornecedor(empresaId: string, razao: string, emails: string, dados: Partial<DadosF31>) {
-  const { error } = await supabase.rpc('salvar_cadastro_fornecedor', { p_empresa: empresaId, p_razao: razao, p_emails: emails, p_dados: dados });
+export async function salvarCadastroFornecedor(empresaId: string, razao: string, cnpj: string, emails: string, dados: Partial<DadosF31>) {
+  const { error } = await supabase.rpc('salvar_cadastro_fornecedor', { p_empresa: empresaId, p_razao: razao, p_cnpj: cnpj, p_emails: emails, p_dados: dados });
   if (error) throw error;
+}
+
+// O e-mail de acesso é o login do fornecedor: muda pela função do servidor, que acerta o login e o cadastro juntos.
+export async function trocarEmailAcesso(empresaId: string, email: string) {
+  const { error } = await supabase.functions.invoke('gerenciar-acesso', { body: { acao: 'email_fornecedor', empresa_id: empresaId, email } });
+  if (error) await erroDaFuncao(error);
 }
 
 // Resumo dos documentos da empresa no portal, para a lista e o detalhe.

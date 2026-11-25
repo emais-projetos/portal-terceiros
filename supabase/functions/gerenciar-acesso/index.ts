@@ -8,6 +8,7 @@
 //   { acao: 'enviar', usuario_id, destino }   convite pelo envio automático
 //   { acao: 'link', usuario_id, destino }     link para mandar à mão
 //   { acao: 'editar', usuario_id, nome, email, empresas?: uuid[], obras?: uuid[], destino }
+//   { acao: 'email_fornecedor', empresa_id, email }  troca o login do fornecedor (administrativo e Suprimentos)
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 
 const cabecalhos = {
@@ -66,7 +67,10 @@ Deno.serve(async (req) => {
     return erro(400, 'Pedido inválido');
   }
 
-  // Suprimentos: só cria o acesso do fornecedor em homologação (empresa ainda sem portal liberado).
+  // Troca do e-mail de acesso (login) do fornecedor: administrativo e Suprimentos.
+  if (corpo.acao === 'email_fornecedor') return trocarEmailFornecedor(servico, chamador.id, corpo);
+
+  // Suprimentos: fora a troca de e-mail, só cria o acesso do fornecedor em homologação (empresa ainda sem portal liberado).
   if (chamador.perfil === 'suprimentos') {
     const empresas = Array.isArray(corpo.empresas) ? corpo.empresas.map(String) : [];
     if (corpo.acao !== 'criar' || corpo.perfil !== 'fornecedor' || empresas.length !== 1 || corpo.enviar === true) {
@@ -354,4 +358,51 @@ async function editar(servico: Cliente, adminId: string, corpo: Record<string, u
   });
 
   return resposta(200, { usuario_id: usuarioId, nome, email, perfil, trocou_email: trocouEmail });
+}
+
+// Troca o e-mail de acesso do fornecedor: login no Supabase, cadastro do usuário, e-mail de acesso das empresas dele
+// e o e-mail do convite da homologação. A senha não muda.
+async function trocarEmailFornecedor(servico: Cliente, quemId: string, corpo: Record<string, unknown>) {
+  const empresaId = String(corpo.empresa_id ?? '');
+  const email = String(corpo.email ?? '').trim().toLowerCase();
+  if (!UUID.test(empresaId)) return erro(400, 'Fornecedor inválido');
+  if (!EMAIL.test(email)) return erro(400, 'E-mail inválido');
+
+  const { data: ligacoes } = await servico
+    .from('usuarios_empresas')
+    .select('usuario_id, usuarios!inner(id, email, perfil)')
+    .eq('empresa_id', empresaId);
+  const acesso = (ligacoes ?? []).find((l: { usuarios?: { perfil?: string } }) => l.usuarios?.perfil === 'fornecedor');
+  if (!acesso) {
+    return erro(400, 'Este fornecedor ainda não tem acesso ao portal. Coloque o e-mail em "Outros e-mails para avisos" ou peça ao administrativo para criar o acesso.');
+  }
+  const usuario = acesso.usuarios as { id: string; email: string };
+  if (usuario.email === email) return resposta(200, { usuario_id: usuario.id, email, mudou: false });
+
+  const { data: outro } = await servico.from('usuarios').select('id').eq('email', email).neq('id', usuario.id).maybeSingle();
+  if (outro) return erro(409, 'Já existe outro acesso com este e-mail');
+
+  const { error: e1 } = await servico.auth.admin.updateUserById(usuario.id, { email, email_confirm: true });
+  if (e1) return erro(400, `Não foi possível alterar o login: ${e1.message}`);
+  const { error: e2 } = await servico.from('usuarios').update({ email }).eq('id', usuario.id);
+  if (e2) return erro(400, `Não foi possível gravar o e-mail: ${e2.message}`);
+
+  const { data: suas } = await servico.from('usuarios_empresas').select('empresa_id').eq('usuario_id', usuario.id);
+  const empresas = (suas ?? []).map((x: { empresa_id: string }) => x.empresa_id);
+  await servico.from('empresas').update({ email_acesso: email }).in('id', empresas);
+  const { data: homs } = await servico.from('homologacoes').select('empresa_id, dados').in('empresa_id', empresas);
+  for (const h of homs ?? []) {
+    if (h.dados && typeof h.dados === 'object' && 'email' in h.dados) {
+      await servico.from('homologacoes').update({ dados: { ...h.dados, email } }).eq('empresa_id', h.empresa_id);
+    }
+  }
+
+  await servico.from('eventos').insert({
+    tabela: 'usuarios',
+    registro_id: usuario.id,
+    acao: 'acesso_editado',
+    detalhe: { email: { de: usuario.email, para: email }, empresa_id: empresaId, origem: 'cadastro_fornecedor' },
+    usuario_id: quemId,
+  });
+  return resposta(200, { usuario_id: usuario.id, email, mudou: true });
 }
