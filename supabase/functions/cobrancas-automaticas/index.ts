@@ -791,12 +791,19 @@ async function liberacoes() {
   } catch (e) {
     console.error("Prazos da libera\xE7\xE3o com pend\xEAncia:", e.message);
   }
+  try {
+    const { error } = await supabase.rpc("avisar_certidoes_vencidas");
+    if (error) throw error;
+  } catch (e) {
+    console.error("Certid\xF5es vencidas da homologa\xE7\xE3o:", e.message);
+  }
   if (cfg.pausada) return { ...base, itens: [] };
   const avisos = await avisosDeLiberacao(cfg);
   const convites = await convitesDeAcesso(cfg);
   const ajuda = await avisosDeAjuda(cfg);
   const analises = await conclusoesDeAnalise(cfg);
-  return { ...base, itens: [...avisos, ...convites, ...ajuda, ...analises] };
+  const fila2 = await enviosDaFila(cfg);
+  return { ...base, itens: [...avisos, ...convites, ...ajuda, ...analises, ...fila2] };
 }
 async function conclusoesDeAnalise(cfg) {
   const limite = new Date(Date.now() - 30 * 6e4).toISOString();
@@ -819,6 +826,49 @@ async function conclusoesDeAnalise(cfg) {
     empresa_ids: [x.empresa_id],
     teste
   }));
+}
+async function enviosDaFila(cfg) {
+  const limite = new Date(Date.now() - 30 * 6e4).toISOString();
+  const { data: data2, error } = await supabase.from("envios_fila").select("id, tipo, empresa_id, titulo, para, assunto, corpo").or(`situacao_envio.eq.aguardando,and(situacao_envio.eq.enviando,envio_iniciado_em.lt."${limite}")`).order("criado_em").limit(25);
+  if (error) throw error;
+  const lista = data2 ?? [];
+  if (!lista.length) return [];
+  const { error: e1 } = await supabase.from("envios_fila").update({ situacao_envio: "enviando", envio_iniciado_em: (/* @__PURE__ */ new Date()).toISOString() }).in("id", lista.map((x) => x.id));
+  if (e1) throw e1;
+  const teste = !!cfg.testePara;
+  return lista.map((x) => ({
+    tipo: "fila",
+    subtipo: x.tipo,
+    id: x.id,
+    obra_id: "",
+    titulo: x.titulo ?? "",
+    para: teste ? cfg.testePara : x.para,
+    para_original: x.para,
+    assunto: teste ? `[TESTE \xB7 para ${x.para}] ${x.assunto}` : x.assunto,
+    corpo: x.corpo,
+    empresa_ids: x.empresa_id ? [x.empresa_id] : [],
+    teste
+  }));
+}
+async function registrarFila(item, situacao, erro) {
+  const { error } = await supabase.from("cobrancas_envios").insert({
+    chave: `fila|${item.id}`,
+    tipo: item.subtipo ?? "fila",
+    titulo: item.titulo,
+    empresa_ids: item.empresa_ids,
+    obra_id: null,
+    para: item.para,
+    para_original: item.para_original,
+    assunto: item.assunto,
+    corpo: item.corpo,
+    situacao,
+    erro: situacao === "erro" ? erro ?? "Erro no envio" : null,
+    teste: item.teste
+  });
+  if (error) throw error;
+  const mudanca = situacao === "enviada" ? { situacao_envio: "enviado", enviado_em: (/* @__PURE__ */ new Date()).toISOString(), envio_erro: null, envio_teste: item.teste, envio_para: item.para } : { situacao_envio: "erro", envio_erro: erro ?? "Erro no envio" };
+  const { error: e2 } = await supabase.from("envios_fila").update(mudanca).eq("id", item.id).eq("situacao_envio", "enviando");
+  if (e2) throw e2;
 }
 async function registrarAnalise(item, situacao, erro) {
   const { error } = await supabase.from("cobrancas_envios").insert({
@@ -1101,6 +1151,7 @@ async function registrarLiberacao(item, situacao, erro) {
   if (item.tipo === "convite_acesso") return registrarConvite(item, situacao, erro);
   if (item.tipo === "ajuda") return registrarAjuda(item, situacao, erro);
   if (item.tipo === "analise_documentos") return registrarAnalise(item, situacao, erro);
+  if (item.tipo === "fila") return registrarFila(item, situacao, erro);
   const agora = (/* @__PURE__ */ new Date()).toISOString();
   const { error } = await supabase.from("cobrancas_envios").insert({
     chave: `liberacao|${item.id}`,

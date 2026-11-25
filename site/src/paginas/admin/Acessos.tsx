@@ -228,7 +228,7 @@ export function Acessos() {
                     {!a.ativo && <small className="sub">Desativado</small>}
                   </td>
                   <td className="quebra">
-                    {a.perfil === 'admin' ? (
+                    {a.perfil === 'admin' || a.perfil === 'suprimentos' ? (
                       <span className="sub">Todas</span>
                     ) : (obrasDoAcesso.get(a.id) ?? []).length > 0 ? (
                       (obrasDoAcesso.get(a.id) ?? []).join(', ')
@@ -377,7 +377,7 @@ function NovoAcesso({
       <form className="formulario formulario-largo" onSubmit={enviar} noValidate>
         <fieldset className="opcoes">
           <legend>Perfil</legend>
-          {(['fornecedor', 'tst', 'engenharia', 'admin'] as Perfil[]).map((p) => (
+          {(['fornecedor', 'tst', 'engenharia', 'suprimentos', 'admin'] as Perfil[]).map((p) => (
             <label key={p} className="opcao">
               <input type="radio" name="perfil" value={p} checked={perfil === p} onChange={() => setPerfil(p)} />
               <span>{nomesPerfil[p]}</span>
@@ -413,6 +413,7 @@ function NovoAcesso({
         {(perfil === 'tst' || perfil === 'engenharia') && <SeletorObras perfil={perfil} obras={obras} selecionadas={selObras} aoMudar={setSelObras} />}
 
         {perfil === 'admin' && <p className="apoio">O administrativo vê todas as obras e é o único perfil que abre os arquivos enviados.</p>}
+        {perfil === 'suprimentos' && <p className="apoio">O Suprimentos vê todas as obras, cadastra e homologa os fornecedores novos e registra os contratos.</p>}
 
         <label className="opcao">
           <input type="checkbox" checked={enviarConvite} onChange={(e) => setEnviarConvite(e.target.checked)} />
@@ -857,6 +858,8 @@ function EnvioDoLink({ link, empresas, aoFechar }: { link: LinkAcesso | null; em
         ? 'É por ele que você vai consultar os colaboradores das suas obras e dar a validação final da segurança do trabalho.'
         : link.perfil === 'engenharia'
           ? 'É por ele que você vai acompanhar, nas suas obras, a integração dos terceiros, a situação dos documentos e a medição de cada empresa, com quem está liberado para pagamento.'
+        : link.perfil === 'suprimentos'
+          ? 'É por ele que você vai cadastrar e homologar os fornecedores novos e registrar os contratos de cada obra.'
         : 'É por ele que você vai conferir a documentação dos terceiros e liberar os colaboradores para as obras.';
   const assunto = link.primeiro_acesso ? 'Seu acesso ao Portal de Terceiros da Emais' : 'Nova senha do Portal de Terceiros da Emais';
   const corpo = link.primeiro_acesso

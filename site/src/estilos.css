@@ -3179,3 +3179,10 @@ button.celula:hover {
 .acoes-codigo { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 0.875rem; }
 .acoes-codigo .botao-link { color: var(--petroleo); font-weight: 600; }
 .acoes-codigo .botao-link:disabled { color: var(--suave); cursor: default; }
+
+/* Grade de 3 colunas em formulários: os campos encolhem em vez de vazar; no celular, uma coluna. */
+.grade-3 > * { min-width: 0; }
+.grade-3 input, .grade-3 select, .grade-3 textarea { min-width: 0; width: 100%; }
+@media (max-width: 520px) {
+  .grade-3 { grid-template-columns: 1fr; }
+}

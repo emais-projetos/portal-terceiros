@@ -1,9 +1,10 @@
 // Cria acessos ao portal, coloca o convite na fila do envio automático e gera o link de primeiro acesso
-// (ou de nova senha) para quem preferir mandar pelo Outlook. Só o administrativo chama.
+// (ou de nova senha) para quem preferir mandar pelo Outlook. O administrativo chama; o Suprimentos só cria o acesso
+// do fornecedor novo que ele cadastrou para a homologação (o convite da homologação sai pelo banco).
 // Nenhum e-mail sai daqui: o convite fica em convites_acesso e o n8n envia (função cobrancas-automaticas).
 //
 // Ações:
-//   { acao: 'criar', nome, email, perfil: 'fornecedor'|'tst'|'engenharia'|'admin', empresas?: uuid[], obras?: uuid[], enviar?: boolean, destino }
+//   { acao: 'criar', nome, email, perfil: 'fornecedor'|'tst'|'engenharia'|'suprimentos'|'admin', empresas?: uuid[], obras?: uuid[], enviar?: boolean, destino }
 //   { acao: 'enviar', usuario_id, destino }   convite pelo envio automático
 //   { acao: 'link', usuario_id, destino }     link para mandar à mão
 //   { acao: 'editar', usuario_id, nome, email, empresas?: uuid[], obras?: uuid[], destino }
@@ -54,7 +55,7 @@ Deno.serve(async (req) => {
     .select('id, perfil, ativo')
     .eq('id', quem.user.id)
     .maybeSingle();
-  if (!chamador || chamador.perfil !== 'admin' || !chamador.ativo) {
+  if (!chamador || !chamador.ativo || !['admin', 'suprimentos'].includes(chamador.perfil)) {
     return erro(403, 'Apenas o administrativo cria e libera acessos');
   }
 
@@ -63,6 +64,18 @@ Deno.serve(async (req) => {
     corpo = await req.json();
   } catch {
     return erro(400, 'Pedido inválido');
+  }
+
+  // Suprimentos: só cria o acesso do fornecedor em homologação (empresa ainda sem portal liberado).
+  if (chamador.perfil === 'suprimentos') {
+    const empresas = Array.isArray(corpo.empresas) ? corpo.empresas.map(String) : [];
+    if (corpo.acao !== 'criar' || corpo.perfil !== 'fornecedor' || empresas.length !== 1 || corpo.enviar === true) {
+      return erro(403, 'O Suprimentos só cria o acesso do fornecedor em homologação');
+    }
+    const { data: emp } = await servico.from('empresas').select('id, homologacao, portal_liberado_em').in('id', empresas);
+    const ok = (emp ?? []).length === 1 && emp.every((x: { homologacao: string; portal_liberado_em: string | null }) =>
+      !x.portal_liberado_em && ['convidada', 'devolvida'].includes(x.homologacao));
+    if (!ok) return erro(403, 'O Suprimentos só cria o acesso do fornecedor em homologação');
   }
 
   const destinoBase = String(corpo.destino ?? '');
@@ -88,7 +101,7 @@ async function criar(servico: Cliente, adminId: string, corpo: Record<string, un
 
   if (nome.length < 2) return erro(400, 'Informe o nome');
   if (!EMAIL.test(email)) return erro(400, 'E-mail inválido');
-  if (!['fornecedor', 'tst', 'engenharia', 'admin'].includes(perfil)) return erro(400, 'Perfil inválido');
+  if (!['fornecedor', 'tst', 'engenharia', 'suprimentos', 'admin'].includes(perfil)) return erro(400, 'Perfil inválido');
   if (perfil === 'fornecedor' && empresas.length === 0) return erro(400, 'Escolha pelo menos uma empresa');
   if ((perfil === 'tst' || perfil === 'engenharia') && obras.length === 0) return erro(400, 'Escolha pelo menos uma obra');
   if ([...empresas, ...obras].some((id) => !UUID.test(id))) return erro(400, 'Empresa ou obra inválida');

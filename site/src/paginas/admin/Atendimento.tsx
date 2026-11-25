@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Pagina, Mensagem as Aviso } from '../../componentes/Pagina';
-import { Dialogo } from '../../componentes/Dialogo';
 import { Carregando } from '../../componentes/Carregando';
 import { Conversa } from '../../componentes/Conversa';
 import { mensagemDeErro } from '../../lib/supabase';
@@ -9,7 +8,7 @@ import { formatarCnpj } from '../../lib/consultas';
 import { data } from '../../lib/formato';
 import { nomesPerfil, type Perfil } from '../../lib/sessao';
 import {
-  acompanharMensagens, enviarMensagem, lerConversas, lerMensagens, lerPedidosObra, marcarLida, resolverConversa, responderPedidoObra,
+  acompanharMensagens, enviarMensagem, lerConversas, lerMensagens, lerPedidosObra, marcarLida, resolverConversa,
   type ConversaAdmin, type Mensagem, type PedidoObra,
 } from '../../lib/ajuda';
 
@@ -210,9 +209,6 @@ function Conversas() {
 function Pedidos({ aoMudar }: { aoMudar: (pendentes: number) => void }) {
   const [pedidos, setPedidos] = useState<PedidoObra[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
-  const [ocupado, setOcupado] = useState<string | null>(null);
-  const [recusar, setRecusar] = useState<PedidoObra | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -228,25 +224,6 @@ function Pedidos({ aoMudar }: { aoMudar: (pendentes: number) => void }) {
     carregar();
   }, [carregar]);
 
-  async function responder(p: PedidoObra, aprovar: boolean, motivo?: string) {
-    setErro(null);
-    setOcupado(p.id);
-    try {
-      await responderPedidoObra(p.id, aprovar, motivo);
-      setOk(
-        aprovar
-          ? `${p.empresas?.razao_social} liberada na obra ${p.obras?.nome}. O fornecedor recebeu o aviso na Ajuda.`
-          : `Pedido recusado. O fornecedor recebeu o motivo na Ajuda.`,
-      );
-      setRecusar(null);
-      await carregar();
-    } catch (e) {
-      setErro(mensagemDeErro(e as Error));
-    } finally {
-      setOcupado(null);
-    }
-  }
-
   if (!pedidos && !erro) return <Carregando />;
   const abertos = (pedidos ?? []).filter((p) => p.situacao === 'pendente');
   const respondidos = (pedidos ?? []).filter((p) => p.situacao !== 'pendente');
@@ -254,9 +231,9 @@ function Pedidos({ aoMudar }: { aoMudar: (pendentes: number) => void }) {
   return (
     <>
       {erro && <Aviso tipo="erro" aoFechar={() => setErro(null)}>{erro}</Aviso>}
-      {ok && <Aviso tipo="ok" aoFechar={() => setOk(null)}>{ok}</Aviso>}
       <section className="bloco">
         <h2 className="bloco-titulo">Aguardando resposta <span className="sub">{abertos.length}</span></h2>
+        <p className="apoio">Quem responde os pedidos é o Suprimentos: ele registra o contrato da obra e a obra é liberada na hora. Aqui é só para acompanhar.</p>
         {abertos.length === 0 ? (
           <p className="vazio">Nenhum pedido aguardando.</p>
         ) : (
@@ -268,7 +245,7 @@ function Pedidos({ aoMudar }: { aoMudar: (pendentes: number) => void }) {
                   <th scope="col">Obra pedida</th>
                   <th scope="col">Contrato e observação</th>
                   <th scope="col">Pedido</th>
-                  <th scope="col"><span className="sr">Ações</span></th>
+                  <th scope="col">Situação</th>
                 </tr>
               </thead>
               <tbody>
@@ -287,14 +264,7 @@ function Pedidos({ aoMudar }: { aoMudar: (pendentes: number) => void }) {
                       {hora(p.pedido_em)}
                       {p.usuarios && <small className="sub">{p.usuarios.nome}</small>}
                     </td>
-                    <td className="acoes">
-                      <button type="button" className="botao botao-pequeno" disabled={ocupado === p.id} onClick={() => responder(p, true)}>
-                        Aprovar
-                      </button>
-                      <button type="button" className="botao botao-secundario botao-pequeno" disabled={ocupado === p.id} onClick={() => setRecusar(p)}>
-                        Recusar
-                      </button>
-                    </td>
+                    <td><span className="selo selo-em_analise">Com o Suprimentos</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -333,31 +303,6 @@ function Pedidos({ aoMudar }: { aoMudar: (pendentes: number) => void }) {
           </div>
         </section>
       )}
-      <Recusa pedido={recusar} ocupado={!!ocupado} aoFechar={() => setRecusar(null)} aoRecusar={(m) => recusar && responder(recusar, false, m)} />
     </>
-  );
-}
-
-function Recusa({ pedido, ocupado, aoFechar, aoRecusar }: { pedido: PedidoObra | null; ocupado: boolean; aoFechar: () => void; aoRecusar: (motivo: string) => void }) {
-  const [motivo, setMotivo] = useState('');
-  useEffect(() => setMotivo(''), [pedido]);
-  function enviar(e: FormEvent) {
-    e.preventDefault();
-    if (motivo.trim().length >= 3) aoRecusar(motivo.trim());
-  }
-  return (
-    <Dialogo aberto={!!pedido} titulo={pedido ? `Recusar: ${pedido.obras?.nome}` : ''} aoFechar={aoFechar}>
-      <form className="formulario" onSubmit={enviar}>
-        <p className="apoio">O motivo vai para o fornecedor na Ajuda.</p>
-        <label className="campo">
-          <span>Motivo</span>
-          <textarea rows={3} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
-        </label>
-        <div className="linha-botoes">
-          <button className="botao" type="submit" disabled={motivo.trim().length < 3 || ocupado}>Recusar pedido</button>
-          <button className="botao botao-discreto" type="button" onClick={aoFechar}>Cancelar</button>
-        </div>
-      </form>
-    </Dialogo>
   );
 }

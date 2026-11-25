@@ -80,7 +80,7 @@ export function PainelObra() {
       {painel && (
         <>
           <FaroisDaObra painel={painel} obraId={obraId} />
-          {usuario?.perfil === 'admin' || usuario?.perfil === 'tst' ? <AlojamentosObra obraId={obraId} /> : <ResumoAlojamentosObra obraId={obraId} />}
+          {usuario?.perfil === 'admin' || usuario?.perfil === 'tst' ? <AlojamentosObra obraId={obraId} /> : usuario?.perfil === 'engenharia' ? <ResumoAlojamentosObra obraId={obraId} /> : null}
           {comDetalhes && (
             <details className="detalhes-obra">
               <summary>Mais detalhes da obra: pagamento por mês, histórico da medição, documentos e colaboradores</summary>

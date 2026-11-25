@@ -22,7 +22,13 @@ export type TipoModelo =
   | 'ajuda_resposta'
   | 'ajuda_automatica'
   | 'ajuda_automatica_fora'
-  | 'ajuda_resolvida';
+  | 'ajuda_resolvida'
+  | 'convite_homologacao'
+  | 'homologacao_correcoes'
+  | 'homologacao_aprovada'
+  | 'homologacao_reprovada'
+  | 'portal_liberado'
+  | 'certidao_vencida';
 
 export type Modelo = {
   tipo: TipoModelo;
@@ -104,6 +110,8 @@ export const CAMPOS: Record<string, { descricao: string; exemplo: string }> = {
   '{bloco_aprovados}': { descricao: 'Título "Documentos aprovados" e a lista (some quando ninguém foi aprovado)', exemplo: 'Documentos aprovados:\n- MARIA SOUZA: segue para a validação do TST da obra' },
   '{aprovados}': { descricao: 'Colaboradores com os documentos aprovados na análise', exemplo: '- MARIA SOUZA: segue para a validação do TST da obra\n- PEDRO LIMA: documentos aprovados' },
   '{obra}': { descricao: 'Nome da obra', exemplo: 'Residencial Jardim' },
+  '{obras}': { descricao: 'Obras liberadas para o fornecedor, uma por linha', exemplo: '- Residencial Jardim' },
+  '{observacao}': { descricao: 'Observação do Suprimentos na devolução (some quando não tem)', exemplo: 'Observação do Suprimentos: confira o endereço.' },
   '{mes}': { descricao: 'Mês da medição com o ano', exemplo: 'outubro/2026' },
   '{mes_nome}': { descricao: 'Só o nome do mês', exemplo: 'outubro' },
   '{prazo}': { descricao: 'Prazo de entrega da medição', exemplo: '25/11/2026' },

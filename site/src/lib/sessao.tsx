@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
-export type Perfil = 'admin' | 'tst' | 'engenharia' | 'fornecedor';
+export type Perfil = 'admin' | 'tst' | 'engenharia' | 'fornecedor' | 'suprimentos';
 
 export type Usuario = {
   id: string;
@@ -21,6 +21,10 @@ type ValorSessao = {
   sessao: Session | null;
   usuario: Usuario | null;
   recuperandoSenha: boolean;
+  // Fornecedor: 'fechado' enquanto nenhuma empresa dele tem o portal liberado (só vê a Homologação);
+  // 'aberto' com o portal liberado e homologação feita pelo portal (vê também a aba Homologação, para renovar certidões).
+  homologacao: 'nenhuma' | 'fechado' | 'aberto';
+  atualizarHomologacao: () => void;
   iniciarRecuperacao: () => void;
   concluirRecuperacao: () => void;
   sair: () => Promise<void>;
@@ -33,6 +37,7 @@ export const nomesPerfil: Record<Perfil, string> = {
   tst: 'TST da obra',
   engenharia: 'Engenharia da obra',
   fornecedor: 'Fornecedor',
+  suprimentos: 'Suprimentos',
 };
 
 export function ProvedorSessao({ children }: { children: ReactNode }) {
@@ -41,6 +46,8 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [situacao, setSituacao] = useState<Situacao>('carregando');
   const [recuperandoSenha, setRecuperandoSenha] = useState(false);
+  const [homologacao, setHomologacao] = useState<ValorSessao['homologacao']>('nenhuma');
+  const [versaoHomologacao, setVersaoHomologacao] = useState(0);
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((evento, novaSessao) => {
@@ -78,19 +85,33 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
           setSituacao('sem_cadastro');
           return;
         }
-        setUsuario(data as Usuario);
-        setSituacao(data.ativo ? 'ok' : 'inativo');
+        if (data.perfil !== 'fornecedor' || !data.ativo) {
+          setHomologacao('nenhuma');
+          setUsuario(data as Usuario);
+          setSituacao(data.ativo ? 'ok' : 'inativo');
+          return;
+        }
+        // Fornecedor: confere se a empresa ainda está na homologação, antes de mostrar o menu.
+        supabase.rpc('minha_homologacao').then(({ data: h }) => {
+          if (cancelado) return;
+          const lista = (h ?? []) as { liberado: boolean; situacao: string }[];
+          setHomologacao(lista.length === 0 ? 'nenhuma' : lista.every((x) => !x.liberado) ? 'fechado' : lista.some((x) => x.situacao === 'homologada') ? 'aberto' : 'nenhuma');
+          setUsuario(data as Usuario);
+          setSituacao('ok');
+        });
       });
     return () => {
       cancelado = true;
     };
-  }, [sessaoLida, uid]);
+  }, [sessaoLida, uid, versaoHomologacao]);
 
   const valor: ValorSessao = {
     situacao,
     sessao,
     usuario,
     recuperandoSenha,
+    homologacao,
+    atualizarHomologacao: () => setVersaoHomologacao((v) => v + 1),
     // Primeiro acesso por código: a sessão que chega com o código vai direto para a criação da senha.
     iniciarRecuperacao: () => setRecuperandoSenha(true),
     concluirRecuperacao: () => setRecuperandoSenha(false),

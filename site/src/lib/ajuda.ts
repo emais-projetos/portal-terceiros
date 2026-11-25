@@ -132,10 +132,10 @@ export async function resolverConversa(conversaId: string, resolvida: boolean) {
 }
 
 // Conversas com mensagem não lida pela Emais + pedidos de obra esperando resposta (contador do menu).
+// Os pedidos de outra obra ficam com o Suprimentos; no administrativo contam só as conversas não lidas.
 export async function contarAtendimento(): Promise<number> {
-  const [conversas, pedidos] = await Promise.all([lerConversas(), supabase.from('pedidos_obra').select('id', { count: 'exact', head: true }).eq('situacao', 'pendente')]);
-  if (pedidos.error) throw pedidos.error;
-  return conversas.filter((c) => c.naoLidas > 0).length + (pedidos.count ?? 0);
+  const conversas = await lerConversas();
+  return conversas.filter((c) => c.naoLidas > 0).length;
 }
 
 // ---------------------------------------------------------------- Contrato e pedido de obra

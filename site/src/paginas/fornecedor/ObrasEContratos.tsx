@@ -4,17 +4,15 @@ import { Carregando } from '../../componentes/Carregando';
 import { mensagemDeErro } from '../../lib/supabase';
 import { data } from '../../lib/formato';
 import type { MinhaEmpresa } from '../../lib/fornecedor';
-import { informarContrato, lerContratos, lerObrasAtivas, lerPedidosObra, pedirObra, type PedidoObra } from '../../lib/ajuda';
+import { lerContratos, lerObrasAtivas, lerPedidosObra, pedirObra, type PedidoObra } from '../../lib/ajuda';
 
-// Fornecedor: número do contrato em cada obra e pedido para atuar em outra obra (a Emais aprova).
+// Fornecedor: contrato de cada obra (registrado pelo Suprimentos) e pedido para atuar em outra obra.
 export function ObrasEContratos({ aberto, empresas, aoFechar, aoMudar }: { aberto: boolean; empresas: MinhaEmpresa[]; aoFechar: () => void; aoMudar: () => void }) {
   const [contratos, setContratos] = useState<Map<string, string | null> | null>(null);
-  const [rascunho, setRascunho] = useState<Record<string, string>>({});
   const [pedidos, setPedidos] = useState<PedidoObra[]>([]);
   const [obras, setObras] = useState<{ id: string; nome: string }[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
-  const [ocupado, setOcupado] = useState<string | null>(null);
   const [pedindo, setPedindo] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -22,7 +20,6 @@ export function ObrasEContratos({ aberto, empresas, aoFechar, aoMudar }: { abert
     setContratos(c);
     setPedidos(p);
     setObras(o);
-    setRascunho(Object.fromEntries([...c.entries()].map(([k, v]) => [k, v ?? ''])));
   }, []);
 
   useEffect(() => {
@@ -32,22 +29,6 @@ export function ObrasEContratos({ aberto, empresas, aoFechar, aoMudar }: { abert
     setPedindo(false);
     carregar().catch((e) => setErro(mensagemDeErro(e)));
   }, [aberto, carregar]);
-
-  async function salvarContrato(empresaId: string, obraId: string, obra: string) {
-    const chave = `${empresaId}|${obraId}`;
-    setErro(null);
-    setOk(null);
-    setOcupado(chave);
-    try {
-      await informarContrato(empresaId, obraId, rascunho[chave] ?? '');
-      setOk(`Contrato da obra ${obra} salvo.`);
-      await carregar();
-    } catch (e) {
-      setErro(mensagemDeErro(e as Error));
-    } finally {
-      setOcupado(null);
-    }
-  }
 
   const pendentes = pedidos.filter((p) => p.situacao === 'pendente');
   const recentes = pedidos.filter((p) => p.situacao !== 'pendente').slice(0, 5);
@@ -60,7 +41,7 @@ export function ObrasEContratos({ aberto, empresas, aoFechar, aoMudar }: { abert
         {!contratos && !erro && <Carregando />}
         {contratos && (
           <>
-            <p className="apoio">Informe o número do contrato com a Emais em cada obra. Para trabalhar em outra obra, peça o acesso abaixo: a Emais confere e libera.</p>
+            <p className="apoio">Obras em que a sua empresa atua e o contrato de cada uma. Para trabalhar em outra obra, peça o acesso abaixo: o Suprimentos da Emais registra o contrato e libera.</p>
             {empresas.map((e) => (
               <section key={e.id}>
                 {empresas.length > 1 && <h3 className="detalhe-subtitulo">{e.razao_social}</h3>}
@@ -69,35 +50,13 @@ export function ObrasEContratos({ aberto, empresas, aoFechar, aoMudar }: { abert
                 ) : (
                   <ul className="lista-simples">
                     {e.obras.map((o) => {
-                      const chave = `${e.id}|${o.id}`;
-                      const salvo = contratos.get(chave) ?? '';
-                      const atual = rascunho[chave] ?? '';
+                      const numero = contratos.get(`${e.id}|${o.id}`) ?? '';
                       return (
                         <li key={o.id}>
                           <span>
                             <strong>{o.nome}</strong>
-                            {!salvo && <small className="sub texto-alerta">Contrato não informado</small>}
+                            {numero ? <small className="sub">Contrato {numero}</small> : <small className="sub">Contrato registrado pelo Suprimentos da Emais</small>}
                           </span>
-                          <form
-                            className="em-linha"
-                            onSubmit={(ev) => {
-                              ev.preventDefault();
-                              salvarContrato(e.id, o.id, o.nome);
-                            }}
-                          >
-                            <label className="campo campo-compacto">
-                              <span className="sr">Número do contrato em {o.nome}</span>
-                              <input
-                                placeholder="Número do contrato"
-                                value={atual}
-                                maxLength={60}
-                                onChange={(ev) => setRascunho((r) => ({ ...r, [chave]: ev.target.value }))}
-                              />
-                            </label>
-                            <button className="botao botao-secundario botao-pequeno" type="submit" disabled={atual.trim() === salvo || ocupado === chave}>
-                              {ocupado === chave ? 'Salvando' : 'Salvar'}
-                            </button>
-                          </form>
                         </li>
                       );
                     })}

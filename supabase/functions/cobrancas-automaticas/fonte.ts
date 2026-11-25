@@ -198,7 +198,8 @@ async function resumo(dataRef: string) {
 // ---------------------------------------------------------------- Aviso de liberação
 
 type ItemLiberacao = {
-  tipo?: 'aviso_liberacao' | 'convite_acesso' | 'ajuda' | 'analise_documentos';
+  tipo?: 'aviso_liberacao' | 'convite_acesso' | 'ajuda' | 'analise_documentos' | 'fila';
+  subtipo?: string; // e-mails da fila genérica (homologação, portal liberado)
   id: string;
   obra_id: string;
   titulo: string;
@@ -235,12 +236,20 @@ async function liberacoes() {
   } catch (e) {
     console.error('Prazos da liberação com pendência:', (e as Error).message);
   }
+  // Homologação: certidão que venceu hoje vira e-mail ao fornecedor (uma vez por documento).
+  try {
+    const { error } = await supabase.rpc('avisar_certidoes_vencidas');
+    if (error) throw error;
+  } catch (e) {
+    console.error('Certidões vencidas da homologação:', (e as Error).message);
+  }
   if (cfg.pausada) return { ...base, itens: [] };
   const avisos = await avisosDeLiberacao(cfg);
   const convites = await convitesDeAcesso(cfg);
   const ajuda = await avisosDeAjuda(cfg);
   const analises = await conclusoesDeAnalise(cfg);
-  return { ...base, itens: [...avisos, ...convites, ...ajuda, ...analises] };
+  const fila = await enviosDaFila(cfg);
+  return { ...base, itens: [...avisos, ...convites, ...ajuda, ...analises, ...fila] };
 }
 
 // ---------------------------------------------------------------- Conclusão da análise de documentos
@@ -276,6 +285,65 @@ async function conclusoesDeAnalise(cfg: Awaited<ReturnType<typeof parametros>>):
     empresa_ids: [x.empresa_id],
     teste,
   }));
+}
+
+// ---------------------------------------------------------------- Fila genérica (homologação e portal liberado)
+
+// O banco monta o texto (modelos de e-mail) e grava em envios_fila; aqui só sai o envio.
+async function enviosDaFila(cfg: Awaited<ReturnType<typeof parametros>>): Promise<ItemLiberacao[]> {
+  const limite = new Date(Date.now() - 30 * 60000).toISOString();
+  const { data, error } = await supabase
+    .from('envios_fila')
+    .select('id, tipo, empresa_id, titulo, para, assunto, corpo')
+    .or(`situacao_envio.eq.aguardando,and(situacao_envio.eq.enviando,envio_iniciado_em.lt."${limite}")`)
+    .order('criado_em')
+    .limit(25);
+  if (error) throw error;
+  const lista = (data ?? []) as { id: string; tipo: string; empresa_id: string | null; titulo: string | null; para: string; assunto: string; corpo: string }[];
+  if (!lista.length) return [];
+  const { error: e1 } = await supabase
+    .from('envios_fila')
+    .update({ situacao_envio: 'enviando', envio_iniciado_em: new Date().toISOString() })
+    .in('id', lista.map((x) => x.id));
+  if (e1) throw e1;
+  const teste = !!cfg.testePara;
+  return lista.map((x) => ({
+    tipo: 'fila' as const,
+    subtipo: x.tipo,
+    id: x.id,
+    obra_id: '',
+    titulo: x.titulo ?? '',
+    para: teste ? cfg.testePara : x.para,
+    para_original: x.para,
+    assunto: teste ? `[TESTE · para ${x.para}] ${x.assunto}` : x.assunto,
+    corpo: x.corpo,
+    empresa_ids: x.empresa_id ? [x.empresa_id] : [],
+    teste,
+  }));
+}
+
+async function registrarFila(item: ItemLiberacao, situacao: 'enviada' | 'erro', erro?: string) {
+  const { error } = await supabase.from('cobrancas_envios').insert({
+    chave: `fila|${item.id}`,
+    tipo: item.subtipo ?? 'fila',
+    titulo: item.titulo,
+    empresa_ids: item.empresa_ids,
+    obra_id: null,
+    para: item.para,
+    para_original: item.para_original,
+    assunto: item.assunto,
+    corpo: item.corpo,
+    situacao,
+    erro: situacao === 'erro' ? (erro ?? 'Erro no envio') : null,
+    teste: item.teste,
+  });
+  if (error) throw error;
+  const mudanca: Record<string, unknown> =
+    situacao === 'enviada'
+      ? { situacao_envio: 'enviado', enviado_em: new Date().toISOString(), envio_erro: null, envio_teste: item.teste, envio_para: item.para }
+      : { situacao_envio: 'erro', envio_erro: erro ?? 'Erro no envio' };
+  const { error: e2 } = await supabase.from('envios_fila').update(mudanca).eq('id', item.id).eq('situacao_envio', 'enviando');
+  if (e2) throw e2;
 }
 
 async function registrarAnalise(item: ItemLiberacao, situacao: 'enviada' | 'erro', erro?: string) {
@@ -633,6 +701,7 @@ async function registrarLiberacao(item: ItemLiberacao, situacao: 'enviada' | 'er
   if (item.tipo === 'convite_acesso') return registrarConvite(item, situacao, erro);
   if (item.tipo === 'ajuda') return registrarAjuda(item, situacao, erro);
   if (item.tipo === 'analise_documentos') return registrarAnalise(item, situacao, erro);
+  if (item.tipo === 'fila') return registrarFila(item, situacao, erro);
   const agora = new Date().toISOString();
   const { error } = await supabase.from('cobrancas_envios').insert({
     chave: `liberacao|${item.id}`,

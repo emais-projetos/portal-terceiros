@@ -7,10 +7,29 @@ import { contarAtendimento } from '../lib/ajuda';
 import { lerRegras } from '../lib/regras';
 import { contarNcsAbertas, contarNcsParaAvaliar } from '../lib/seguranca';
 import { exportacaoPendente } from '../paginas/admin/Exportacao';
+import { lerContadoresSuprimentos, type ContadoresSuprimentos } from '../lib/homologacao';
 
 // Menu lateral fixo: fica parado ao rolar, pode ser recolhido (só ícones) e, no celular, abre por cima da tela.
 
 const ICONES: Record<string, ReactNode> = {
+  homologacao: (
+    <>
+      <path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z" />
+      <path d="M9 12l2 2 4-4" />
+    </>
+  ),
+  fornecedores: (
+    <>
+      <path d="M3 21V9l6-4v4l6-4v4l6-4v16z" />
+      <path d="M7 17h2M12 17h2M17 17h1" />
+    </>
+  ),
+  emails: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 7l9 6 9-6" />
+    </>
+  ),
   obras: <path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4" />,
   painel: (
     <>
@@ -97,7 +116,12 @@ type Grupo = { titulo: string | null; itens: Item[] };
 const abaAcessos = (aba: string) => (caminho: string, busca: string) =>
   caminho.startsWith('/acessos') && (new URLSearchParams(busca).get('aba') ?? 'usuarios') === aba;
 
-function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, atendimento: number | null = null, ncs: number | null = null, exportar: number | null = null): Grupo[] {
+const abaFornecedores = (aba: string) => (caminho: string, busca: string) =>
+  caminho.startsWith('/fornecedores') && (new URLSearchParams(busca).get('aba') ?? 'cadastro') === aba;
+
+type ExtrasMenu = { homologacao?: 'nenhuma' | 'fechado' | 'aberto'; sup?: ContadoresSuprimentos | null };
+
+function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, atendimento: number | null = null, ncs: number | null = null, exportar: number | null = null, extras: ExtrasMenu = {}): Grupo[] {
   // Segurança da obra: para o fornecedor, itens a regularizar; para o TST e o administrativo, respostas a avaliar.
   const paraValidar = (_: string, busca: string) => busca.includes('situacao=tst');
   if (perfil === 'admin')
@@ -169,6 +193,32 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
         ],
       },
     ];
+  if (perfil === 'suprimentos') {
+    const sup = extras.sup;
+    return [
+      {
+        titulo: 'Suprimentos',
+        itens: [
+          { to: '/', rotulo: 'Situação das obras', icone: 'obras', end: true },
+          { to: '/homologacao', rotulo: 'Homologação', icone: 'homologacao', contador: sup?.homologacao || null },
+          {
+            to: '/fornecedores',
+            rotulo: 'Fornecedores',
+            icone: 'fornecedores',
+            contador: (sup?.pedidos ?? 0) + (sup?.contrato ?? 0) || null,
+            filhos: [
+              { to: '/fornecedores', rotulo: 'Cadastro', ativo: abaFornecedores('cadastro') },
+              { to: '/fornecedores?aba=regularizar', rotulo: 'A regularizar', ativo: abaFornecedores('regularizar') },
+              { to: '/fornecedores?aba=pedidos', rotulo: 'Pedidos de obra', ativo: abaFornecedores('pedidos'), contador: sup?.pedidos || null },
+            ],
+          },
+          { to: '/emails', rotulo: 'E-mails', icone: 'emails' },
+        ],
+      },
+    ];
+  }
+  if (perfil === 'fornecedor' && extras.homologacao === 'fechado')
+    return [{ titulo: 'Minha empresa', itens: [{ to: '/', rotulo: 'Homologação', icone: 'homologacao', end: true }] }];
   if (perfil === 'fornecedor')
     return [
       {
@@ -180,6 +230,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
           { to: '/documentos-empresa', rotulo: 'Documentos da empresa', icone: 'documentos' },
           { to: '/medicao', rotulo: 'Mensal trabalhista', icone: 'medicao' },
           { to: '/alojamentos', rotulo: 'Alojamentos', icone: 'seguranca', contador: ncs },
+          ...(extras.homologacao === 'aberto' ? [{ to: '/homologacao', rotulo: 'Homologação', icone: 'homologacao' }] : []),
         ],
       },
     ];
@@ -188,7 +239,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
 
 // Nome do grupo da página aberta, mostrado acima do título.
 export function grupoDaPagina(perfil: Perfil | undefined, caminho: string, busca: string): string | null {
-  for (const g of gruposDoMenu(perfil, null, null))
+  for (const g of gruposDoMenu(perfil, null, null, null, null, null, { homologacao: 'aberto' }))
     for (const i of g.itens) {
       const rota = i.to.split('?')[0];
       const bate = i.ativo ? i.ativo(caminho, busca) : i.end ? caminho === rota : caminho === rota || caminho.startsWith(`${rota}/`);
@@ -217,7 +268,8 @@ const iniciais = (nome: string) =>
     .toUpperCase();
 
 export function Topo() {
-  const { usuario, sair } = useSessao();
+  const { usuario, sair, homologacao } = useSessao();
+  const [sup, setSup] = useState<ContadoresSuprimentos | null>(null);
   const ehAdmin = usuario?.perfil === 'admin';
   const ehTst = usuario?.perfil === 'tst';
   const { search, pathname } = useLocation();
@@ -248,9 +300,18 @@ export function Topo() {
 
   // Alojamentos: itens a regularizar (fornecedor) ou respostas esperando avaliação (TST e administrativo).
   useEffect(() => {
-    if (!usuario || usuario.perfil === 'engenharia') return;
+    if (!usuario || usuario.perfil === 'engenharia' || usuario.perfil === 'suprimentos' || homologacao === 'fechado') return;
     const contar = usuario.perfil === 'fornecedor' ? contarNcsAbertas : contarNcsParaAvaliar;
     contar().then(setNcs).catch(() => setNcs(null));
+  }, [usuario, pathname]);
+
+  // Suprimentos: homologações para analisar, pedidos de obra e homologados sem contrato.
+  useEffect(() => {
+    if (usuario?.perfil !== 'suprimentos') return;
+    const contar = () => lerContadoresSuprimentos().then(setSup).catch(() => undefined);
+    contar();
+    const t = window.setInterval(contar, 60000);
+    return () => window.clearInterval(t);
   }, [usuario, pathname]);
 
   // Prazos da medição usados nas telas (Acessos > Regras).
@@ -288,7 +349,7 @@ export function Topo() {
     }
   }
 
-  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento, ncs, exportar);
+  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento, ncs, exportar, { homologacao, sup });
   const estaAtivo = (i: Item) => (i.ativo ? i.ativo(pathname, search) : undefined);
 
   return (

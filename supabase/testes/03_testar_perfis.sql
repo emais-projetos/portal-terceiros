@@ -427,7 +427,7 @@ begin
 
   -- Funções que o fornecedor pode usar, mas que só mexem no que é dele.
   t := 'Fornecedor: funções liberadas';
-  perform teste.permitido(t, $q$select informar_contrato('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'CT-1A')$q$);
+  perform teste.bloqueado(t, $q$select informar_contrato('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'CT-1A')$q$);
   perform teste.permitido(t, $q$select painel_obra('10000000-0000-0000-0000-000000000001')$q$);
   -- Mesmo informando a conversa de outra pessoa, a mensagem cai na conversa do próprio fornecedor.
   perform enviar_mensagem('teste de conversa alheia', teste.id('CV2'));
@@ -810,6 +810,158 @@ delete from eventos where registro_id in ('50000000-0000-0000-0000-00000000000b'
 delete from documentos where colaborador_id = '40000000-0000-0000-0000-00000000000b' or (colaborador_id is null and dados->>'motivo_dispensa' = 'teste da análise automática');
 delete from alocacoes where colaborador_id = '40000000-0000-0000-0000-00000000000b';
 delete from colaboradores where id = '40000000-0000-0000-0000-00000000000b';
+
+-- Homologação de fornecedor pelo Suprimentos, contrato e liberação do portal pelo administrativo.
+\set S1 '''d0000000-0000-0000-0000-000000000001'''
+\set FH '''c0000000-0000-0000-0000-000000000009'''
+\set O9 '''10000000-0000-0000-0000-000000000009'''
+insert into auth.users (id, email, last_sign_in_at) values (:S1, 'sup@teste', now()), (:FH, 'novo@fornecedor.com', now());
+insert into usuarios (id, nome, email, perfil, ativo) values (:S1, 'Suprimentos Um', 'sup@teste', 'suprimentos', true), (:FH, 'Fornecedor Novo', 'novo@fornecedor.com', 'fornecedor', true);
+insert into obras (id, nome) values (:O9, 'OBRA NOVE');
+
+select teste.entrar(:F1);
+select teste.bloqueado('Homologação: fornecedor não cadastra fornecedor', $q$select cadastrar_fornecedor_homologacao('X LTDA', '99888777000166', 'x@x.com', null, null)$q$);
+select teste.entrar(:T1);
+select teste.bloqueado('Homologação: TST não cadastra fornecedor', $q$select cadastrar_fornecedor_homologacao('X LTDA', '99888777000166', 'x@x.com', null, null)$q$);
+select teste.entrar(:S1);
+select teste.bloqueado('Suprimentos: não aprova documento de colaborador', format($q$select aprovar_documento(%L)$q$, :D1));
+select teste.bloqueado('Suprimentos: não libera colaborador', format($q$select aprovar_alocacao(%L)$q$, :AL1));
+select teste.contar(), case when teste.linhas(format($q$update empresas set homologacao = 'homologada' where id = %L$q$, :E1)) > 0 then teste.falha('Suprimentos: não altera empresa direto', 'alterou a empresa') end;
+select teste.bloqueado('Suprimentos: não cria colaborador', format($q$insert into colaboradores (empresa_id, nome, cpf) values (%L, 'X', '12345678909')$q$, :E1));
+select teste.igual('Suprimentos: não lê documentos de colaborador', $q$select 1 from documentos$q$, 0);
+select teste.igual('Suprimentos: lê as empresas', format($q$select 1 from empresas where id = %L$q$, :E1), 1);
+select teste.bloqueado('Homologação: CNPJ repetido', $q$select cadastrar_fornecedor_homologacao('OUTRA', '11111111000111', 'x@x.com', null, null)$q$);
+select cadastrar_fornecedor_homologacao('Fornecedor Homologado Ltda', '99.888.777/0001-66', 'Novo@Fornecedor.com', 'Fulano', array[:O9]::uuid[]) as "EH" \gset
+select teste.sair();
+insert into usuarios_empresas values (:FH, :'EH');
+update empresas set email_acesso = 'novo@fornecedor.com' where id = :'EH';
+select teste.entrar(:S1);
+select enviar_convite_homologacao(:'EH');
+select teste.sair();
+select teste.igual('Homologação: convite na fila', format($q$select 1 from envios_fila where empresa_id = %L and tipo = 'convite_homologacao' and para = 'novo@fornecedor.com'$q$, :'EH'), 1);
+
+-- Fornecedor em homologação só vê a homologação
+select teste.entrar(:FH);
+select teste.igual('Homologação: empresa ainda fechada no portal', format($q$select 1 from empresas where id = %L$q$, :'EH'), 0);
+select teste.igual('Homologação: fornecedor vê a homologação', $q$select jsonb_array_elements(minha_homologacao())$q$, 1);
+select teste.bloqueado('Homologação: sem portal não cadastra colaborador', format($q$insert into colaboradores (empresa_id, nome, cpf) values (%L, 'X', '12345678909')$q$, :'EH'));
+select teste.bloqueado('Homologação: envio sem dados', format($q$select enviar_homologacao(%L)$q$, :'EH'));
+select teste.bloqueado('Homologação: arquivo fora da pasta', format($q$select enviar_documento_homologacao(%L, 'cnd_federal', current_date, '[{"caminho":"outra/h/1/a.pdf"}]')$q$, :'EH'));
+select teste.bloqueado('Homologação: data futura', format($q$select enviar_documento_homologacao(%L, 'cnd_federal', current_date + 1, '[{"caminho":"%s/h/1/a.pdf"}]')$q$, :'EH', :'EH'));
+select salvar_homologacao(:'EH', '{"razao_social":"FORNECEDOR HOMOLOGADO LTDA","ramo":"Pintura","endereco":"Rua A","numero":"1","bairro":"Centro","cep":"15000-000","cidade":"Rio Preto","estado":"SP","telefone":"17 3333-3333","contato":"Fulano","email_empresa":"contato@x.com","banco":"001","agencia":"1234","conta":"5678-9","referencias":[{"empresa":"Cliente A","telefone":"17 1111-1111"}],"email":"hackeado@x.com"}'::jsonb);
+select count(enviar_documento_homologacao(:'EH', t.codigo, current_date - 2, jsonb_build_array(jsonb_build_object('caminho', :'EH' || '/h/' || t.codigo || '/a.pdf', 'nome', t.codigo || '.pdf', 'tamanho', 100, 'tipo', 'application/pdf'))))
+  from homologacao_tipos t where t.obrigatorio;
+select enviar_homologacao(:'EH');
+select teste.bloqueado('Homologação: enviada não muda mais', format($q$select salvar_homologacao(%L, '{}'::jsonb)$q$, :'EH'));
+select teste.sair();
+select teste.igual('Homologação: e-mail do convite não muda pelo fornecedor', format($q$select 1 from homologacoes where empresa_id = %L and dados->>'email' = 'novo@fornecedor.com'$q$, :'EH'), 1);
+
+select teste.entrar(:F1);
+select teste.igual('Homologação: outro fornecedor não vê', format($q$select 1 from homologacao_documentos where empresa_id = %L union all select 1 from homologacoes where empresa_id = %L$q$, :'EH', :'EH'), 0);
+select teste.bloqueado('Homologação: outro fornecedor não envia documento', format($q$select enviar_documento_homologacao(%L, 'cnd_federal', current_date, '[{"caminho":"%s/h/1/a.pdf"}]')$q$, :'EH', :'EH'));
+select teste.igual('Suprimentos: fornecedor não lê os modelos de e-mail', $q$select 1 from modelos_email$q$, 0);
+select teste.bloqueado('Contrato: fornecedor não informa mais o contrato', format($q$select informar_contrato(%L, %L, 'X')$q$, :E1, :O1));
+select teste.sair();
+
+-- Suprimentos analisa
+select teste.entrar(:S1);
+select teste.igual('Suprimentos: lê os modelos de e-mail', $q$select 1 from modelos_email where tipo = 'homologacao_aprovada'$q$, 1);
+select teste.igual('Suprimentos: lista a homologação enviada', format($q$select 1 from jsonb_array_elements(lista_homologacoes()) x where x->>'empresa_id' = %L and x->>'situacao' = 'enviada'$q$, :'EH'), 1);
+select teste.bloqueado('Homologação: homologar sem aprovar os documentos', format($q$select homologar_fornecedor(%L, '{}', null, 'Responsável')$q$, :'EH'));
+select count(analisar_documento_homologacao(d.id, d.tipo_codigo <> 'crf_fgts', case when d.tipo_codigo = 'crf_fgts' then 'Certidão vencida' end))
+  from homologacao_documentos d where d.empresa_id = :'EH' and d.status = 'em_analise';
+select devolver_homologacao(:'EH', null);
+select teste.sair();
+select teste.igual('Homologação: devolvida com e-mail de correção', format($q$select 1 from empresas e join envios_fila f on f.empresa_id = e.id where e.id = %L and e.homologacao = 'devolvida' and f.tipo = 'homologacao_correcoes' and f.corpo like '%%Certidão vencida%%'$q$, :'EH'), 1);
+select teste.entrar(:FH);
+select enviar_documento_homologacao(:'EH', 'crf_fgts', current_date, jsonb_build_array(jsonb_build_object('caminho', :'EH' || '/h/crf2/a.pdf')));
+select enviar_homologacao(:'EH');
+select teste.sair();
+select teste.entrar(:S1);
+select count(analisar_documento_homologacao(d.id, true)) from homologacao_documentos d where d.empresa_id = :'EH' and d.status = 'em_analise';
+select teste.bloqueado('Homologação: sem responsável', format($q$select homologar_fornecedor(%L, '{}', null, '')$q$, :'EH'));
+select homologar_fornecedor(:'EH', '{"habilitacao":"sim"}', 'Ok', 'Responsável Suprimentos');
+select teste.bloqueado('Liberação: Suprimentos não libera o portal', format($q$select liberar_portal_fornecedor(%L)$q$, :'EH'));
+select teste.sair();
+select teste.igual('Homologação: cartão CNPJ, PGR e PCMSO entram aprovados em Documentos da empresa', format($q$select 1 from documentos where empresa_id = %L and status = 'aprovado' and tipo_codigo in ('cartao_cnpj', 'pgr', 'pcmso') and dados->>'origem' = 'homologacao'$q$, :'EH'), 3);
+select teste.igual('Homologação: os arquivos acompanham', format($q$select 1 from arquivos a join documentos d on d.id = a.documento_id where d.empresa_id = %L$q$, :'EH'), 3);
+select teste.entrar(:A);
+select teste.bloqueado('Liberação: sem contrato não libera', format($q$select liberar_portal_fornecedor(%L)$q$, :'EH'));
+select teste.sair();
+
+-- Contrato
+select teste.entrar(:F1);
+select teste.bloqueado('Contrato: fornecedor não registra', format($q$select registrar_contrato(%L, 'CT', 'BP', current_date, current_date + 30, '%s/contratos/1/c.pdf', 'c.pdf', array[%L]::uuid[])$q$, :E1, :E1, :O9));
+select teste.sair();
+select teste.entrar(:S1);
+select teste.bloqueado('Contrato: sem arquivo', format($q$select registrar_contrato(%L, 'CT', 'BP', current_date, current_date + 30, null, 'c.pdf', array[%L]::uuid[])$q$, :'EH', :O9));
+select registrar_contrato(:'EH', 'CT-900', 'BP-123', current_date, current_date + 365, :'EH' || '/contratos/1/c.pdf', 'contrato.pdf', array[:O9]::uuid[]) as "CT" \gset
+select teste.sair();
+select teste.igual('Contrato: obra e BP gravados', format($q$select 1 from empresas e join empresas_obras eo on eo.empresa_id = e.id where e.id = %L and e.codigo_bp = 'BP-123' and eo.obra_id = %L and eo.numero_contrato = 'CT-900'$q$, :'EH', :O9), 1);
+select teste.entrar(:FH);
+select teste.igual('Contrato: fornecedor ainda sem portal', format($q$select 1 from empresas_obras where empresa_id = %L$q$, :'EH'), 0);
+select teste.sair();
+
+-- Administrativo libera
+select teste.entrar(:A);
+select teste.igual('Liberação: aparece para o administrativo', format($q$select 1 from fornecedores_para_liberar() where empresa_id = %L$q$, :'EH'), 1);
+select liberar_portal_fornecedor(:'EH');
+select teste.sair();
+select teste.igual('Liberação: e-mail do portal liberado', format($q$select 1 from envios_fila where empresa_id = %L and tipo = 'portal_liberado' and corpo like '%%OBRA NOVE%%'$q$, :'EH'), 1);
+select teste.entrar(:FH);
+select teste.igual('Liberação: fornecedor passa a ver a empresa e a obra', format($q$select 1 from empresas_obras where empresa_id = %L$q$, :'EH'), 1);
+select teste.sair();
+
+-- A regularizar (fornecedores que já existiam) e pedido de obra
+select teste.entrar(:S1);
+select teste.igual('Regularizar: fornecedor antigo sem BP aparece', format($q$select 1 from jsonb_array_elements(fornecedores_a_regularizar()) x where x->>'empresa_id' = %L and (x->>'sem_bp')::boolean$q$, :E1), 1);
+select teste.igual('Regularizar: homologado com contrato não aparece', format($q$select 1 from jsonb_array_elements(fornecedores_a_regularizar()) x where x->>'empresa_id' = %L$q$, :'EH'), 0);
+select teste.sair();
+select teste.entrar(:F1);
+select pedir_obra(:E1, :O9, null, 'Vamos pintar a obra nove') as "PED" \gset
+select teste.sair();
+select teste.entrar(:S1);
+select teste.bloqueado('Pedido de obra: aprovação só com contrato', format($q$select responder_pedido_obra(%L, true)$q$, :'PED'));
+select registrar_contrato(:E1, 'CT-77', 'BP-77', current_date, current_date + 10, :E1 || '/contratos/2/c.pdf', 'c.pdf', array[:O9]::uuid[]) as "CT2" \gset
+select teste.sair();
+select teste.igual('Pedido de obra: aprovado ao registrar o contrato', format($q$select 1 from pedidos_obra where id = %L and situacao = 'aprovado'$q$, :'PED'), 1);
+select teste.entrar(:S1);
+select teste.igual('Regularizar: contrato vencendo em 30 dias aparece', format($q$select 1 from jsonb_array_elements(fornecedores_a_regularizar()) x where x->>'empresa_id' = %L and jsonb_array_length(x->'contratos_vencendo') = 1$q$, :E1), 1);
+select encerrar_contrato(:'CT2', 'Contrato de teste');
+select teste.sair();
+
+-- Certidão vencida: aviso ao fornecedor, sem travar nada
+update homologacao_documentos set vencimento = current_date - 1 where empresa_id = :'EH' and tipo_codigo = 'crf_fgts' and status = 'aprovado';
+select avisar_certidoes_vencidas();
+select teste.igual('Certidão vencida: e-mail ao fornecedor uma vez', format($q$select 1 from envios_fila where empresa_id = %L and tipo = 'certidao_vencida'$q$, :'EH'), 1);
+select avisar_certidoes_vencidas();
+select teste.igual('Certidão vencida: não repete o aviso', format($q$select 1 from envios_fila where empresa_id = %L and tipo = 'certidao_vencida'$q$, :'EH'), 1);
+select teste.entrar(:F1);
+select teste.bloqueado('Certidão vencida: só o envio automático chama', $q$select avisar_certidoes_vencidas()$q$);
+select teste.sair();
+
+-- Reprovação
+select teste.entrar(:S1);
+select cadastrar_fornecedor_homologacao('Reprovado Ltda', '55444333000122', 'rep@x.com', null, null) as "ER" \gset
+select reprovar_homologacao(:'ER', 'Sem capacidade técnica');
+select teste.sair();
+select teste.igual('Reprovação: situação e e-mail', format($q$select 1 from empresas e join envios_fila f on f.empresa_id = e.id where e.id = %L and e.homologacao = 'reprovada' and f.tipo = 'homologacao_reprovada' and f.para = 'rep@x.com'$q$, :'ER'), 1);
+
+-- Limpeza
+delete from pedidos_obra where obra_id = :O9;
+delete from arquivos where documento_id in (select id from documentos where empresa_id = :'EH');
+update homologacao_documentos set documento_portal = null where empresa_id = :'EH';
+delete from documentos where empresa_id = :'EH';
+delete from contratos_fornecedor where empresa_id in (:E1, :'EH');
+delete from empresas_obras where obra_id = :O9;
+delete from envios_fila where empresa_id in (:'EH', :'ER');
+delete from usuarios_empresas where usuario_id = :FH;
+delete from empresas where id in (:'EH', :'ER');
+update empresas set codigo_bp = null where id = :E1;
+delete from mensagens where autor_id in (:S1, :FH);
+update homologacoes set convidada_por = null, decidida_por = null where convidada_por = :S1 or decidida_por = :S1;
+delete from usuarios where id in (:S1, :FH);
+delete from auth.users where id in (:S1, :FH);
 
 -- ============================================================================================
 -- 4. Admin desativado perde tudo

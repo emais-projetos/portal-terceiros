@@ -316,7 +316,7 @@ export async function lerDocumentosDaEmpresa(empresa: MinhaEmpresa, tipos: Map<s
 
 // ---------------------------------------------------------------- Envio de documento
 
-function tipoDoArquivo(arquivo: File): string {
+export function tipoDoArquivo(arquivo: File): string {
   if (arquivo.type) return arquivo.type;
   const ext = arquivo.name.split('.').pop()?.toLowerCase();
   if (ext === 'heic' || ext === 'heif') return 'image/heic';
@@ -334,7 +334,7 @@ export function problemaNoArquivo(arquivo: File): string | null {
   return null;
 }
 
-function nomeSeguro(nome: string): string {
+export function nomeSeguro(nome: string): string {
   const semAcento = nome.normalize('NFD').replace(/[̀-ͯ]/g, '');
   return semAcento.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_+/g, '_').slice(-80) || 'arquivo';
 }

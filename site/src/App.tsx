@@ -29,6 +29,10 @@ import { TermosAlojamento } from './paginas/seguranca/TermosAlojamento';
 import { FormularioPagina } from './paginas/seguranca/Formularios';
 import { AlojamentosFornecedor } from './paginas/fornecedor/Alojamentos';
 import { Carregando } from './componentes/Carregando';
+import { Homologacao } from './paginas/fornecedor/Homologacao';
+import { Homologacoes } from './paginas/suprimentos/Homologacoes';
+import { Fornecedores } from './paginas/suprimentos/Fornecedores';
+import { Emails } from './paginas/suprimentos/Emails';
 
 export function App() {
   const { recuperandoSenha, sessao } = useSessao();
@@ -47,7 +51,10 @@ export function App() {
       <Route path="/nova-senha" element={<NovaSenha />} />
       <Route path="/acesso" element={<AceitarConvite />} />
       <Route path="/" element={<ComLogin><Inicio /></ComLogin>} />
-      <Route path="/painel-obra" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><PainelObra /></SoPerfil>} />
+      <Route path="/painel-obra" element={<SoPerfil perfil={['admin', 'tst', 'engenharia', 'suprimentos']}><PainelObra /></SoPerfil>} />
+      <Route path="/homologacao" element={<SoPerfil perfil={['suprimentos', 'fornecedor']}><HomologacaoPorPerfil /></SoPerfil>} />
+      <Route path="/fornecedores" element={<SoPerfil perfil="suprimentos"><Fornecedores /></SoPerfil>} />
+      <Route path="/emails" element={<SoPerfil perfil="suprimentos"><Emails /></SoPerfil>} />
       <Route path="/seguranca" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><Seguranca /></SoPerfil>} />
       <Route path="/seguranca/vistoria/:id" element={<SoPerfil perfil={['admin', 'tst']}><VistoriaPagina /></SoPerfil>} />
       <Route path="/seguranca/ficha/:id" element={<SoPerfil perfil={['admin', 'tst']}><FichaPagina /></SoPerfil>} />
@@ -82,13 +89,20 @@ function ComLogin({ children }: { children: ReactNode }) {
 
 // As telas também são protegidas no banco; aqui só evitamos mostrar a tela a quem não é do perfil.
 function SoPerfil({ perfil, children }: { perfil: Perfil | Perfil[]; children: ReactNode }) {
-  const { usuario } = useSessao();
+  const { usuario, homologacao } = useSessao();
   const aceitos = Array.isArray(perfil) ? perfil : [perfil];
+  // Fornecedor ainda na homologação só vê a tela da homologação (na entrada do portal).
+  const travado = usuario?.perfil === 'fornecedor' && homologacao === 'fechado';
   return (
     <ComLogin>
-      {usuario && aceitos.includes(usuario.perfil) ? children : <Navigate to="/" replace />}
+      {usuario && aceitos.includes(usuario.perfil) && !travado ? children : <Navigate to="/" replace />}
     </ComLogin>
   );
+}
+
+function HomologacaoPorPerfil() {
+  const { usuario } = useSessao();
+  return usuario?.perfil === 'suprimentos' ? <Homologacoes /> : <Homologacao />;
 }
 
 // A mesma rota serve aos dois perfis: o fornecedor envia, o administrativo confere.

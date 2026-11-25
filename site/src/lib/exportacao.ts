@@ -10,7 +10,8 @@ export type ProgressoExportacao = { etapa: 'tabelas' | 'arquivos' | 'zip'; feito
 // partir das tabelas.
 const TABELAS = [
   'alocacoes', 'analises_conclusoes', 'arquivos', 'avisos_liberacao', 'cobrancas', 'cobrancas_envios', 'colaboradores', 'colaboradores_bloqueios',
-  'colaboradores_documentos_extras', 'conversas', 'convites_acesso', 'documentos', 'empresas', 'empresas_obras', 'eventos', 'exportacoes',
+  'colaboradores_documentos_extras', 'contratos_fornecedor', 'contratos_obras', 'conversas', 'convites_acesso', 'documentos', 'empresas', 'empresas_obras',
+  'envios_fila', 'eventos', 'exportacoes', 'homologacao_documentos', 'homologacao_tipos', 'homologacoes',
   'funcoes', 'funcoes_documentos', 'integracoes', 'integracoes_participantes', 'liberacoes_pendencia', 'medicoes', 'medicoes_arquivos',
   'medicoes_colaboradores', 'medicoes_itens', 'mensagens', 'modelos_documento', 'modelos_email', 'modelos_email_revisoes',
   'obras', 'parametros', 'parametros_historico', 'pedidos_obra', 'seg_alojamentos', 'seg_fichas_maquina', 'seg_locadoras',
