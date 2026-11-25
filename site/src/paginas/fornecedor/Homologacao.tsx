@@ -7,33 +7,30 @@ import { mensagemDeErro } from '../../lib/supabase';
 import { data, diasAte, hojeIso, somarDias, tamanhoArquivo } from '../../lib/formato';
 import { problemaNoArquivo } from '../../lib/fornecedor';
 import {
-  CAMPOS_OBRIGATORIOS, documentoAtual, enviarDocumentoHomologacao, enviarHomologacao, formatarCnpj, lerMinhaHomologacao,
+  documentoAtual, lerCamposHomologacao, enviarDocumentoHomologacao, enviarHomologacao, formatarCnpj, lerMinhaHomologacao,
   lerTiposHomologacao, salvarHomologacao, abrirArquivoHomologacao,
-  type DadosF31, type DocumentoHomologacao, type MinhaHomologacao, type Referencia, type TipoHomologacao,
+  type CampoHomologacao, type DadosF31, type DocumentoHomologacao, type MinhaHomologacao, type Referencia, type TipoHomologacao,
 } from '../../lib/homologacao';
 
 const REFERENCIA_VAZIA: Referencia = { empresa: '', endereco: '', cidade: '', estado: '', telefone: '', email: '', contato: '' };
 
-const NOMES_CAMPOS: Record<string, string> = {
-  razao_social: 'Razão social', ramo: 'Ramo de atividade', endereco: 'Endereço', numero: 'Número', bairro: 'Bairro', cep: 'CEP',
-  cidade: 'Cidade', estado: 'Estado', telefone: 'Telefone', contato: 'Pessoa de contato', email_empresa: 'E-mail da empresa',
-  banco: 'Banco', agencia: 'Agência', conta: 'Conta',
-};
 
 // Tela do fornecedor novo: preenche o F.31 (Homologação de fornecedores), envia os documentos e manda para o Suprimentos.
 // Depois de homologado, a mesma tela serve para renovar as certidões que vencem.
 export function Homologacao() {
   const [lista, setLista] = useState<MinhaHomologacao[] | null>(null);
   const [tipos, setTipos] = useState<TipoHomologacao[]>([]);
+  const [campos, setCampos] = useState<CampoHomologacao[]>([]);
   const [escolhida, setEscolhida] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     try {
-      const [l, t] = await Promise.all([lerMinhaHomologacao(), lerTiposHomologacao()]);
+      const [l, t, c] = await Promise.all([lerMinhaHomologacao(), lerTiposHomologacao(true), lerCamposHomologacao()]);
       setLista(l);
       setTipos(t);
+      setCampos(c);
       setEscolhida((atual) => atual && l.some((h) => h.empresa_id === atual) ? atual : (l.find((h) => !h.liberado) ?? l[0])?.empresa_id ?? null);
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
@@ -73,6 +70,7 @@ export function Homologacao() {
             key={atual.empresa_id}
             h={atual}
             tipos={tipos}
+            campos={campos}
             aoMudar={async (msg) => {
               setErro(null);
               setOk(msg);
@@ -89,7 +87,16 @@ export function Homologacao() {
   );
 }
 
-function FormularioHomologacao({ h, tipos, aoMudar, aoErro }: { h: MinhaHomologacao; tipos: TipoHomologacao[]; aoMudar: (msg: string) => Promise<void>; aoErro: (m: string) => void }) {
+function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
+  h: MinhaHomologacao;
+  tipos: TipoHomologacao[];
+  campos: CampoHomologacao[];
+  aoMudar: (msg: string) => Promise<void>;
+  aoErro: (m: string) => void;
+}) {
+  const obrigatorios = campos.filter((c) => c.obrigatorio && c.campo !== 'referencias').map((c) => c.campo as keyof DadosF31);
+  const referenciaObrigatoria = campos.find((c) => c.campo === 'referencias')?.obrigatorio ?? true;
+  const rotulo = (c: string) => campos.find((x) => x.campo === c)?.rotulo ?? c;
   const editavel = h.situacao === 'convidada' || h.situacao === 'devolvida';
   const podeEnviarDocs = editavel || h.situacao === 'homologada';
   const inicial = useMemo<DadosF31>(() => ({
@@ -124,8 +131,8 @@ function FormularioHomologacao({ h, tipos, aoMudar, aoErro }: { h: MinhaHomologa
     setAlterado(true);
   }
 
-  const camposFaltando = CAMPOS_OBRIGATORIOS.filter((c) => !String(dados[c] ?? '').trim());
-  const semReferencia = !(dados.referencias ?? []).some((r) => r.empresa.trim());
+  const camposFaltando = obrigatorios.filter((c) => !String(dados[c] ?? '').trim());
+  const semReferencia = referenciaObrigatoria && !(dados.referencias ?? []).some((r) => r.empresa.trim());
   const docsFaltando = tipos.filter((t) => {
     if (!t.obrigatorio) return false;
     const d = documentoAtual(h.documentos, t.codigo);
@@ -177,7 +184,7 @@ function FormularioHomologacao({ h, tipos, aoMudar, aoErro }: { h: MinhaHomologa
   }
 
   const campo = (nome: keyof DadosF31, rotulo: string, extra?: { tipo?: string; dica?: string; max?: number }) => {
-    const obrigatorio = CAMPOS_OBRIGATORIOS.includes(nome);
+    const obrigatorio = obrigatorios.includes(nome);
     const vazio = obrigatorio && tentouEnviar && !String(dados[nome] ?? '').trim();
     return (
       <label className="campo">
@@ -242,14 +249,14 @@ function FormularioHomologacao({ h, tipos, aoMudar, aoErro }: { h: MinhaHomologa
 
       <section className="bloco">
         <h2 className="bloco-titulo">Referências comerciais</h2>
-        <p className="apoio">Empresas para quem vocês já prestaram serviço. Informe pelo menos uma, até três.</p>
+        <p className="apoio">Empresas para quem vocês já prestaram serviço. {referenciaObrigatoria ? 'Informe pelo menos uma, até três.' : 'Até três.'}</p>
         {(dados.referencias ?? []).map((r, i) => (
           <fieldset key={i} className="campo-grupo">
             <legend>Referência {i + 1}</legend>
             <div className="grade-3">
               {(['empresa', 'contato', 'telefone', 'email', 'endereco', 'cidade', 'estado'] as (keyof Referencia)[]).map((c) => (
                 <label className="campo" key={c}>
-                  <span>{{ empresa: 'Empresa', contato: 'Contato', telefone: 'Telefone', email: 'E-mail', endereco: 'Endereço', cidade: 'Cidade', estado: 'Estado' }[c]}{c === 'empresa' && i === 0 ? ' *' : ''}</span>
+                  <span>{{ empresa: 'Empresa', contato: 'Contato', telefone: 'Telefone', email: 'E-mail', endereco: 'Endereço', cidade: 'Cidade', estado: 'Estado' }[c]}{c === 'empresa' && i === 0 && referenciaObrigatoria ? ' *' : ''}</span>
                   <input
                     type={c === 'email' ? 'email' : c === 'telefone' ? 'tel' : 'text'}
                     value={r[c] ?? ''}
@@ -334,7 +341,7 @@ function FormularioHomologacao({ h, tipos, aoMudar, aoErro }: { h: MinhaHomologa
             <>
               <p className="apoio">Para enviar, ainda falta:</p>
               <ul className="lista-simples">
-                {camposFaltando.length > 0 && <li>Preencher: {camposFaltando.map((c) => NOMES_CAMPOS[c] ?? c).join(', ')}</li>}
+                {camposFaltando.length > 0 && <li>Preencher: {camposFaltando.map(rotulo).join(', ')}</li>}
                 {semReferencia && <li>Informar pelo menos uma referência comercial</li>}
                 {docsFaltando.map((t) => <li key={t.codigo}>Enviar {t.nome}{documentoAtual(h.documentos, t.codigo)?.status === 'devolvido' ? ' (devolvido, envie de novo)' : ''}</li>)}
               </ul>

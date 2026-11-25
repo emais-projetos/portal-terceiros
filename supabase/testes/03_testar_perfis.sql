@@ -846,11 +846,38 @@ select teste.igual('Homologação: empresa ainda fechada no portal', format($q$s
 select teste.igual('Homologação: fornecedor vê a homologação', $q$select jsonb_array_elements(minha_homologacao())$q$, 1);
 select teste.bloqueado('Homologação: sem portal não cadastra colaborador', format($q$insert into colaboradores (empresa_id, nome, cpf) values (%L, 'X', '12345678909')$q$, :'EH'));
 select teste.bloqueado('Homologação: envio sem dados', format($q$select enviar_homologacao(%L)$q$, :'EH'));
+-- Configuração do formulário: só o Suprimentos (e o administrativo) muda, com registro
+select teste.bloqueado('Configuração: fornecedor não muda campo obrigatório', $q$select configurar_campo_homologacao('ramo', false)$q$);
+select teste.bloqueado('Configuração: fornecedor não muda documento', $q$select configurar_documento_homologacao('alvara', false, null)$q$);
+select teste.contar(), case when teste.linhas($q$update homologacao_tipos set obrigatorio = false where codigo = 'alvara'$q$) > 0 then teste.falha('Configuração: fornecedor não altera documento direto', 'alterou') end;
+select teste.sair();
+select teste.entrar(:S1);
+select teste.bloqueado('Configuração: razão social é sempre obrigatória', $q$select configurar_campo_homologacao('razao_social', false)$q$);
+select teste.bloqueado('Configuração: validade inválida', $q$select configurar_documento_homologacao('alvara', true, 0)$q$);
+select teste.contar(), case when teste.linhas($q$update homologacao_tipos set obrigatorio = false where codigo = 'alvara'$q$) > 0 then teste.falha('Configuração: Suprimentos não altera documento direto', 'alterou') end;
+select configurar_campo_homologacao('celular', true);
+select configurar_campo_homologacao('celular', false);
+select configurar_documento_homologacao('alvara', true, 180);
+select teste.igual('Configuração: mudanças registradas', $q$select jsonb_array_elements(historico_configuracao_homologacao())$q$, 3);
+select teste.sair();
+select teste.igual('Configuração: validade nova gravada', $q$select 1 from homologacao_tipos where codigo = 'alvara' and validade_dias = 180$q$, 1);
+select teste.entrar(:FH);
 select teste.bloqueado('Homologação: arquivo fora da pasta', format($q$select enviar_documento_homologacao(%L, 'cnd_federal', current_date, '[{"caminho":"outra/h/1/a.pdf"}]')$q$, :'EH'));
 select teste.bloqueado('Homologação: data futura', format($q$select enviar_documento_homologacao(%L, 'cnd_federal', current_date + 1, '[{"caminho":"%s/h/1/a.pdf"}]')$q$, :'EH', :'EH'));
 select salvar_homologacao(:'EH', '{"razao_social":"FORNECEDOR HOMOLOGADO LTDA","ramo":"Pintura","endereco":"Rua A","numero":"1","bairro":"Centro","cep":"15000-000","cidade":"Rio Preto","estado":"SP","telefone":"17 3333-3333","contato":"Fulano","email_empresa":"contato@x.com","banco":"001","agencia":"1234","conta":"5678-9","referencias":[{"empresa":"Cliente A","telefone":"17 1111-1111"}],"email":"hackeado@x.com"}'::jsonb);
 select count(enviar_documento_homologacao(:'EH', t.codigo, current_date - 2, jsonb_build_array(jsonb_build_object('caminho', :'EH' || '/h/' || t.codigo || '/a.pdf', 'nome', t.codigo || '.pdf', 'tamanho', 100, 'tipo', 'application/pdf'))))
   from homologacao_tipos t where t.obrigatorio;
+select teste.sair();
+select teste.entrar(:S1);
+select configurar_campo_homologacao('celular', true);
+select teste.sair();
+select teste.entrar(:FH);
+select teste.bloqueado('Configuração: envio exige o campo que ficou obrigatório', format($q$select enviar_homologacao(%L)$q$, :'EH'));
+select teste.sair();
+select teste.entrar(:S1);
+select configurar_campo_homologacao('celular', false);
+select teste.sair();
+select teste.entrar(:FH);
 select enviar_homologacao(:'EH');
 select teste.bloqueado('Homologação: enviada não muda mais', format($q$select salvar_homologacao(%L, '{}'::jsonb)$q$, :'EH'));
 select teste.sair();

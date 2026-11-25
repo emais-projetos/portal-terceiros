@@ -32,7 +32,7 @@ import { Carregando } from './componentes/Carregando';
 import { Homologacao } from './paginas/fornecedor/Homologacao';
 import { Homologacoes } from './paginas/suprimentos/Homologacoes';
 import { Fornecedores } from './paginas/suprimentos/Fornecedores';
-import { Emails } from './paginas/suprimentos/Emails';
+import { Configuracao } from './paginas/suprimentos/Configuracao';
 
 export function App() {
   const { recuperandoSenha, sessao } = useSessao();
@@ -54,7 +54,8 @@ export function App() {
       <Route path="/painel-obra" element={<SoPerfil perfil={['admin', 'tst', 'engenharia', 'suprimentos']}><PainelObra /></SoPerfil>} />
       <Route path="/homologacao" element={<SoPerfil perfil={['suprimentos', 'fornecedor']}><HomologacaoPorPerfil /></SoPerfil>} />
       <Route path="/fornecedores" element={<SoPerfil perfil="suprimentos"><Fornecedores /></SoPerfil>} />
-      <Route path="/emails" element={<SoPerfil perfil="suprimentos"><Emails /></SoPerfil>} />
+      <Route path="/configuracao" element={<SoPerfil perfil="suprimentos"><Configuracao /></SoPerfil>} />
+      <Route path="/emails" element={<Navigate to="/configuracao?aba=emails" replace />} />
       <Route path="/seguranca" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><Seguranca /></SoPerfil>} />
       <Route path="/seguranca/vistoria/:id" element={<SoPerfil perfil={['admin', 'tst']}><VistoriaPagina /></SoPerfil>} />
       <Route path="/seguranca/ficha/:id" element={<SoPerfil perfil={['admin', 'tst']}><FichaPagina /></SoPerfil>} />

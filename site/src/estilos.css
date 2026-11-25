@@ -3186,3 +3186,4 @@ button.celula:hover {
 @media (max-width: 520px) {
   .grade-3 { grid-template-columns: 1fr; }
 }
+.campo-validade input { max-width: 140px; }

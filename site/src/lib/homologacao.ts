@@ -69,9 +69,43 @@ export type DadosF31 = {
   email?: string;
 };
 
-export const CAMPOS_OBRIGATORIOS: (keyof DadosF31)[] = [
-  'razao_social', 'ramo', 'endereco', 'numero', 'bairro', 'cep', 'cidade', 'estado', 'telefone', 'contato', 'email_empresa', 'banco', 'agencia', 'conta',
-];
+// Campos do F.31 e se são obrigatórios: o Suprimentos define em Configuração > Formulário da homologação.
+export type CampoHomologacao = { campo: keyof DadosF31 | 'referencias'; rotulo: string; secao: string; ordem: number; obrigatorio: boolean; fixo: boolean };
+
+export async function lerCamposHomologacao(): Promise<CampoHomologacao[]> {
+  const { data, error } = await supabase.from('homologacao_campos').select('*').order('ordem');
+  if (error) throw error;
+  return (data ?? []) as CampoHomologacao[];
+}
+
+export async function configurarCampo(campo: string, obrigatorio: boolean) {
+  const { error } = await supabase.rpc('configurar_campo_homologacao', { p_campo: campo, p_obrigatorio: obrigatorio });
+  if (error) throw error;
+}
+
+export async function configurarDocumento(codigo: string, obrigatorio: boolean, validadeDias: number | null) {
+  const { error } = await supabase.rpc('configurar_documento_homologacao', { p_codigo: codigo, p_obrigatorio: obrigatorio, p_validade_dias: validadeDias });
+  tiposCache = null;
+  if (error) throw error;
+}
+
+export type MudancaConfiguracao = {
+  em: string;
+  quem: string | null;
+  acao: 'campo_homologacao_alterado' | 'documento_homologacao_alterado';
+  detalhe: {
+    rotulo?: string;
+    nome?: string;
+    obrigatorio?: { de: boolean; para: boolean };
+    validade_dias?: { de: number | null; para: number | null };
+  };
+};
+
+export async function lerHistoricoConfiguracao(): Promise<MudancaConfiguracao[]> {
+  const { data, error } = await supabase.rpc('historico_configuracao_homologacao');
+  if (error) throw error;
+  return (data ?? []) as MudancaConfiguracao[];
+}
 
 export type MinhaHomologacao = {
   empresa_id: string;
@@ -108,8 +142,8 @@ function erroDaFuncao(error: unknown): Promise<never> {
 // ---------------------------------------------------------------- Tipos de documento
 
 let tiposCache: TipoHomologacao[] | null = null;
-export async function lerTiposHomologacao(): Promise<TipoHomologacao[]> {
-  if (tiposCache) return tiposCache;
+export async function lerTiposHomologacao(novo = false): Promise<TipoHomologacao[]> {
+  if (tiposCache && !novo) return tiposCache;
   const { data, error } = await supabase.from('homologacao_tipos').select('*').order('ordem');
   if (error) throw error;
   tiposCache = (data ?? []) as TipoHomologacao[];

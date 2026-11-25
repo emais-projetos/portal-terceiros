@@ -116,6 +116,9 @@ type Grupo = { titulo: string | null; itens: Item[] };
 const abaAcessos = (aba: string) => (caminho: string, busca: string) =>
   caminho.startsWith('/acessos') && (new URLSearchParams(busca).get('aba') ?? 'usuarios') === aba;
 
+const abaConfiguracao = (aba: string) => (caminho: string, busca: string) =>
+  caminho.startsWith('/configuracao') && (new URLSearchParams(busca).get('aba') ?? 'formulario') === aba;
+
 const abaFornecedores = (aba: string) => (caminho: string, busca: string) =>
   caminho.startsWith('/fornecedores') && (new URLSearchParams(busca).get('aba') ?? 'cadastro') === aba;
 
@@ -212,7 +215,15 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
               { to: '/fornecedores?aba=pedidos', rotulo: 'Pedidos de obra', ativo: abaFornecedores('pedidos'), contador: sup?.pedidos || null },
             ],
           },
-          { to: '/emails', rotulo: 'E-mails', icone: 'emails' },
+          {
+            to: '/configuracao',
+            rotulo: 'Configuração',
+            icone: 'acessos',
+            filhos: [
+              { to: '/configuracao', rotulo: 'Formulário da homologação', ativo: abaConfiguracao('formulario') },
+              { to: '/configuracao?aba=emails', rotulo: 'E-mails', ativo: abaConfiguracao('emails') },
+            ],
+          },
         ],
       },
     ];
