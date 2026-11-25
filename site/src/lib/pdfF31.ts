@@ -1,5 +1,5 @@
 import { data as dataBr } from './formato';
-import { ITENS_QUALIFICACAO, formatarCnpj, type DetalheHomologacao, type TipoHomologacao, documentoAtual } from './homologacao';
+import { ITENS_QUALIFICACAO, formatarCnpj, respostaAdicional, type CampoHomologacao, type DetalheHomologacao, type TipoHomologacao, documentoAtual } from './homologacao';
 
 // F.31 Homologação de fornecedores (SGQ) gerado a partir do que o fornecedor preencheu e do parecer do Suprimentos.
 
@@ -32,7 +32,7 @@ async function logo(): Promise<{ url: string; w: number; h: number } | null> {
 
 const RESPOSTA: Record<string, string> = { sim: 'Sim', nao: 'Não', na: 'NA' };
 
-export async function baixarF31(d: DetalheHomologacao, tipos: TipoHomologacao[]) {
+export async function baixarF31(d: DetalheHomologacao, tipos: TipoHomologacao[], campos: CampoHomologacao[] = []) {
   const [{ jsPDF }, { autoTable }, marca] = await Promise.all([import('jspdf'), import('jspdf-autotable'), logo()]);
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const m = 14;
@@ -94,6 +94,17 @@ export async function baixarF31(d: DetalheHomologacao, tipos: TipoHomologacao[])
     ['Conta', dados.conta],
     ['', ''],
   ]);
+  const adicionais = campos.filter((c) => c.personalizado && (c.ativo || respostaAdicional(dados, c)));
+  if (adicionais.length) {
+    autoTable(doc, {
+      ...estilo,
+      startY: y,
+      head: [['Perguntas adicionais', 'Resposta']],
+      body: adicionais.map((c) => [c.rotulo, respostaAdicional(dados, c) || '-']),
+      columnStyles: { 1: { cellWidth: 70 } },
+    });
+    y = fim();
+  }
   const refs = (dados.referencias ?? []).filter((r) => r.empresa);
   autoTable(doc, {
     ...estilo,

@@ -69,8 +69,8 @@ export function Homologacao() {
           <FormularioHomologacao
             key={atual.empresa_id}
             h={atual}
-            tipos={tipos}
-            campos={campos}
+            tipos={tipos.filter((t) => t.ativo)}
+            campos={campos.filter((c) => c.ativo)}
             aoMudar={async (msg) => {
               setErro(null);
               setOk(msg);
@@ -97,6 +97,7 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
   const obrigatorios = campos.filter((c) => c.obrigatorio && c.campo !== 'referencias').map((c) => c.campo as keyof DadosF31);
   const referenciaObrigatoria = campos.find((c) => c.campo === 'referencias')?.obrigatorio ?? true;
   const rotulo = (c: string) => campos.find((x) => x.campo === c)?.rotulo ?? c;
+  const adicionais = campos.filter((c) => c.personalizado);
   const editavel = h.situacao === 'convidada' || h.situacao === 'devolvida';
   const podeEnviarDocs = editavel || h.situacao === 'homologada';
   const inicial = useMemo<DadosF31>(() => ({
@@ -138,7 +139,16 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
     const d = documentoAtual(h.documentos, t.codigo);
     return !d || d.status === 'devolvido';
   });
-  const pronto = camposFaltando.length === 0 && !semReferencia && docsFaltando.length === 0;
+  const formatoErrado = (c: CampoHomologacao) => {
+    const v = String(dados[c.campo as keyof DadosF31] ?? '').trim();
+    if (!v) return false;
+    if (c.formato === 'data') return !/^\d{4}-\d{2}-\d{2}$/.test(v);
+    if (c.formato === 'numero') return !/^-?\d+([.,]\d+)?$/.test(v);
+    return false;
+  };
+
+  const formatosErrados = adicionais.filter(formatoErrado);
+  const pronto = camposFaltando.length === 0 && !semReferencia && docsFaltando.length === 0 && formatosErrados.length === 0;
 
   function limpar(d: DadosF31): DadosF31 {
     const refs = (d.referencias ?? []).filter((r) => Object.values(r).some((v) => String(v ?? '').trim()));
@@ -182,6 +192,7 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
       setEnviando(false);
     }
   }
+
 
   const campo = (nome: keyof DadosF31, rotulo: string, extra?: { tipo?: string; dica?: string; max?: number }) => {
     const obrigatorio = obrigatorios.includes(nome);
@@ -296,6 +307,29 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
         )}
       </section>
 
+      {adicionais.length > 0 && (
+        <section className="bloco">
+          <h2 className="bloco-titulo">Perguntas adicionais</h2>
+          <p className="apoio">Informações que o Suprimentos da Emais pede além do cadastro padrão.</p>
+          <div className="grade-2">
+            {adicionais.map((c) => {
+              const nome = c.campo as keyof DadosF31;
+              const errado = formatoErrado(c);
+              return (
+                <div key={c.campo}>
+                  {campo(nome, c.rotulo, {
+                    tipo: c.formato === 'data' ? 'date' : 'text',
+                    dica: c.formato === 'numero' ? 'Só números. Use vírgula para decimais.' : undefined,
+                    max: c.formato === 'texto' ? 500 : 30,
+                  })}
+                  {errado && <small className="campo-erro">{c.formato === 'data' ? 'Informe uma data válida.' : 'Informe só números.'}</small>}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {editavel && (
         <div className="linha-botoes">
           <button
@@ -343,6 +377,7 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
               <ul className="lista-simples">
                 {camposFaltando.length > 0 && <li>Preencher: {camposFaltando.map(rotulo).join(', ')}</li>}
                 {semReferencia && <li>Informar pelo menos uma referência comercial</li>}
+                {formatosErrados.length > 0 && <li>Corrigir o formato: {formatosErrados.map((c) => c.rotulo).join(', ')}</li>}
                 {docsFaltando.map((t) => <li key={t.codigo}>Enviar {t.nome}{documentoAtual(h.documentos, t.codigo)?.status === 'devolvido' ? ' (devolvido, envie de novo)' : ''}</li>)}
               </ul>
             </>

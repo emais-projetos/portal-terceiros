@@ -7,9 +7,9 @@ import { data, diasAte } from '../../lib/formato';
 import { useSessao } from '../../lib/sessao';
 import {
   ITENS_QUALIFICACAO, NOMES_SITUACAO_HOMOLOGACAO, abrirArquivoHomologacao, analisarDocumentoHomologacao, devolverHomologacao, documentoAtual,
-  encerrarContrato, formatarCnpj, homologarFornecedor, lerDetalheHomologacao, lerListaHomologacoes, lerTiposHomologacao, reenviarConvite,
+  encerrarContrato, formatarCnpj, homologarFornecedor, lerDetalheHomologacao, lerListaHomologacoes, lerTiposHomologacao, reenviarConvite, lerCamposHomologacao, respostaAdicional,
   reprovarHomologacao,
-  type DetalheHomologacao, type DocumentoHomologacao, type ItemHomologacao, type RespostaQualificacao, type SituacaoHomologacao, type TipoHomologacao,
+  type CampoHomologacao, type DetalheHomologacao, type DocumentoHomologacao, type ItemHomologacao, type RespostaQualificacao, type SituacaoHomologacao, type TipoHomologacao,
 } from '../../lib/homologacao';
 import { NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
 
@@ -144,6 +144,7 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
   const { usuario } = useSessao();
   const [d, setD] = useState<DetalheHomologacao | null>(null);
   const [tipos, setTipos] = useState<TipoHomologacao[]>([]);
+  const [campos, setCampos] = useState<CampoHomologacao[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -157,9 +158,11 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
 
   const carregar = useCallback(async () => {
     try {
-      const [x, t] = await Promise.all([lerDetalheHomologacao(empresaId), lerTiposHomologacao()]);
+      const [x, t, c] = await Promise.all([lerDetalheHomologacao(empresaId), lerTiposHomologacao(true), lerCamposHomologacao()]);
       setD(x);
-      setTipos(t);
+      // Documento removido da configuração só aparece se este fornecedor já tinha enviado.
+      setTipos(t.filter((tp) => tp.ativo || x.documentos.some((doc) => doc.tipo === tp.codigo)));
+      setCampos(c);
       setQualificacao(x.qualificacao ?? {});
       setComentarios(x.comentarios ?? '');
     } catch (e) {
@@ -177,7 +180,7 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
 
   const resumoDocs = useMemo(() => {
     if (!d) return { faltando: [] as string[], emAnalise: 0 };
-    const faltando = tipos.filter((t) => t.obrigatorio && !d.documentos.some((x) => x.tipo === t.codigo && x.status === 'aprovado')).map((t) => t.nome);
+    const faltando = tipos.filter((t) => t.ativo && t.obrigatorio && !d.documentos.some((x) => x.tipo === t.codigo && x.status === 'aprovado')).map((t) => t.nome);
     return { faltando, emAnalise: d.documentos.filter((x) => x.status === 'em_analise').length };
   }, [d, tipos]);
 
@@ -228,7 +231,7 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
           <button
             type="button"
             className="botao botao-secundario"
-            onClick={() => import('../../lib/pdfF31').then((m) => m.baixarF31(d, tipos)).catch((e) => setErro(mensagemDeErro(e)))}
+            onClick={() => import('../../lib/pdfF31').then((m) => m.baixarF31(d, tipos, campos)).catch((e) => setErro(mensagemDeErro(e)))}
           >
             Baixar F.31 (PDF)
           </button>
@@ -294,6 +297,16 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
                 {valor('Banco', dados.banco)}
                 {valor('Agência e conta', [dados.agencia, dados.conta].filter(Boolean).join(' / '))}
               </div>
+              {campos.some((c) => c.personalizado && (c.ativo || respostaAdicional(dados, c))) && (
+                <>
+                  <h3 className="detalhe-subtitulo">Perguntas adicionais</h3>
+                  <div className="grade-2">
+                    {campos.filter((c) => c.personalizado && (c.ativo || respostaAdicional(dados, c))).map((c) => (
+                      <div key={c.campo}>{valor(c.rotulo, respostaAdicional(dados, c))}</div>
+                    ))}
+                  </div>
+                </>
+              )}
               <h3 className="detalhe-subtitulo">Referências comerciais</h3>
               {(dados.referencias ?? []).filter((r) => r.empresa).length === 0 ? (
                 <p className="dica">Nenhuma referência informada.</p>

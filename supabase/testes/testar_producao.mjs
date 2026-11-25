@@ -181,6 +181,8 @@ const FUNCOES = {
   configurar_documento_homologacao: 'p_codigo text, p_obrigatorio boolean, p_validade_dias integer',
   contadores_suprimentos: '',
   historico_configuracao_homologacao: '',
+  incluir_item_homologacao: 'p_pergunta text, p_formato text, p_obrigatorio boolean',
+  remover_item_homologacao: 'p_codigo text',
   detalhe_homologacao: 'p_empresa uuid',
   devolver_homologacao: 'p_empresa uuid',
   encerrar_contrato: 'p_contrato uuid, p_motivo text',

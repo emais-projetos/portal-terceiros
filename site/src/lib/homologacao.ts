@@ -23,6 +23,8 @@ export type TipoHomologacao = {
   validade_dias: number | null;
   tipo_portal: string | null;
   observacao: string | null;
+  personalizado: boolean;
+  ativo: boolean;
 };
 
 export type ArquivoHomologacao = { caminho: string; nome?: string; tamanho?: number; tipo?: string };
@@ -67,10 +69,43 @@ export type DadosF31 = {
   conta?: string;
   referencias?: Referencia[];
   email?: string;
+  // Respostas das perguntas incluídas pelo Suprimentos (Configuração > Formulário da homologação).
+  [extra: `extra_${string}`]: string | undefined;
 };
 
 // Campos do F.31 e se são obrigatórios: o Suprimentos define em Configuração > Formulário da homologação.
-export type CampoHomologacao = { campo: keyof DadosF31 | 'referencias'; rotulo: string; secao: string; ordem: number; obrigatorio: boolean; fixo: boolean };
+export type FormatoCampo = 'texto' | 'data' | 'numero';
+export type CampoHomologacao = {
+  campo: keyof DadosF31 | 'referencias';
+  rotulo: string;
+  secao: string;
+  ordem: number;
+  obrigatorio: boolean;
+  fixo: boolean;
+  formato: FormatoCampo;
+  personalizado: boolean;
+  ativo: boolean;
+};
+export const NOMES_FORMATO: Record<FormatoCampo | 'anexo', string> = { texto: 'Texto', data: 'Data', numero: 'Número', anexo: 'Anexo de documento' };
+
+// Resposta de uma pergunta incluída pelo Suprimentos, pronta para mostrar (data no formato dd/mm/aaaa).
+export function respostaAdicional(dados: DadosF31 | null | undefined, c: CampoHomologacao): string {
+  const v = String((dados as Record<string, unknown> | null | undefined)?.[c.campo] ?? '').trim();
+  if (c.formato === 'data' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}`;
+  return v;
+}
+
+export async function incluirItem(pergunta: string, formato: FormatoCampo | 'anexo', obrigatorio: boolean, validadeDias: number | null) {
+  const { error } = await supabase.rpc('incluir_item_homologacao', { p_pergunta: pergunta, p_formato: formato, p_obrigatorio: obrigatorio, p_validade_dias: validadeDias });
+  tiposCache = null;
+  if (error) throw error;
+}
+
+export async function removerItem(codigo: string) {
+  const { error } = await supabase.rpc('remover_item_homologacao', { p_codigo: codigo });
+  tiposCache = null;
+  if (error) throw error;
+}
 
 export async function lerCamposHomologacao(): Promise<CampoHomologacao[]> {
   const { data, error } = await supabase.from('homologacao_campos').select('*').order('ordem');
@@ -92,12 +127,13 @@ export async function configurarDocumento(codigo: string, obrigatorio: boolean, 
 export type MudancaConfiguracao = {
   em: string;
   quem: string | null;
-  acao: 'campo_homologacao_alterado' | 'documento_homologacao_alterado';
+  acao: 'campo_homologacao_alterado' | 'documento_homologacao_alterado' | 'item_homologacao_incluido' | 'item_homologacao_removido';
   detalhe: {
     rotulo?: string;
+    formato?: FormatoCampo | 'anexo';
     nome?: string;
-    obrigatorio?: { de: boolean; para: boolean };
-    validade_dias?: { de: number | null; para: number | null };
+    obrigatorio?: boolean | { de: boolean; para: boolean };
+    validade_dias?: number | null | { de: number | null; para: number | null };
   };
 };
 
