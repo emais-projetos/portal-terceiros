@@ -11,7 +11,7 @@ import { Cartao } from '../componentes/Graficos';
 import { GradeMedicao } from '../componentes/GradeMedicao';
 import { mensagemDeErro } from '../lib/supabase';
 import { data, diasAte, rotuloStatus } from '../lib/formato';
-import { mesPorExtenso, rotuloStatusMedicao, seloMedicao } from '../lib/medicao';
+import { mesPorExtenso, rotuloMedicao, seloDeMedicao } from '../lib/medicao';
 import {
   INICIO_MEDICAO_PORTAL, type ObraDoPainel, lerObrasDoPainel, lerPainelObra, mesesDoPainel, pagamentoDe, situacaoIntegracao,
   type ColaboradorObra, type MedicaoObra, type PainelObra as Painel, type PendenciaDoc,
@@ -173,7 +173,7 @@ function Conteudo({ painel }: { painel: Painel }) {
       .map((e) => ({ empresa: e, medicao: doMes.get(e.id) ?? null, pagamento: pagamentoDe(doMes.get(e.id) ?? null, mes) }))
       .sort((a, b) => ordemPagamento[a.pagamento.acao] - ordemPagamento[b.pagamento.acao] || a.empresa.nome.localeCompare(b.empresa.nome, 'pt-BR'));
   }, [painel.medicoes, empresas, liberados, mes]);
-  const itensGrade = useMemo(() => painel.medicoes.map((m) => ({ ...m, pendentes: m.itens_pendentes.length })), [painel.medicoes]);
+  const itensGrade = useMemo(() => painel.medicoes.map((m) => ({ ...m, pendentes: m.itens_pendentes.length, dispensada: !!m.dispensada })), [painel.medicoes]);
   const verMes = (competencia: string) => {
     setMes(competencia);
     document.getElementById('medicao-mes')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -282,14 +282,15 @@ function Conteudo({ painel }: { painel: Painel }) {
                     </small>
                   </td>
                   <td>
-                    {medicao ? <span className={`selo ${seloMedicao[medicao.status]}`}>{rotuloStatusMedicao[medicao.status]}</span> : <span className="sub">Não enviada</span>}
+                    {medicao ? <span className={`selo ${seloDeMedicao(medicao)}`}>{rotuloMedicao(medicao)}</span> : <span className="sub">Não enviada</span>}
+                    {medicao?.dispensada && medicao.motivo_dispensa && <small className="sub">{medicao.motivo_dispensa}</small>}
                     {medicao?.primeiro_envio_em && <small className="sub">Enviada em {data(medicao.primeiro_envio_em)}</small>}
                   </td>
                   <td>
                     {!medicao ? (
                       <span className="sub">Medição não iniciada</span>
                     ) : medicao.status === 'aprovada' ? (
-                      <span className="sub">Nada</span>
+                      <span className="sub">{medicao.dispensada ? 'Dispensada, nada a apresentar' : 'Nada'}</span>
                     ) : medicao.itens_pendentes.length >= 12 ? (
                       <span className="sub">Documentos não enviados</span>
                     ) : medicao.itens_pendentes.length > 0 ? (

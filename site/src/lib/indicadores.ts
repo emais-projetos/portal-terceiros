@@ -160,7 +160,8 @@ export type IndicadoresMedicao = {
 
 export function calcularMedicao(base: BaseIndicadores, filtro: Filtro): IndicadoresMedicao {
   const hoje = hojeIso();
-  const doFiltro = base.medicoes.filter((m) => m.competencia >= filtro.desde && (!filtro.obraId || m.obra_id === filtro.obraId));
+  // Medição dispensada não entra nos indicadores: não havia o que entregar.
+  const doFiltro = base.medicoes.filter((m) => !m.dispensada_em && m.competencia >= filtro.desde && (!filtro.obraId || m.obra_id === filtro.obraId));
   const ultimoMes = doFiltro.reduce((max, m) => (m.competencia > max ? m.competencia : max), filtro.desde);
   const meses = mesesEntre(filtro.desde, ultimoMes).map((c) => {
     const l = doFiltro.filter((m) => m.competencia === c);

@@ -4,6 +4,7 @@ import { Pagina, Mensagem } from '../../componentes/Pagina';
 import { Dialogo } from '../../componentes/Dialogo';
 import { AbasMedicao, HistoricoMedicao } from './HistoricoMedicao';
 import { Carregando } from '../../componentes/Carregando';
+import { DialogoDispensa, type AlvoDispensa } from '../../componentes/DispensaMedicao';
 import { mensagemDeErro, enderecoDoSite } from '../../lib/supabase';
 import { useSessao } from '../../lib/sessao';
 import { formatarCnpj } from '../../lib/consultas';
@@ -14,7 +15,7 @@ import { copiarTexto, lerAlocacoes, linkOutlook, type AlocacaoResumo } from '../
 import {
   CHAVES_CONFERENCIA, abrirArquivoMedicao, arquivosAtuais, avaliarItem, baixarArquivoMedicao, baixarMedicao, competenciaPadrao,
   concluirConferencia, conferirColaborador, lerMedicao, lerMedicoes, lerTiposMedicao, lerTodasMedicoes, mesCurto, mesPorExtenso, nomeArquivoMedicao,
-  combinarPrazo, registrarCobranca, rotuloConferencia, rotuloSituacaoColaborador, rotuloStatusItem, rotuloStatusMedicao, seloItem, seloMedicao,
+  combinarPrazo, desfazerDispensa, registrarCobranca, rotuloMedicao, seloDeMedicao, rotuloConferencia, rotuloSituacaoColaborador, rotuloStatusItem, seloItem,
   type ChaveConferencia, type DetalheMedicao, type ItemMedicao, type LinhaColaborador, type Marcacao, type Medicao,
   type SituacaoColaborador, type TipoMedicao,
 } from '../../lib/medicao';
@@ -67,7 +68,7 @@ export function Medicoes() {
 
 // ---------------------------------------------------------------- Painel do mês
 
-type Filtro = 'todas' | 'em_analise' | 'pendente' | 'retidas' | 'aprovadas' | 'nao_iniciadas';
+type Filtro = 'todas' | 'em_analise' | 'pendente' | 'retidas' | 'aprovadas' | 'dispensadas' | 'nao_iniciadas';
 
 type NaoIniciada = { empresa_id: string; empresa: string; obra_id: string; obra: string; liberados: number };
 
@@ -81,10 +82,13 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
   const [busca, setBusca] = useState('');
   const [selecao, setSelecao] = useState<Set<string>>(new Set());
   const [retencao, setRetencao] = useState(false);
+  const [selecaoNI, setSelecaoNI] = useState<Set<string>>(new Set());
+  const [dispensa, setDispensa] = useState<AlvoDispensa[] | null>(null);
 
   useEffect(() => {
     setMedicoes(null);
     setSelecao(new Set());
+    setSelecaoNI(new Set());
     lerDoPainel(competencia)
       .then(setMedicoes)
       .catch((e) => setErro(mensagemDeErro(e)));
@@ -120,9 +124,12 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
       em_analise: l.filter((m) => m.status === 'em_analise').length,
       pendente: l.filter((m) => m.status === 'pendente_fornecedor' || m.status === 'aberta').length,
       retidas: l.filter((m) => m.retida).length,
-      aprovadas: l.filter((m) => m.status === 'aprovada').length,
+      aprovadas: l.filter((m) => m.status === 'aprovada' && !m.dispensada_em).length,
+      dispensadas: l.filter((m) => m.dispensada_em).length,
       nao_iniciadas: naoIniciadas.length,
       no_prazo: l.filter((m) => m.entregue_no_prazo).length,
+      // Dispensada não conta na entrega no prazo: não havia o que entregar.
+      a_entregar: l.filter((m) => !m.dispensada_em).length,
     };
   }, [medicoes, naoIniciadas]);
 
@@ -133,7 +140,8 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
         if (filtro === 'em_analise') return m.status === 'em_analise';
         if (filtro === 'pendente') return m.status === 'pendente_fornecedor' || m.status === 'aberta';
         if (filtro === 'retidas') return m.retida;
-        if (filtro === 'aprovadas') return m.status === 'aprovada';
+        if (filtro === 'aprovadas') return m.status === 'aprovada' && !m.dispensada_em;
+        if (filtro === 'dispensadas') return !!m.dispensada_em;
         return filtro === 'todas';
       })
       .filter((m) => !t || m.empresa.toLowerCase().includes(t) || (m.obra ?? '').toLowerCase().includes(t))
@@ -245,6 +253,7 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
                 ['pendente', 'Com o fornecedor', contagem.pendente],
                 ['retidas', 'Retidas', contagem.retidas],
                 ['aprovadas', 'Aprovadas', contagem.aprovadas],
+                ['dispensadas', 'Dispensadas', contagem.dispensadas],
                 ['nao_iniciadas', 'Não começaram', contagem.nao_iniciadas],
               ] as [Filtro, string, number][]
             ).map(([f, rotulo, n]) => (
@@ -255,8 +264,9 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
           </div>
           <p className="dica">
             {competencia === TODOS
-              ? `Todos os meses desde ${mesPorExtenso(INICIO_PAINEL)}, do mais antigo para o mais novo. Entregues no prazo: ${contagem.no_prazo} de ${contagem.todas}.`
-              : `Prazo de ${mesPorExtenso(competencia)}: ${data(prazoDe(competencia))}. Entregues no prazo: ${contagem.no_prazo} de ${contagem.todas}.`}
+              ? `Todos os meses desde ${mesPorExtenso(INICIO_PAINEL)}, do mais antigo para o mais novo. Entregues no prazo: ${contagem.no_prazo} de ${contagem.a_entregar}.`
+              : `Prazo de ${mesPorExtenso(competencia)}: ${data(prazoDe(competencia))}. Entregues no prazo: ${contagem.no_prazo} de ${contagem.a_entregar}.`}
+            {contagem.dispensadas > 0 && ` ${contagem.dispensadas} ${contagem.dispensadas === 1 ? 'dispensada' : 'dispensadas'}, fora da conta.`}
           </p>
 
           {filtro !== 'nao_iniciadas' && (
@@ -311,13 +321,14 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
                         <td>{m.obra ?? <span className="sub">Sem obra (planilha)</span>}</td>
                         {competencia === TODOS && <td>{mesCurto(m.competencia)}</td>}
                         <td>
-                          <span className={`selo ${seloMedicao[m.status]}`}>{rotuloStatusMedicao[m.status]}</span>
+                          <span className={`selo ${seloDeMedicao(m)}`}>{rotuloMedicao(m)}</span>
+                          {m.dispensada_em && <small className="sub" title={m.motivo_dispensa ?? ''}>{m.motivo_dispensa}</small>}
                           {m.retida && <small className="sub texto-erro">retida</small>}
                           {m.em_atraso && <small className="sub texto-alerta">em atraso, até {data(m.prazo_combinado && m.prazo_combinado > m.tolerancia ? m.prazo_combinado : m.tolerancia).slice(0, 5)}</small>}
                           {m.prazo_combinado && m.status !== 'aprovada' && <small className="sub">combinado até {data(m.prazo_combinado).slice(0, 5)}</small>}
                         </td>
                         <td>
-                          {m.primeiro_envio_em ? data(m.primeiro_envio_em) : <span className="sub">Não enviada</span>}
+                          {m.dispensada_em ? <span className="sub">Dispensada em {data(m.dispensada_em)}</span> : m.primeiro_envio_em ? data(m.primeiro_envio_em) : <span className="sub">Não enviada</span>}
                           {m.primeiro_envio_em && <small className={m.entregue_no_prazo ? 'sub' : 'sub texto-alerta'}>{m.entregue_no_prazo ? 'no prazo' : 'fora do prazo'}</small>}
                         </td>
                         <td>{oQueFalta(m)}</td>
@@ -338,30 +349,81 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
           {filtro === 'nao_iniciadas' && (
             <section className="bloco">
               <p className="apoio">
-                Empresas com colaboradores liberados na obra que ainda não começaram a medição de {mesPorExtenso(competencia)}.
+                Empresas com colaboradores liberados na obra que ainda não começaram a medição de {mesPorExtenso(competencia)}. Se a empresa não
+                atuou na obra no mês, use Dispensar e escreva o motivo: a pendência sai da cobrança e da retenção.
               </p>
+              {naoIniciadasVisiveis.length > 0 && (
+                <div className="barra-lista">
+                  <span className="dica">
+                    {selecaoNI.size > 0 ? `${selecaoNI.size} ${selecaoNI.size === 1 ? 'selecionada' : 'selecionadas'}` : 'Marque as empresas para dispensar de uma vez com o mesmo motivo.'}
+                  </span>
+                  <button
+                    type="button"
+                    className="botao botao-secundario botao-pequeno"
+                    disabled={selecaoNI.size === 0}
+                    onClick={() =>
+                      setDispensa(
+                        naoIniciadas
+                          .filter((n) => selecaoNI.has(`${n.empresa_id}|${n.obra_id}`))
+                          .map((n) => ({ empresa_id: n.empresa_id, empresa: n.empresa, obra_id: n.obra_id, obra: n.obra, competencia })),
+                      )
+                    }
+                  >
+                    Dispensar selecionadas
+                  </button>
+                </div>
+              )}
               <div className="tabela-rolagem">
                 <table className="tabela tabela-lista tabela-compacta">
                   <thead>
                     <tr>
+                      <th scope="col"><span className="sr">Marcar</span></th>
                       <th scope="col">Empresa</th>
                       <th scope="col">Obra</th>
                       <th scope="col">Liberados hoje</th>
+                      <th scope="col"><span className="sr">Dispensar</span></th>
                     </tr>
                   </thead>
                   <tbody>
                     {naoIniciadasVisiveis.length === 0 && (
                       <tr>
-                        <td colSpan={3} className="vazio-linha">Todas as empresas com liberados já começaram.</td>
+                        <td colSpan={5} className="vazio-linha">Todas as empresas com liberados já começaram ou foram dispensadas.</td>
                       </tr>
                     )}
-                    {naoIniciadasVisiveis.map((n) => (
-                      <tr key={`${n.empresa_id}|${n.obra_id}`}>
-                        <th scope="row">{n.empresa}</th>
-                        <td>{n.obra}</td>
-                        <td>{n.liberados}</td>
-                      </tr>
-                    ))}
+                    {naoIniciadasVisiveis.map((n) => {
+                      const chave = `${n.empresa_id}|${n.obra_id}`;
+                      return (
+                        <tr key={chave}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              aria-label={`Marcar ${n.empresa}`}
+                              checked={selecaoNI.has(chave)}
+                              onChange={() =>
+                                setSelecaoNI((s0) => {
+                                  const novo = new Set(s0);
+                                  if (novo.has(chave)) novo.delete(chave);
+                                  else novo.add(chave);
+                                  return novo;
+                                })
+                              }
+                            />
+                          </td>
+                          <th scope="row">{n.empresa}</th>
+                          <td>{n.obra}</td>
+                          <td>{n.liberados}</td>
+                          <td className="acoes">
+                            <button
+                              type="button"
+                              className="botao botao-secundario botao-pequeno"
+                              onClick={() => setDispensa([{ empresa_id: n.empresa_id, empresa: n.empresa, obra_id: n.obra_id, obra: n.obra, competencia }])}
+                            >
+                              Dispensar
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -369,6 +431,18 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
           )}
         </>
       )}
+
+      <DialogoDispensa
+        alvos={dispensa}
+        aoFechar={() => setDispensa(null)}
+        aoDispensar={async (n, falhas) => {
+          setDispensa(null);
+          setSelecaoNI(new Set());
+          setOk(`${n === 1 ? 'Medição dispensada' : `${n} medições dispensadas`}. O fornecedor vê o motivo no portal e a pendência saiu da cobrança.`);
+          if (falhas.length) setErro(`Não dispensadas: ${falhas.join(' · ')}`);
+          setMedicoes(await lerDoPainel(competencia));
+        }}
+      />
 
       <AvisoRetencao
         aberto={retencao}
@@ -459,7 +533,8 @@ function AvisoRetencao({
     ...naoIniciadas.filter((n) => n.obra_id === obra).map((n) => ({ empresa: n.empresa, motivo: 'medição não enviada' })),
   ].sort((a, b) => a.empresa.localeCompare(b.empresa, 'pt-BR'));
   const aguardando = daObra.filter((m) => m.status !== 'aprovada' && combinada(m));
-  const aprovadas = daObra.filter((m) => m.status === 'aprovada');
+  const aprovadas = daObra.filter((m) => m.status === 'aprovada' && !m.dispensada_em);
+  const dispensadas = daObra.filter((m) => m.dispensada_em);
   const mes = mesBarra(competencia);
   const mesNome = mes.split('/')[0];
   const assunto = `${nomeObra}: reter pagamento de ${reter.length} ${reter.length === 1 ? 'empresa' : 'empresas'} (medição de ${mes})`;
@@ -471,6 +546,7 @@ function AvisoRetencao({
       : `Na obra ${nomeObra}, nenhuma empresa precisa ter o pagamento de ${mesNome} retido.`,
     ...(reter.length ? ['', 'Reter pagamento:', ...reter.map((x) => `- ${nomeLegivel(x.empresa, true)}: ${x.motivo}`)] : []),
     ...(aprovadas.length ? ['', 'Liberadas para pagamento:', ...aprovadas.map((m) => `- ${nomeLegivel(m.empresa, true)}`)] : []),
+    ...(dispensadas.length ? ['', 'Dispensadas da medição no mês (sem documentos a apresentar):', ...dispensadas.map((m) => `- ${nomeLegivel(m.empresa, true)}${m.motivo_dispensa ? `: ${m.motivo_dispensa}` : ''}`)] : []),
     ...(aguardando.length
       ? ['', 'Aguardando data combinada com o fornecedor (ainda não reter):', ...aguardando.map((m) => `- ${nomeLegivel(m.empresa, true)}: envio combinado até ${data(m.prazo_combinado).slice(0, 5)}`)]
       : []),
@@ -536,6 +612,7 @@ function DetalheAdmin({ id, aoVoltar }: { id: string; aoVoltar: () => void }) {
   const [devolvendo, setDevolvendo] = useState<{ item: ItemMedicao; tipo: TipoMedicao } | null>(null);
   const [baixando, setBaixando] = useState(false);
   const [cobranca, setCobranca] = useState(false);
+  const [dispensa, setDispensa] = useState<AlvoDispensa[] | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -614,25 +691,71 @@ function DetalheAdmin({ id, aoVoltar }: { id: string; aoVoltar: () => void }) {
   const emAnalise = itens.filter((i) => i.status === 'em_analise').length;
   const totalArquivos = itens.reduce((n, i) => n + arquivosAtuais(i).filter((a) => !a.apagado_em).length, 0);
   const daPlanilha = m.origem === 'migracao';
+  const dispensada = !!m.dispensada_em;
 
   return (
     <Pagina
       titulo={`${m.empresa}, ${mesCurto(m.competencia)}`}
       apoio={`${m.obra ? `Obra ${m.obra}` : 'Controle anterior, sem obra'}. Medição de ${mesPorExtenso(m.competencia)}, entrega até ${data(m.prazo)}.`}
       acoes={
-        <button type="button" className="botao botao-discreto" onClick={aoVoltar}>
-          Voltar ao painel
-        </button>
+        <span className="linha-botoes">
+          {m.status !== 'aprovada' && m.obra_id && (
+            <button
+              type="button"
+              className="botao botao-secundario"
+              onClick={() => setDispensa([{ empresa_id: m.empresa_id, empresa: m.empresa, obra_id: m.obra_id!, obra: m.obra ?? '', competencia: m.competencia }])}
+            >
+              Dispensar medição
+            </button>
+          )}
+          <button type="button" className="botao botao-discreto" onClick={aoVoltar}>
+            Voltar ao painel
+          </button>
+        </span>
       }
     >
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
 
+      {dispensada && (
+        <div className="aviso aviso-ok barra-lista">
+          <span>
+            <span className="selo selo-doc-dispensado">Dispensada</span> em {data(m.dispensada_em)}{m.dispensada_por ? ` por ${m.dispensada_por}` : ''}.
+            {m.motivo_dispensa && <> Motivo: {m.motivo_dispensa}</>}
+          </span>
+          <button
+            type="button"
+            className="botao botao-secundario botao-pequeno"
+            disabled={ocupado === 'desfazer'}
+            onClick={async () => {
+              if (!window.confirm('Desfazer a dispensa? A medição volta a ser cobrada do fornecedor.')) return;
+              setErro(null);
+              setOcupado('desfazer');
+              try {
+                const r = await desfazerDispensa(m.id);
+                if (r === 'apagada') {
+                  aoVoltar();
+                  return;
+                }
+                await carregar();
+                setOk('Dispensa desfeita. A medição voltou para a situação anterior e entra de novo na cobrança.');
+              } catch (e) {
+                setErro(mensagemDeErro(e as Error));
+              } finally {
+                setOcupado(null);
+              }
+            }}
+          >
+            Desfazer dispensa
+          </button>
+        </div>
+      )}
+
       <dl className="ficha caixa">
         <div>
           <dt>Situação</dt>
           <dd>
-            <span className={`selo ${seloMedicao[m.status]}`}>{rotuloStatusMedicao[m.status]}</span>
+            <span className={`selo ${seloDeMedicao(m)}`}>{rotuloMedicao(m)}</span>
             {m.retida && <span className="texto-erro"> retida</span>}
             {m.em_atraso && <span className="texto-alerta"> em atraso</span>}
           </dd>
@@ -761,7 +884,7 @@ function DetalheAdmin({ id, aoVoltar }: { id: string; aoVoltar: () => void }) {
                       {item.versao > 1 && <small className="sub">Envio nº {item.versao}</small>}
                     </td>
                     <td className="acoes">
-                      {item.status === 'em_analise' && (
+                      {!dispensada && item.status === 'em_analise' && (
                         <>
                           <button
                             type="button"
@@ -776,7 +899,7 @@ function DetalheAdmin({ id, aoVoltar }: { id: string; aoVoltar: () => void }) {
                           </button>
                         </>
                       )}
-                      {(item.status === 'aprovado' || item.status === 'nao_aplica') && !daPlanilha && (
+                      {!dispensada && (item.status === 'aprovado' || item.status === 'nao_aplica') && !daPlanilha && (
                         <button type="button" className="botao botao-discreto botao-pequeno" disabled={ocupado === item.id} onClick={() => setDevolvendo({ item, tipo: t })}>
                           Devolver
                         </button>
@@ -861,7 +984,7 @@ function DetalheAdmin({ id, aoVoltar }: { id: string; aoVoltar: () => void }) {
         </div>
       </section>
 
-      {!daPlanilha || m.status !== 'aprovada' ? (
+      {!dispensada && (!daPlanilha || m.status !== 'aprovada') ? (
         <section className="bloco zona-final">
           <p className="apoio">
             {emAnalise > 0
@@ -896,6 +1019,16 @@ function DetalheAdmin({ id, aoVoltar }: { id: string; aoVoltar: () => void }) {
           </div>
         </section>
       ) : null}
+
+      <DialogoDispensa
+        alvos={dispensa}
+        aoFechar={() => setDispensa(null)}
+        aoDispensar={async () => {
+          setDispensa(null);
+          await carregar();
+          setOk('Medição dispensada. O fornecedor vê o motivo no portal e a pendência saiu da cobrança.');
+        }}
+      />
 
       <Devolucao
         alvo={devolvendo}

@@ -3188,3 +3188,9 @@ button.celula:hover {
 }
 .campo-validade input { max-width: 140px; }
 .selos-linha { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.celula-dispensada {
+  background: #eef0f3;
+  color: #4a5966;
+  font-style: italic;
+}

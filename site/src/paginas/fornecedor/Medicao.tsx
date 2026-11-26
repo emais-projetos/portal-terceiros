@@ -9,7 +9,7 @@ import { lerMeusColaboradores, lerMinhasEmpresasComObras, type MeuColaborador, t
 import {
   CHAVES_CONFERENCIA, abrirMedicao, arquivosAtuais, competenciaPadrao, competenciasRecentes, definirColaborador, editavelPeloFornecedor,
   enviarMedicao, lerMedicao, lerMedicoes, lerTiposMedicao, mesCurto, mesPorExtenso, removerColaborador, rotuloConferencia,
-  rotuloSituacaoColaborador, rotuloStatusItem, rotuloStatusMedicao, seloItem, seloMedicao,
+  rotuloSituacaoColaborador, rotuloStatusItem, rotuloStatusMedicao, seloItem, seloMedicao, rotuloMedicao, seloDeMedicao,
   type DetalheMedicao, type Medicao, type SituacaoColaborador, type TipoMedicao,
 } from '../../lib/medicao';
 
@@ -141,8 +141,11 @@ function ListaFornecedor({ aoAbrir }: { aoAbrir: (id: string) => void }) {
                       {m.retida && <small className="sub texto-erro">regularizar: risco de bloqueio do pagamento</small>}
                       {m.em_atraso && <small className="sub texto-alerta">em atraso: regularize até {data(limiteDe(m))}</small>}
                     </td>
-                    <td><span className={`selo ${seloMedicao[m.status]}`}>{rotuloStatusMedicao[m.status]}</span></td>
-                    <td>{resumoDoQueFalta(m)}</td>
+                    <td>
+                      <span className={`selo ${seloDeMedicao(m)}`}>{rotuloMedicao(m)}</span>
+                      {m.dispensada_em && m.motivo_dispensa && <small className="sub">{m.motivo_dispensa}</small>}
+                    </td>
+                    <td>{m.dispensada_em ? '' : resumoDoQueFalta(m)}</td>
                     <td className="acoes">
                       <Link className="botao botao-secundario botao-pequeno" to={`/medicao?m=${m.id}`}>
                         {editavelPeloFornecedor(m) ? 'Abrir' : 'Ver'}
@@ -259,6 +262,12 @@ function DetalheFornecedor({ id, aoVoltar }: { id: string; aoVoltar: () => void 
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
 
+      {m.dispensada_em ? (
+        <div className="aviso aviso-ok">
+          <span className="selo selo-doc-dispensado">Dispensada</span> A Emais dispensou a apresentação da medição deste mês nesta obra
+          {m.motivo_dispensa ? `: ${m.motivo_dispensa}` : ''}. Não há documentos a enviar.
+        </div>
+      ) : (
       <div className={`aviso ${m.status === 'aprovada' ? 'aviso-ok' : m.status === 'pendente_fornecedor' || m.retida || m.em_atraso ? 'aviso-alerta' : 'aviso-ok'}`}>
         <span className={`selo ${seloMedicao[m.status]}`}>{rotuloStatusMedicao[m.status]}</span>{' '}
         {m.status === 'aberta' && 'Confira a lista de colaboradores, envie os documentos e, no fim da página, envie para a conferência.'}
@@ -268,6 +277,7 @@ function DetalheFornecedor({ id, aoVoltar }: { id: string; aoVoltar: () => void 
         {m.em_atraso && editavel && <strong> O prazo do dia {data(m.prazo).slice(0, 5)} venceu. Regularize até {data(limiteDe(m))}: a falta da regularização poderá ocasionar o bloqueio do pagamento.</strong>}
         {m.retida && m.status !== 'aprovada' && <strong> Prazo de regularização encerrado. A falta da regularização poderá ocasionar o bloqueio do pagamento.</strong>}
       </div>
+      )}
 
       <section className="bloco">
         <div className="barra-lista">

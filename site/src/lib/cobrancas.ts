@@ -506,7 +506,8 @@ function retencoesObra(base: Base, competencia: string, nome: string, hoje: stri
     const referencia = vencidaCombinada ? `${competencia}:${obraId}:combinado:${vencidaCombinada}` : `${competencia}:${obraId}`;
     if (base.feitas.has(`retencao_obra|${referencia}`)) return;
     const nomeDaObra = obraPor.get(obraId)?.nome ?? l[0].obra;
-    const aprovadas = l.filter((x) => x.medicao?.status === 'aprovada');
+    const aprovadas = l.filter((x) => x.medicao?.status === 'aprovada' && !x.medicao.dispensada_em);
+    const dispensadas = l.filter((x) => x.medicao?.dispensada_em);
     const ordem = (a: Esperada, b: Esperada) => a.empresa.localeCompare(b.empresa, 'pt-BR');
     const motivo = (x: Esperada) =>
       !x.medicao || itensPendentes(base, x.medicao.id) >= 12 ? 'medição não enviada' : x.medicao.status === 'em_analise' ? 'em conferência na Emais' : 'documentos pendentes';
@@ -516,9 +517,13 @@ function retencoesObra(base: Base, competencia: string, nome: string, hoje: stri
       '{prazo_regularizacao}': `${curta(tol)}${vencidaCombinada ? ' ou até a data combinada' : ''}`,
       '{qtd_empresas}': `${reter.length} ${reter.length === 1 ? 'empresa' : 'empresas'}`,
       '{empresas_reter}': limitar(reter.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}: ${motivo(x)}`), 'empresas').join('\n'),
-      '{empresas_liberadas}': aprovadas.length
-        ? ['Liberadas para pagamento:', ...limitar(aprovadas.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}`), 'empresas')].join('\n')
-        : '',
+      '{empresas_liberadas}': [
+        ...(aprovadas.length ? ['Liberadas para pagamento:', ...limitar(aprovadas.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}`), 'empresas')] : []),
+        ...(dispensadas.length
+          ? [...(aprovadas.length ? [''] : []), 'Dispensadas da medição no mês (sem documentos a apresentar):',
+             ...limitar(dispensadas.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}`), 'empresas')]
+          : []),
+      ].join('\n'),
       '{empresas_aguardando}': aguardando.length
         ? [
             'Aguardando data combinada com o fornecedor (ainda não reter):',

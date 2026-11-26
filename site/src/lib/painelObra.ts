@@ -47,6 +47,8 @@ export type MedicaoObra = {
   primeiro_envio_em: string | null;
   ultima_analise_em: string | null;
   itens_pendentes: string[];
+  dispensada?: boolean;
+  motivo_dispensa?: string | null;
 };
 
 export type TurmaObra = {
@@ -94,7 +96,12 @@ export function situacaoIntegracao(c: Pick<ColaboradorObra, 'data_integracao' | 
 export type Pagamento = { acao: 'liberar' | 'reter' | 'aguardar'; motivo: string; ate?: string };
 
 // O que a engenharia faz com o pagamento da empresa no mês.
-export function pagamentoDe(m: Pick<MedicaoObra, 'status' | 'prazo' | 'tolerancia' | 'prazo_combinado'> | null, competencia: string, hoje = hojeIso()): Pagamento {
+export function pagamentoDe(
+  m: (Pick<MedicaoObra, 'status' | 'prazo' | 'tolerancia' | 'prazo_combinado'> & { dispensada?: boolean }) | null,
+  competencia: string,
+  hoje = hojeIso(),
+): Pagamento {
+  if (m?.dispensada) return { acao: 'liberar', motivo: 'Medição dispensada pela Emais no mês' };
   if (m?.status === 'aprovada') return { acao: 'liberar', motivo: 'Medição aprovada' };
   const prazo = m?.prazo ?? prazoDe(competencia);
   const tolerancia = m?.tolerancia ?? toleranciaDe(competencia);

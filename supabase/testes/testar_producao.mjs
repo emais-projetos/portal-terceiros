@@ -191,6 +191,8 @@ const FUNCOES = {
   enviar_homologacao: 'p_empresa uuid',
   fornecedores_a_regularizar: '',
   fornecedores_cadastro: '',
+  dispensar_medicao: 'p_empresa uuid, p_obra uuid, p_competencia date, p_motivo text',
+  desfazer_dispensa_medicao: 'p_medicao uuid',
   salvar_cadastro_fornecedor: 'p_empresa uuid, p_razao text, p_cnpj text, p_emails text, p_dados jsonb',
   fornecedores_para_liberar: '',
   homologar_fornecedor: 'p_empresa uuid, p_qualificacao jsonb, p_comentarios text, p_responsavel text',

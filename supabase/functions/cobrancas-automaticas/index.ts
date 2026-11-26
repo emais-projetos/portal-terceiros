@@ -56,7 +56,7 @@ async function lerTiposMedicao() {
   if (error) throw error;
   return data2 ?? [];
 }
-var CAMPOS_MEDICAO = "id, empresa_id, empresa, cnpj, email_cobranca, obra_id, obra, competencia, prazo, status, primeiro_envio_em, enviada_em, conferente, ultima_analise_em, ultima_cobranca_em, observacao, origem, qtd_colaboradores, entregue_no_prazo, retida, em_atraso, tolerancia, prazo_combinado, prazo_combinado_obs, itens_pendentes, itens_em_analise, itens_devolvidos, colaboradores_pendentes";
+var CAMPOS_MEDICAO = "id, empresa_id, empresa, cnpj, email_cobranca, obra_id, obra, competencia, prazo, status, primeiro_envio_em, enviada_em, conferente, ultima_analise_em, ultima_cobranca_em, observacao, origem, qtd_colaboradores, entregue_no_prazo, retida, em_atraso, tolerancia, prazo_combinado, prazo_combinado_obs, itens_pendentes, itens_em_analise, itens_devolvidos, colaboradores_pendentes, dispensada_em, motivo_dispensa, dispensada_por";
 async function lerTodasMedicoes() {
   const todas = [];
   for (let inicio = 0; ; inicio += 1e3) {
@@ -459,7 +459,8 @@ function retencoesObra(base, competencia, nome, hoje) {
     const referencia = vencidaCombinada ? `${competencia}:${obraId}:combinado:${vencidaCombinada}` : `${competencia}:${obraId}`;
     if (base.feitas.has(`retencao_obra|${referencia}`)) return;
     const nomeDaObra = obraPor.get(obraId)?.nome ?? l[0].obra;
-    const aprovadas = l.filter((x) => x.medicao?.status === "aprovada");
+    const aprovadas = l.filter((x) => x.medicao?.status === "aprovada" && !x.medicao.dispensada_em);
+    const dispensadas = l.filter((x) => x.medicao?.dispensada_em);
     const ordem = (a, b) => a.empresa.localeCompare(b.empresa, "pt-BR");
     const motivo = (x) => !x.medicao || itensPendentes(base, x.medicao.id) >= 12 ? "medi\xE7\xE3o n\xE3o enviada" : x.medicao.status === "em_analise" ? "em confer\xEAncia na Emais" : "documentos pendentes";
     const texto = aplicarModelo(modelo, {
@@ -468,7 +469,14 @@ function retencoesObra(base, competencia, nome, hoje) {
       "{prazo_regularizacao}": `${curta(tol)}${vencidaCombinada ? " ou at\xE9 a data combinada" : ""}`,
       "{qtd_empresas}": `${reter.length} ${reter.length === 1 ? "empresa" : "empresas"}`,
       "{empresas_reter}": limitar(reter.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}: ${motivo(x)}`), "empresas").join("\n"),
-      "{empresas_liberadas}": aprovadas.length ? ["Liberadas para pagamento:", ...limitar(aprovadas.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}`), "empresas")].join("\n") : "",
+      "{empresas_liberadas}": [
+        ...aprovadas.length ? ["Liberadas para pagamento:", ...limitar(aprovadas.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}`), "empresas")] : [],
+        ...dispensadas.length ? [
+          ...aprovadas.length ? [""] : [],
+          "Dispensadas da medi\xE7\xE3o no m\xEAs (sem documentos a apresentar):",
+          ...limitar(dispensadas.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}`), "empresas")
+        ] : []
+      ].join("\n"),
       "{empresas_aguardando}": aguardando.length ? [
         "Aguardando data combinada com o fornecedor (ainda n\xE3o reter):",
         ...aguardando.sort(ordem).map((x) => `- ${nomeLegivel(x.empresa, true)}: envio combinado at\xE9 ${curta(combinadaAte(x, hoje))}`)

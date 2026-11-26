@@ -50,6 +50,10 @@ export type Medicao = {
   itens_em_analise: number;
   itens_devolvidos: number;
   colaboradores_pendentes: number;
+  // Dispensa pelo administrativo (ex.: sem atuação na obra no mês). A medição fica aprovada.
+  dispensada_em: string | null;
+  motivo_dispensa: string | null;
+  dispensada_por: string | null;
 };
 
 export type ArquivoMedicao = {
@@ -120,6 +124,31 @@ export const seloItem: Record<StatusItem, string> = {
   devolvido: 'selo-doc-devolvido',
   nao_aplica: 'selo-doc-dispensado',
 };
+
+// Situação para mostrar: a dispensada aparece como tal, não como aprovada.
+export const rotuloMedicao = (m: { status: StatusMedicao; dispensada_em?: string | null; dispensada?: boolean }) =>
+  m.dispensada_em || m.dispensada ? 'Dispensada' : rotuloStatusMedicao[m.status];
+export const seloDeMedicao = (m: { status: StatusMedicao; dispensada_em?: string | null; dispensada?: boolean }) =>
+  m.dispensada_em || m.dispensada ? 'selo-doc-dispensado' : seloMedicao[m.status];
+
+export const MOTIVOS_DISPENSA = [
+  'Sem atuação na obra no mês',
+  'Obra parada no mês',
+  'Serviço concluído, sem equipe na obra',
+  'Contrato encerrado no mês anterior',
+];
+
+export async function dispensarMedicao(empresaId: string, obraId: string, competencia: string, motivo: string): Promise<string> {
+  const { data, error } = await supabase.rpc('dispensar_medicao', { p_empresa: empresaId, p_obra: obraId, p_competencia: competencia, p_motivo: motivo });
+  if (error) throw error;
+  return data as string;
+}
+
+export async function desfazerDispensa(medicaoId: string): Promise<'apagada' | 'reaberta'> {
+  const { data, error } = await supabase.rpc('desfazer_dispensa_medicao', { p_medicao: medicaoId });
+  if (error) throw error;
+  return data as 'apagada' | 'reaberta';
+}
 
 export const seloMedicao: Record<StatusMedicao, string> = {
   aberta: 'selo-doc-a_vencer',
@@ -200,7 +229,7 @@ export async function lerTiposMedicao(): Promise<TipoMedicao[]> {
 }
 
 const CAMPOS_MEDICAO =
-  'id, empresa_id, empresa, cnpj, email_cobranca, obra_id, obra, competencia, prazo, status, primeiro_envio_em, enviada_em, conferente, ultima_analise_em, ultima_cobranca_em, observacao, origem, qtd_colaboradores, entregue_no_prazo, retida, em_atraso, tolerancia, prazo_combinado, prazo_combinado_obs, itens_pendentes, itens_em_analise, itens_devolvidos, colaboradores_pendentes';
+  'id, empresa_id, empresa, cnpj, email_cobranca, obra_id, obra, competencia, prazo, status, primeiro_envio_em, enviada_em, conferente, ultima_analise_em, ultima_cobranca_em, observacao, origem, qtd_colaboradores, entregue_no_prazo, retida, em_atraso, tolerancia, prazo_combinado, prazo_combinado_obs, itens_pendentes, itens_em_analise, itens_devolvidos, colaboradores_pendentes, dispensada_em, motivo_dispensa, dispensada_por';
 
 export async function lerMedicoes(filtro: { competencia?: string; empresaId?: string } = {}): Promise<Medicao[]> {
   let q = supabase.from('v_medicoes').select(CAMPOS_MEDICAO);

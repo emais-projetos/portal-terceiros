@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { formatarCnpj } from '../lib/consultas';
-import { mesCurto, rotuloStatusMedicao, type StatusMedicao } from '../lib/medicao';
+import { mesCurto, rotuloMedicao, type StatusMedicao } from '../lib/medicao';
 
 // Grade de medição empresa × mês, como na planilha de controle.
 // Usada no administrativo (Medição, Histórico por empresa) e no Painel da obra.
@@ -15,19 +15,23 @@ export type ItemGrade = {
   status: StatusMedicao;
   retida: boolean;
   pendentes: number;
+  dispensada?: boolean;
+  motivo_dispensa?: string | null;
 };
 
-type Estado = 'aprovada' | 'em_analise' | 'pendente' | 'retida';
+type Estado = 'aprovada' | 'dispensada' | 'em_analise' | 'pendente' | 'retida';
 
 function estadoDe(m: ItemGrade): Estado {
+  if (m.dispensada) return 'dispensada';
   if (m.status === 'aprovada') return 'aprovada';
   if (m.status === 'em_analise') return 'em_analise';
   return m.retida ? 'retida' : 'pendente';
 }
 
-const ROTULO: Record<Estado, string> = { aprovada: 'OK', em_analise: 'Conferir', pendente: 'Pendente', retida: 'Retida' };
+const ROTULO: Record<Estado, string> = { aprovada: 'OK', dispensada: 'Disp.', em_analise: 'Conferir', pendente: 'Pendente', retida: 'Retida' };
 const LEGENDA: Record<Estado, string> = {
   aprovada: 'Aprovada',
+  dispensada: 'Dispensada pela Emais (ex.: sem atuação na obra no mês)',
   em_analise: 'Enviada, aguardando conferência',
   pendente: 'Com pendência, dentro do prazo ou da tolerância (dia 30)',
   retida: 'Retida: não aprovada depois do dia 30 ou da data combinada',
@@ -142,7 +146,7 @@ export function GradeMedicao({ itens, filtrosExtras, celula, textoAjuda }: Props
                         <span className="celulas">
                           {doMes.map((m) => {
                             const e = estadoDe(m);
-                            const descricao = `${m.obra ?? 'Planilha, sem obra'}: ${rotuloStatusMedicao[m.status]}${m.retida ? ', retida' : ''}${m.status !== 'aprovada' && m.pendentes ? `, ${m.pendentes} itens pendentes` : ''}`;
+                            const descricao = `${m.obra ?? 'Planilha, sem obra'}: ${rotuloMedicao(m)}${m.dispensada && m.motivo_dispensa ? ` (${m.motivo_dispensa})` : ''}${m.retida ? ', retida' : ''}${m.status !== 'aprovada' && m.pendentes ? `, ${m.pendentes} itens pendentes` : ''}`;
                             return <Fragment key={m.id}>{celula(m, ROTULO[e], { className: `celula celula-${e}`, title: descricao, 'aria-label': `${mesCurto(c)}, ${descricao}` })}</Fragment>;
                           })}
                         </span>

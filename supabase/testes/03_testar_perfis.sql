@@ -1056,6 +1056,37 @@ delete from usuarios where id in (:S1, :FH);
 delete from auth.users where id in (:S1, :FH);
 
 -- ============================================================================================
+-- Dispensa da medição pelo administrativo
+select (date_trunc('month', current_date) - interval '1 month')::date as "MES_ANT" \gset
+select teste.entrar(:F1);
+select teste.bloqueado('Dispensa: fornecedor não dispensa a própria medição', format($q$select dispensar_medicao(%L, %L, %L, 'Sem atuação no mês')$q$, :E1, :O1, :'MES_ANT'));
+select teste.sair();
+select teste.entrar(:A);
+select teste.bloqueado('Dispensa: exige motivo', format($q$select dispensar_medicao(%L, %L, %L, 'ok')$q$, :E1, :O1, :'MES_ANT'));
+select teste.bloqueado('Dispensa: obra fora da empresa', format($q$select dispensar_medicao(%L, %L, %L, 'Sem atuação no mês')$q$, :E1, :O2, :'MES_ANT'));
+select teste.bloqueado('Dispensa: mês futuro', format($q$select dispensar_medicao(%L, %L, %L, 'Sem atuação no mês')$q$, :E1, :O1, (current_date + interval '2 months')::date));
+select dispensar_medicao(:E1, :O1, :'MES_ANT', 'Sem atuação na obra em outubro') as "MD" \gset
+select teste.bloqueado('Dispensa: não dispensa duas vezes', format($q$select dispensar_medicao(%L, %L, %L, 'Sem atuação no mês')$q$, :E1, :O1, :'MES_ANT'));
+select teste.sair();
+select teste.igual('Dispensa: medição criada aprovada, sem documentos e sem retenção', format($q$select 1 from v_medicoes v join medicoes m on m.id = v.id where v.id = %L and v.status = 'aprovada' and not v.retida and v.motivo_dispensa like 'Sem atuação%%' and m.criada_pela_dispensa and not exists (select 1 from medicoes_itens i where i.medicao_id = v.id)$q$, :'MD'), 1);
+select teste.entrar(:F1);
+select teste.igual('Dispensa: fornecedor vê a dispensa e o motivo', format($q$select 1 from v_medicoes where id = %L and dispensada_em is not null and motivo_dispensa is not null$q$, :'MD'), 1);
+select teste.bloqueado('Dispensa: fornecedor não mexe na medição dispensada', format($q$select definir_colaborador_medicao(%L, %L, 'trabalhou')$q$, :'MD', :C1));
+select teste.igual('Dispensa: abrir o mês devolve a dispensada', format($q$select 1 from abrir_medicao(%L, %L, %L) x where x.id = %L$q$, :E1, :O1, :'MES_ANT', :'MD'), 1);
+select teste.sair();
+select teste.entrar(:A);
+select desfazer_dispensa_medicao(:'MD') as "R1" \gset
+select teste.igual('Dispensa: desfazer apaga a criada pela dispensa', format($q$select 1 where %L = 'apagada'$q$, :'R1'), 1);
+select dispensar_medicao(:E1, :O1, current_date, 'Obra parada no mês, sem equipe');
+select teste.sair();
+select teste.igual('Dispensa: medição já aberta fica aprovada', format($q$select 1 from medicoes where id = %L and status = 'aprovada' and status_antes_dispensa = 'aberta'$q$, teste.id('M1')), 1);
+select teste.entrar(:A);
+select desfazer_dispensa_medicao(teste.id('M1')) as "R2" \gset
+select teste.igual('Dispensa: desfazer reabre como estava', format($q$select 1 where %L = 'reaberta'$q$, :'R2'), 1);
+select teste.bloqueado('Dispensa: desfazer só em dispensada', format($q$select desfazer_dispensa_medicao(%L)$q$, teste.id('M1')));
+select teste.sair();
+select teste.igual('Dispensa: medição volta aberta, sem resto da dispensa, com registro', format($q$select 1 from medicoes m where m.id = %L and m.status = 'aberta' and m.dispensada_em is null and m.motivo_dispensa is null and (select count(*) from eventos e where e.acao in ('medicao_dispensada', 'dispensa_medicao_desfeita')) = 4 and not exists (select 1 from medicoes where id = %L)$q$, teste.id('M1'), :'MD'), 1);
+
 -- 4. Admin desativado perde tudo
 -- ============================================================================================
 select teste.entrar(:X);
