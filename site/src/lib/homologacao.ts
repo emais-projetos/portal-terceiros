@@ -494,3 +494,44 @@ export function resumoDocsFornecedor(f: FornecedorCadastro) {
   const faltando = f.documentos.filter((d) => (d.situacao === 'nao_enviado' || d.situacao === 'devolvido') && d.impeditivo);
   return { vencidos, vencendo, faltando, certidoesVencidas: f.certidoes.filter((c) => c.vencimento < new Date().toISOString().slice(0, 10)) };
 }
+
+// ---------------------------------------------------------------- Convite pelo Outlook
+
+export type ConviteFila = {
+  id: string;
+  para: string | null;
+  assunto: string;
+  corpo: string;
+  situacao_envio: 'aguardando' | 'enviando' | 'enviado' | 'erro' | 'sem_email';
+  enviado_em: string | null;
+  envio_para: string | null;
+  criado_em: string;
+};
+
+// Último convite da homologação na fila de e-mails (o texto já vem pronto, com o e-mail do fornecedor).
+export async function lerConvite(empresaId: string): Promise<ConviteFila | null> {
+  const { data, error } = await supabase
+    .from('envios_fila')
+    .select('id, para, assunto, corpo, situacao_envio, enviado_em, envio_para, criado_em')
+    .eq('empresa_id', empresaId)
+    .eq('tipo', 'convite_homologacao')
+    .order('criado_em', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ConviteFila | null) ?? null;
+}
+
+// Mandou pelo Outlook: o envio automático não manda de novo.
+export async function marcarEnviadoOutlook(envioId: string) {
+  const { error } = await supabase.rpc('marcar_envio_manual', { p_envio: envioId });
+  if (error) throw error;
+}
+
+// Fornecedor em homologação que ficou sem acesso: o Suprimentos cria o login com o e-mail certo.
+export async function criarAcessoFornecedor(empresaId: string, nome: string, email: string) {
+  const { error } = await supabase.functions.invoke('gerenciar-acesso', {
+    body: { acao: 'criar', nome, email, perfil: 'fornecedor', empresas: [empresaId], obras: [], enviar: false, destino: enderecoDoSite },
+  });
+  if (error) await erroDaFuncao(error);
+}

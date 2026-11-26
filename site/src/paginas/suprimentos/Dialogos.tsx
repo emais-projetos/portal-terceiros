@@ -1,10 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Dialogo } from '../../componentes/Dialogo';
+import { linkOutlook } from '../../lib/admin';
+import { data as dataBr } from '../../lib/formato';
 import { mensagemDeErro } from '../../lib/supabase';
 import { cnpjValido, hojeIso, somarDias, soDigitos, tamanhoArquivo } from '../../lib/formato';
 import {
   cadastrarFornecedor, registrarContrato, lerObrasAtivas, formatarCnpj, salvarCadastroFornecedor, trocarEmailAcesso,
-  type ContratoFornecedor, type DadosF31, type FornecedorCadastro, type ObraSimples,
+  criarAcessoFornecedor, lerConvite, marcarEnviadoOutlook, reenviarConvite,
+  type ContratoFornecedor, type ConviteFila, type DadosF31, type FornecedorCadastro, type ObraSimples,
 } from '../../lib/homologacao';
 
 // Janelas do Suprimentos: cadastrar fornecedor novo (manda o convite da homologação) e registrar o contrato assinado.
@@ -44,9 +47,11 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
   const [marcadas, setMarcadas] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [feito, setFeito] = useState<{ empresaId: string; msg: string } | null>(null);
 
   useEffect(() => {
     if (!aberto) return;
+    setFeito(null);
     setRazao('');
     setCnpj('');
     setEmail('');
@@ -66,7 +71,7 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
     setErro(null);
     try {
       const r = await cadastrarFornecedor({ razao: razao.trim(), cnpj: soDigitos(cnpj), email: email.trim().toLowerCase(), contato: contato.trim(), obras: marcadas });
-      aoCadastrar(r.aviso ?? `${razao.trim()} cadastrado. O convite para preencher a homologação vai para ${email.trim().toLowerCase()}.`, r.empresaId);
+      setFeito({ empresaId: r.empresaId, msg: r.aviso ?? `${razao.trim()} cadastrado. O convite para preencher a homologação vai para ${email.trim().toLowerCase()}.` });
     } catch (er) {
       setErro(mensagemDeErro(er as Error));
     } finally {
@@ -75,7 +80,16 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
   }
 
   return (
-    <Dialogo aberto={aberto} titulo="Novo fornecedor" aoFechar={aoFechar} largura="larga">
+    <Dialogo aberto={aberto} titulo="Novo fornecedor" aoFechar={() => (feito ? aoCadastrar(feito.msg, feito.empresaId) : aoFechar())} largura="larga">
+      {feito ? (
+        <div className="formulario formulario-largo">
+          <p className={`aviso ${feito.msg.includes('mas') ? 'aviso-alerta' : 'aviso-ok'}`}>{feito.msg}</p>
+          <ConviteOutlook empresaId={feito.empresaId} />
+          <div className="linha-botoes">
+            <button type="button" className="botao" onClick={() => aoCadastrar(feito.msg, feito.empresaId)}>Concluir</button>
+          </div>
+        </div>
+      ) : (
       <form className="formulario formulario-largo" onSubmit={enviar} noValidate>
         <p className="apoio">
           O fornecedor recebe um e-mail com o endereço do portal. No primeiro acesso ele cria a senha com um código enviado para o mesmo e-mail,
@@ -112,6 +126,7 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
           <button className="botao botao-discreto" type="button" onClick={aoFechar}>Cancelar</button>
         </div>
       </form>
+      )}
     </Dialogo>
   );
 }
@@ -304,8 +319,11 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
   }, [fornecedor]);
 
   const cnpjOk = cnpjValido(cnpj) || soDigitos(cnpj) === fornecedor?.cnpj;
+  const emHomologacao = !!fornecedor && !fornecedor.liberado_em && (fornecedor.homologacao === 'convidada' || fornecedor.homologacao === 'devolvida');
+  const podeCriarAcesso = !!fornecedor && !fornecedor.email_acesso && emHomologacao;
   const acessoMudou = !!fornecedor?.email_acesso && acesso.trim().toLowerCase() !== fornecedor.email_acesso;
-  const acessoOk = !fornecedor?.email_acesso || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(acesso.trim());
+  const criarAcesso = podeCriarAcesso && acesso.trim() !== '';
+  const acessoOk = (!fornecedor?.email_acesso && !criarAcesso) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(acesso.trim());
   const pronto = razao.trim().length >= 3 && cnpjOk && acessoOk;
 
   async function enviar(e: FormEvent) {
@@ -317,15 +335,25 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
       const saida: Partial<DadosF31> = {};
       for (const g of GRUPOS_CADASTRO) for (const [c] of g.campos) (saida as Record<string, string>)[c] = String(dados[c] ?? '').trim();
       await salvarCadastroFornecedor(fornecedor.empresa_id, razao.trim(), soDigitos(cnpj), emails, saida);
-      if (acessoMudou) {
+      const novo = acesso.trim().toLowerCase();
+      if (acessoMudou || criarAcesso) {
         try {
-          await trocarEmailAcesso(fornecedor.empresa_id, acesso.trim().toLowerCase());
+          if (criarAcesso) await criarAcessoFornecedor(fornecedor.empresa_id, razao.trim(), novo);
+          else await trocarEmailAcesso(fornecedor.empresa_id, novo);
+          // Em homologação, o convite que ainda não saiu é refeito para o e-mail novo.
+          if (emHomologacao) await reenviarConvite(fornecedor.empresa_id);
         } catch (er) {
-          setErro(`O cadastro foi salvo, mas o e-mail de acesso não mudou: ${mensagemDeErro(er as Error)}`);
+          setErro(`O cadastro foi salvo, mas o e-mail de acesso não ${criarAcesso ? 'foi criado' : 'mudou'}: ${mensagemDeErro(er as Error)}`);
           return;
         }
       }
-      aoSalvar(acessoMudou ? `Cadastro atualizado. O fornecedor agora entra no portal com ${acesso.trim().toLowerCase()}, com a mesma senha.` : 'Cadastro atualizado.');
+      aoSalvar(
+        criarAcesso
+          ? `Cadastro atualizado e acesso criado com ${novo}. O convite foi refeito para este e-mail.`
+          : acessoMudou
+            ? `Cadastro atualizado. O fornecedor agora entra no portal com ${novo}, com a mesma senha.${emHomologacao ? ' O convite foi refeito para o e-mail novo.' : ''}`
+            : 'Cadastro atualizado.',
+      );
     } catch (er) {
       setErro(mensagemDeErro(er as Error));
     } finally {
@@ -350,7 +378,12 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
             </label>
             <label className="campo">
               <span>E-mail de acesso ao portal</span>
-              {fornecedor.email_acesso ? (
+              {podeCriarAcesso ? (
+                <>
+                  <input type="email" value={acesso} maxLength={200} aria-invalid={!acessoOk} placeholder="e-mail do fornecedor" onChange={(e) => setAcesso(e.target.value)} />
+                  <small className="texto-alerta">O fornecedor ainda não tem acesso. Ao salvar, o portal cria o login com este e-mail e refaz o convite.</small>
+                </>
+              ) : fornecedor.email_acesso ? (
                 <>
                   <input type="email" value={acesso} maxLength={200} aria-invalid={!acessoOk} onChange={(e) => setAcesso(e.target.value)} />
                   <small className={acessoMudou ? 'texto-alerta' : 'dica'}>
@@ -394,5 +427,64 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
         </form>
       )}
     </Dialogo>
+  );
+}
+
+// Convite da homologação: mostra se já saiu e permite mandar pelo Outlook do Suprimentos.
+export function ConviteOutlook({ empresaId, versao = 0 }: { empresaId: string; versao?: number }) {
+  const [convite, setConvite] = useState<ConviteFila | null>(null);
+  const [aberto, setAberto] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAberto(false);
+    lerConvite(empresaId).then(setConvite).catch(() => setConvite(null));
+  }, [empresaId, versao]);
+
+  if (!convite) return null;
+  if (convite.situacao_envio === 'enviado') {
+    return (
+      <p className="dica">
+        Convite enviado em {dataBr(convite.enviado_em ?? convite.criado_em)}
+        {convite.envio_para?.startsWith('Outlook') ? ' pelo Outlook' : ` para ${convite.para ?? ''}`}.
+      </p>
+    );
+  }
+  if (!convite.para) return <p className="dica texto-alerta">O convite está sem e-mail. Informe o e-mail de acesso em Editar cadastro.</p>;
+  return (
+    <div className="caixa">
+      <p className="dica">
+        Convite na fila do envio automático para <strong>{convite.para}</strong>. Se preferir, mande pelo seu Outlook: o assunto e o texto já vão preenchidos.
+      </p>
+      <div className="linha-botoes">
+        <a className="botao botao-secundario botao-pequeno" href={linkOutlook(convite.para, convite.assunto, convite.corpo)} onClick={() => setAberto(true)}>
+          Abrir no Outlook
+        </a>
+        {aberto && (
+          <button
+            type="button"
+            className="botao botao-pequeno"
+            disabled={ocupado}
+            onClick={async () => {
+              setOcupado(true);
+              setErro(null);
+              try {
+                await marcarEnviadoOutlook(convite.id);
+                setConvite(await lerConvite(empresaId));
+              } catch (e) {
+                setErro(mensagemDeErro(e as Error));
+              } finally {
+                setOcupado(false);
+              }
+            }}
+          >
+            Já mandei pelo Outlook
+          </button>
+        )}
+      </div>
+      {aberto && <small className="dica">Depois de enviar, clique em "Já mandei pelo Outlook" para o envio automático não mandar de novo.</small>}
+      {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
+    </div>
   );
 }

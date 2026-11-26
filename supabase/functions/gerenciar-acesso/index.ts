@@ -153,6 +153,13 @@ async function criar(servico: Cliente, adminId: string, corpo: Record<string, un
       .insert(empresas.map((empresa_id) => ({ usuario_id: usuarioId, empresa_id })));
     if (error) return desfazer(`Não foi possível ligar as empresas: ${error.message}`);
     await servico.from('empresas').update({ email_acesso: email }).in('id', empresas);
+    // Fornecedor em homologação: o convite passa a ir para este e-mail.
+    const { data: homs } = await servico.from('homologacoes').select('empresa_id, dados').in('empresa_id', empresas);
+    for (const h of homs ?? []) {
+      if (h.dados && typeof h.dados === 'object') {
+        await servico.from('homologacoes').update({ dados: { ...h.dados, email } }).eq('empresa_id', h.empresa_id);
+      }
+    }
   }
   // TST e engenharia ficam ligados às obras na mesma tabela; o perfil decide o que cada um pode fazer.
   if (perfil === 'tst' || perfil === 'engenharia') {

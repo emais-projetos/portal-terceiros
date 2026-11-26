@@ -11,7 +11,7 @@ import {
   reprovarHomologacao,
   type CampoHomologacao, type DetalheHomologacao, type FornecedorCadastro, type DocumentoHomologacao, type ItemHomologacao, type RespostaQualificacao, type SituacaoHomologacao, type TipoHomologacao,
 } from '../../lib/homologacao';
-import { EditarCadastro, NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
+import { ConviteOutlook, EditarCadastro, NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
 
 export const SELO_HOMOLOGACAO: Record<SituacaoHomologacao, string> = {
   anterior: 'selo-aprovado_admin',
@@ -147,6 +147,7 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
   const [campos, setCampos] = useState<CampoHomologacao[]>([]);
   const [cad, setCad] = useState<FornecedorCadastro | null>(null);
   const [editando, setEditando] = useState<FornecedorCadastro | null>(null);
+  const [versaoConvite, setVersaoConvite] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -268,12 +269,13 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
         </ul>
         {(d.situacao === 'convidada' || d.situacao === 'devolvida') && (
           <div className="linha-botoes">
-            <button type="button" className="botao botao-secundario botao-pequeno" disabled={ocupado} onClick={() => acao(() => reenviarConvite(d.empresa_id), 'Convite colocado de novo na fila de e-mails.').catch(() => undefined)}>
+            <button type="button" className="botao botao-secundario botao-pequeno" disabled={ocupado} onClick={() => acao(() => reenviarConvite(d.empresa_id), 'Convite refeito na fila de e-mails, com o e-mail e o texto atuais.').then(() => setVersaoConvite((v) => v + 1)).catch(() => undefined)}>
               Reenviar convite
             </button>
             <button type="button" className="botao botao-discreto botao-pequeno" disabled={ocupado} onClick={() => setDialogo('reprovar')}>Reprovar</button>
           </div>
         )}
+        {(d.situacao === 'convidada' || d.situacao === 'devolvida') && <ConviteOutlook empresaId={d.empresa_id} versao={versaoConvite} />}
       </section>
 
       <section className="bloco">
@@ -603,6 +605,7 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
         aoSalvar={async (msg) => {
           setEditando(null);
           setOk(msg);
+          setVersaoConvite((v) => v + 1);
           await carregar();
         }}
       />

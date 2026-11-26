@@ -815,8 +815,8 @@ delete from colaboradores where id = '40000000-0000-0000-0000-00000000000b';
 \set S1 '''d0000000-0000-0000-0000-000000000001'''
 \set FH '''c0000000-0000-0000-0000-000000000009'''
 \set O9 '''10000000-0000-0000-0000-000000000009'''
-insert into auth.users (id, email, last_sign_in_at) values (:S1, 'sup@teste', now()), (:FH, 'novo@fornecedor.com', now());
-insert into usuarios (id, nome, email, perfil, ativo) values (:S1, 'Suprimentos Um', 'sup@teste', 'suprimentos', true), (:FH, 'Fornecedor Novo', 'novo@fornecedor.com', 'fornecedor', true);
+insert into auth.users (id, email, last_sign_in_at) values (:S1, 'sup@teste', now());
+insert into usuarios (id, nome, email, perfil, ativo) values (:S1, 'Suprimentos Um', 'sup@teste', 'suprimentos', true);
 insert into obras (id, nome) values (:O9, 'OBRA NOVE');
 
 select teste.entrar(:F1);
@@ -859,14 +859,32 @@ select teste.bloqueado('Cadastro: TST não altera e-mails da empresa', format($q
 select teste.sair();
 select teste.entrar(:S1);
 select teste.bloqueado('Homologação: CNPJ repetido', $q$select cadastrar_fornecedor_homologacao('OUTRA', '11111111000111', 'x@x.com', null, null)$q$);
+select teste.bloqueado('Homologação: e-mail que já é login de outro acesso', format($q$select cadastrar_fornecedor_homologacao('OUTRA', '12345678000195', %L, null, null)$q$, (select email from usuarios where id = :S1)));
+select teste.igual('Homologação: recusa não deixa empresa sem acesso', $q$select 1 from empresas where cnpj = '12345678000195'$q$, 0);
 select cadastrar_fornecedor_homologacao('Fornecedor Homologado Ltda', '99.888.777/0001-66', 'Novo@Fornecedor.com', 'Fulano', array[:O9]::uuid[]) as "EH" \gset
 select teste.sair();
+-- Como na função gerenciar-acesso: o login do fornecedor é criado depois da empresa.
+insert into auth.users (id, email, last_sign_in_at) values (:FH, 'novo@fornecedor.com', now());
+insert into usuarios (id, nome, email, perfil, ativo) values (:FH, 'Fornecedor Novo', 'novo@fornecedor.com', 'fornecedor', true);
 insert into usuarios_empresas values (:FH, :'EH');
 update empresas set email_acesso = 'novo@fornecedor.com' where id = :'EH';
 select teste.entrar(:S1);
 select enviar_convite_homologacao(:'EH');
 select teste.sair();
 select teste.igual('Homologação: convite na fila', format($q$select 1 from envios_fila where empresa_id = %L and tipo = 'convite_homologacao' and para = 'novo@fornecedor.com'$q$, :'EH'), 1);
+select teste.entrar(:S1);
+select enviar_convite_homologacao(:'EH');
+select teste.sair();
+select teste.igual('Convite: reenviar troca o que estava na fila', format($q$select 1 from envios_fila where empresa_id = %L and tipo = 'convite_homologacao' and situacao_envio = 'aguardando'$q$, :'EH'), 1);
+select id as "CV" from envios_fila where empresa_id = :'EH' and tipo = 'convite_homologacao' \gset
+select teste.entrar(:FH);
+select teste.bloqueado('Convite: fornecedor não marca envio', format($q$select marcar_envio_manual(%L)$q$, :'CV'));
+select teste.sair();
+select teste.entrar(:S1);
+select marcar_envio_manual(:'CV');
+select teste.bloqueado('Convite: não marca duas vezes', format($q$select marcar_envio_manual(%L)$q$, :'CV'));
+select teste.sair();
+select teste.igual('Convite: mandado pelo Outlook sai da fila automática', format($q$select 1 from envios_fila where id = %L and situacao_envio = 'enviado' and envio_para like 'Outlook%%'$q$, :'CV'), 1);
 
 -- Fornecedor em homologação só vê a homologação
 select teste.entrar(:FH);

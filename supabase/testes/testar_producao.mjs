@@ -192,6 +192,7 @@ const FUNCOES = {
   fornecedores_a_regularizar: '',
   fornecedores_cadastro: '',
   dispensar_medicao: 'p_empresa uuid, p_obra uuid, p_competencia date, p_motivo text',
+  marcar_envio_manual: 'p_envio uuid',
   desfazer_dispensa_medicao: 'p_medicao uuid',
   salvar_cadastro_fornecedor: 'p_empresa uuid, p_razao text, p_cnpj text, p_emails text, p_dados jsonb',
   fornecedores_para_liberar: '',
