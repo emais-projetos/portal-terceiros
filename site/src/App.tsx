@@ -5,6 +5,7 @@ import { useSessao, type Perfil } from './lib/sessao';
 import { Entrar } from './paginas/Entrar';
 import { EsqueciSenha } from './paginas/EsqueciSenha';
 import { Atendimento } from './paginas/admin/Atendimento';
+import { Notificacoes } from './paginas/Notificacoes';
 import { AceitarConvite } from './paginas/AceitarConvite';
 import { NovaSenha } from './paginas/NovaSenha';
 import { Inicio } from './paginas/Inicio';
@@ -56,6 +57,7 @@ export function App() {
       <Route path="/painel-obra" element={<SoPerfil perfil={['admin', 'tst', 'engenharia', 'suprimentos']}><PainelObra /></SoPerfil>} />
       <Route path="/homologacao" element={<SoPerfil perfil={['suprimentos', 'fornecedor']}><HomologacaoPorPerfil /></SoPerfil>} />
       <Route path="/homologacao/funil" element={<SoPerfil perfil="suprimentos"><FunilHomologacao /></SoPerfil>} />
+      <Route path="/notificacoes" element={<ComLogin><Notificacoes /></ComLogin>} />
       <Route path="/fornecedores" element={<SoPerfil perfil={['suprimentos', 'admin']}><Fornecedores /></SoPerfil>} />
       <Route path="/configuracao" element={<SoPerfil perfil="suprimentos"><Configuracao /></SoPerfil>} />
       <Route path="/fornecedores-acessos" element={<Navigate to="/fornecedores?aba=acessos" replace />} />

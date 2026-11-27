@@ -4,51 +4,21 @@ import { Pagina, Mensagem as Aviso } from '../../componentes/Pagina';
 import { Carregando } from '../../componentes/Carregando';
 import { Conversa } from '../../componentes/Conversa';
 import { mensagemDeErro } from '../../lib/supabase';
-import { formatarCnpj } from '../../lib/consultas';
-import { data } from '../../lib/formato';
 import { nomesPerfil, type Perfil } from '../../lib/sessao';
 import {
-  acompanharMensagens, enviarMensagem, lerConversas, lerMensagens, lerPedidosObra, marcarLida, resolverConversa,
-  type ConversaAdmin, type Mensagem, type PedidoObra,
+  acompanharMensagens, enviarMensagem, lerConversas, lerMensagens, marcarLida, resolverConversa,
+  type ConversaAdmin, type Mensagem,
 } from '../../lib/ajuda';
 
-// Atendimento: conversas da Ajuda (fornecedor, TST e engenharia) e pedidos de acesso a outra obra.
-
-const ABAS = [
-  ['conversas', 'Conversas'],
-  ['pedidos', 'Pedidos de obra'],
-] as const;
-type Aba = (typeof ABAS)[number][0];
+// Atendimento: conversas da Ajuda (fornecedor, TST, engenharia e Suprimentos).
 
 const hora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
+// Os pedidos de obra e as liberações ficam em Notificações; aqui ficam as conversas.
 export function Atendimento() {
-  const [params, setParams] = useSearchParams();
-  const aba = (params.get('aba') as Aba) || 'conversas';
-  const [pendentes, setPendentes] = useState<number | null>(null);
-
-  useEffect(() => {
-    lerPedidosObra()
-      .then((l) => setPendentes(l.filter((p) => p.situacao === 'pendente').length))
-      .catch(() => setPendentes(null));
-  }, [aba]);
-
   return (
-    <Pagina
-      titulo="Atendimento"
-      apoio="Dúvidas enviadas pela Ajuda e pedidos de fornecedores para atuar em outra obra."
-      abas={
-        <nav className="abas abas-botoes" aria-label="Atendimento">
-          {ABAS.map(([a, nome]) => (
-            <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => setParams(a === 'conversas' ? {} : { aba: a })}>
-              {nome}
-              {a === 'pedidos' && !!pendentes && <span className="contador">{pendentes}</span>}
-            </button>
-          ))}
-        </nav>
-      }
-    >
-      {aba === 'conversas' ? <Conversas /> : <Pedidos aoMudar={setPendentes} />}
+    <Pagina titulo="Atendimento" apoio="Dúvidas enviadas pela Ajuda por fornecedores, TST, engenharia e Suprimentos. Pedidos de obra e liberações estão em Notificações.">
+      <Conversas />
     </Pagina>
   );
 }
@@ -202,107 +172,6 @@ function Conversas() {
           )}
         </section>
       </div>
-    </>
-  );
-}
-
-function Pedidos({ aoMudar }: { aoMudar: (pendentes: number) => void }) {
-  const [pedidos, setPedidos] = useState<PedidoObra[] | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-
-  const carregar = useCallback(async () => {
-    try {
-      const l = await lerPedidosObra();
-      setPedidos(l);
-      aoMudar(l.filter((p) => p.situacao === 'pendente').length);
-    } catch (e) {
-      setErro(mensagemDeErro(e as Error));
-    }
-  }, [aoMudar]);
-
-  useEffect(() => {
-    carregar();
-  }, [carregar]);
-
-  if (!pedidos && !erro) return <Carregando />;
-  const abertos = (pedidos ?? []).filter((p) => p.situacao === 'pendente');
-  const respondidos = (pedidos ?? []).filter((p) => p.situacao !== 'pendente');
-
-  return (
-    <>
-      {erro && <Aviso tipo="erro" aoFechar={() => setErro(null)}>{erro}</Aviso>}
-      <section className="bloco">
-        <h2 className="bloco-titulo">Aguardando resposta <span className="sub">{abertos.length}</span></h2>
-        <p className="apoio">Quem responde os pedidos é o Suprimentos: ele registra o contrato da obra e a obra é liberada na hora. Aqui é só para acompanhar.</p>
-        {abertos.length === 0 ? (
-          <p className="vazio">Nenhum pedido aguardando.</p>
-        ) : (
-          <div className="tabela-rolagem">
-            <table className="tabela tabela-lista">
-              <thead>
-                <tr>
-                  <th scope="col">Empresa</th>
-                  <th scope="col">Obra pedida</th>
-                  <th scope="col">Contrato e observação</th>
-                  <th scope="col">Pedido</th>
-                  <th scope="col">Situação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {abertos.map((p) => (
-                  <tr key={p.id}>
-                    <th scope="row">
-                      {p.empresas?.razao_social}
-                      <small className="sub">{formatarCnpj(p.empresas?.cnpj ?? '')}</small>
-                    </th>
-                    <td>{p.obras?.nome}</td>
-                    <td className="quebra">
-                      {p.numero_contrato ? `Contrato ${p.numero_contrato}` : <span className="sub">Sem contrato informado</span>}
-                      {p.observacao && <small className="sub">{p.observacao}</small>}
-                    </td>
-                    <td>
-                      {hora(p.pedido_em)}
-                      {p.usuarios && <small className="sub">{p.usuarios.nome}</small>}
-                    </td>
-                    <td><span className="selo selo-em_analise">Com o Suprimentos</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-      {respondidos.length > 0 && (
-        <section className="bloco">
-          <h2 className="bloco-titulo">Respondidos</h2>
-          <div className="tabela-rolagem">
-            <table className="tabela tabela-lista">
-              <thead>
-                <tr>
-                  <th scope="col">Empresa</th>
-                  <th scope="col">Obra</th>
-                  <th scope="col">Resposta</th>
-                </tr>
-              </thead>
-              <tbody>
-                {respondidos.map((p) => (
-                  <tr key={p.id}>
-                    <th scope="row">{p.empresas?.razao_social}</th>
-                    <td>{p.obras?.nome}</td>
-                    <td className="quebra">
-                      <span className={`selo ${p.situacao === 'aprovado' ? 'selo-liberado' : 'selo-pendente_fornecedor'}`}>{p.situacao === 'aprovado' ? 'Aprovado' : 'Recusado'}</span>
-                      <small className="sub">
-                        {p.analisado_em ? data(p.analisado_em) : ''}
-                        {p.motivo_recusa ? `: ${p.motivo_recusa}` : ''}
-                      </small>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
     </>
   );
 }

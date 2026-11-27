@@ -13,7 +13,6 @@ import { conferirEncerramento, criarObra, lerObrasCadastro, mudarSituacaoObra, r
 import { data, hojeIso } from '../lib/formato';
 import { PainelObra } from './PainelObra';
 import { MinhasObras } from './fornecedor/MinhasObras';
-import { formatarCnpj as cnpjFormatado, lerParaLiberar, liberarPortal, type FornecedorParaLiberar } from '../lib/homologacao';
 import { Homologacao } from './fornecedor/Homologacao';
 
 // Engenharia e TST entram direto no painel da obra com os faróis; o fornecedor, nas suas obras com os faróis;
@@ -87,7 +86,6 @@ function InicioPadrao() {
       acoes={<button type="button" className="botao botao-secundario" onClick={() => setGestao(true)}>Gerenciar obras</button>}
     >
 
-        <LiberarFornecedores />
         {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
         {!erro && !obras && <Carregando />}
         {obras && obras.length === 0 && <p className="vazio">Nenhuma alocação aberta no momento.</p>}
@@ -496,62 +494,5 @@ function EncerrarObra({ obra, aoFechar, aoMudar }: { obra: ObraCadastro | null; 
         )}
       </div>
     </Dialogo>
-  );
-}
-
-// Fornecedores novos que o Suprimentos homologou e já têm contrato: o administrativo libera o portal e o fornecedor recebe o e-mail.
-function LiberarFornecedores() {
-  const [lista, setLista] = useState<FornecedorParaLiberar[]>([]);
-  const [ocupado, setOcupado] = useState<string | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
-
-  const carregar = () => lerParaLiberar().then(setLista).catch(() => setLista([]));
-  useEffect(() => {
-    carregar();
-  }, []);
-
-  async function liberar(f: FornecedorParaLiberar) {
-    setErro(null);
-    setOcupado(f.empresa_id);
-    try {
-      await liberarPortal(f.empresa_id);
-      setOk(`Portal liberado para ${f.razao_social}. O e-mail de boas-vindas entrou na fila${f.email ? ` para ${f.email}` : ''}.`);
-      await carregar();
-    } catch (e) {
-      setErro(mensagemDeErro(e as Error));
-    } finally {
-      setOcupado(null);
-    }
-  }
-
-  if (lista.length === 0 && !ok && !erro) return null;
-  return (
-    <section className="bloco bloco-destaque">
-      <h2 className="bloco-titulo">Fornecedores homologados para liberar <span className="sub">{lista.length}</span></h2>
-      <p className="apoio">
-        O Suprimentos homologou e registrou o contrato. Ao liberar, o fornecedor recebe o e-mail e passa a ver as abas de documentos da empresa e de colaboradores.
-      </p>
-      {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
-      {ok && <p className="aviso aviso-ok" role="status">{ok}</p>}
-      {lista.length > 0 && (
-        <ul className="lista-simples">
-          {lista.map((f) => (
-            <li key={f.empresa_id}>
-              <span>
-                <strong>{f.razao_social}</strong>
-                <small className="sub">
-                  {cnpjFormatado(f.cnpj)} · homologado em {data(f.homologada_em)}
-                  {f.obras.length ? ` · ${f.obras.join(', ')}` : ''}
-                </small>
-              </span>
-              <button type="button" className="botao botao-pequeno" disabled={ocupado === f.empresa_id} onClick={() => liberar(f)}>
-                {ocupado === f.empresa_id ? 'Liberando' : 'Liberar portal'}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   );
 }

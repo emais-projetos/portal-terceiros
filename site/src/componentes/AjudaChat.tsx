@@ -43,6 +43,13 @@ export function AjudaChat() {
       .catch(() => undefined);
   }, [aberto, conversa?.id, mensagens.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Notificações > "Abrir a Ajuda".
+  useEffect(() => {
+    const abrir = () => setAberto(true);
+    window.addEventListener('portal-abrir-ajuda', abrir);
+    return () => window.removeEventListener('portal-abrir-ajuda', abrir);
+  }, []);
+
   useEffect(() => {
     if (!aberto) return;
     const fechar = (e: KeyboardEvent) => e.key === 'Escape' && setAberto(false);

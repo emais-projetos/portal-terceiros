@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSessao, nomesPerfil, type Perfil } from '../lib/sessao';
 import { contarAguardandoTst, contarEmAnalise } from '../lib/admin';
+import { contarNotificacoes } from '../lib/notificacoes';
 import { contarCobrancas } from '../lib/cobrancas';
 import { contarAtendimento } from '../lib/ajuda';
 import { lerRegras } from '../lib/regras';
@@ -12,6 +13,12 @@ import { lerContadoresSuprimentos, type ContadoresSuprimentos } from '../lib/hom
 // Menu lateral fixo: fica parado ao rolar, pode ser recolhido (só ícones) e, no celular, abre por cima da tela.
 
 const ICONES: Record<string, ReactNode> = {
+  sino: (
+    <>
+      <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+    </>
+  ),
   homologacao: (
     <>
       <path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6z" />
@@ -125,17 +132,25 @@ const abaAcessos = (aba: string) => (caminho: string, busca: string) =>
 const abaConfiguracao = (aba: string) => (caminho: string, busca: string) =>
   caminho.startsWith('/configuracao') && (new URLSearchParams(busca).get('aba') ?? 'formulario') === aba;
 
-const abaFornecedores = (aba: string) => (caminho: string, busca: string) =>
-  caminho === '/fornecedores' && (new URLSearchParams(busca).get('aba') ?? 'cadastro') === aba;
 
 type ExtrasMenu = {
   homologacao?: 'nenhuma' | 'fechado' | 'aberto';
   sup?: ContadoresSuprimentos | null;
   master?: boolean;
   exige?: { colaboradores: boolean; mensal: boolean };
+  notificacoes?: number | null;
 };
 
-function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, atendimento: number | null = null, ncs: number | null = null, exportar: number | null = null, extras: ExtrasMenu = {}): Grupo[] {
+// Notificações vem primeiro no menu de todos os perfis (menos o fornecedor que ainda está só na homologação).
+function gruposDoMenu(...args: Parameters<typeof gruposPorPerfil>): Grupo[] {
+  const grupos = gruposPorPerfil(...args);
+  const [perfil, , , , , , extras = {}] = args;
+  if (!grupos.length || (perfil === 'fornecedor' && extras.homologacao === 'fechado')) return grupos;
+  const sino: Item = { to: '/notificacoes', rotulo: 'Notificações', icone: 'sino', contador: extras.notificacoes || null };
+  return [{ ...grupos[0], itens: [sino, ...grupos[0].itens] }, ...grupos.slice(1)];
+}
+
+function gruposPorPerfil(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, _atendimento: number | null = null, ncs: number | null = null, exportar: number | null = null, extras: ExtrasMenu = {}): Grupo[] {
   // Segurança da obra: para o fornecedor, itens a regularizar; para o TST e o administrativo, respostas a avaliar.
   const paraValidar = (_: string, busca: string) => busca.includes('situacao=tst');
   if (perfil === 'admin')
@@ -147,7 +162,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
           { to: '/painel-obra', rotulo: 'Painel da obra', icone: 'painel' },
           { to: '/seguranca', rotulo: 'Segurança da obra', icone: 'seguranca', contador: ncs },
           { to: '/indicadores', rotulo: 'Indicadores', icone: 'indicadores' },
-          { to: '/atendimento', rotulo: 'Atendimento', icone: 'ajuda', contador: atendimento },
+          { to: '/atendimento', rotulo: 'Atendimento', icone: 'ajuda' },
         ],
       },
       {
@@ -230,11 +245,6 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
             to: '/fornecedores',
             rotulo: 'Fornecedores',
             icone: 'fornecedores',
-            contador: (sup?.pedidos ?? 0) + (sup?.contrato ?? 0) || null,
-            filhos: [
-              { to: '/fornecedores', rotulo: 'Cadastro e acesso', ativo: (c, b) => c === '/fornecedores' && new URLSearchParams(b).get('aba') !== 'pedidos' },
-              { to: '/fornecedores?aba=pedidos', rotulo: 'Pedidos de obra', ativo: abaFornecedores('pedidos'), contador: sup?.pedidos || null },
-            ],
           },
           {
             to: '/configuracao',
@@ -323,6 +333,20 @@ export function Topo() {
     return () => window.clearInterval(t);
   }, [ehAdmin, ehTst]);
 
+  // Notificações com quem está logado (liberações, pedidos de obra, Ajuda).
+  const [notificacoes, setNotificacoes] = useState<number | null>(null);
+  useEffect(() => {
+    if (!usuario || (usuario.perfil === 'fornecedor' && homologacao === 'fechado')) return;
+    const contar = () => contarNotificacoes().then(setNotificacoes).catch(() => undefined);
+    contar();
+    const t = window.setInterval(contar, 60000);
+    window.addEventListener('notificacoes-mudaram', contar);
+    return () => {
+      window.clearInterval(t);
+      window.removeEventListener('notificacoes-mudaram', contar);
+    };
+  }, [usuario, homologacao, pathname]);
+
   // Conversas da Ajuda sem leitura e pedidos de obra esperando resposta.
   useEffect(() => {
     if (!ehAdmin) return;
@@ -383,7 +407,7 @@ export function Topo() {
     }
   }
 
-  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento, ncs, exportar, { homologacao, sup, master, exige });
+  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento, ncs, exportar, { homologacao, sup, master, exige, notificacoes });
   const estaAtivo = (i: Item) => (i.ativo ? i.ativo(pathname, search) : undefined);
 
   return (

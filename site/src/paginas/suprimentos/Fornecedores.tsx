@@ -1,24 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { Pagina, Mensagem } from '../../componentes/Pagina';
 import { Carregando } from '../../componentes/Carregando';
 import { mensagemDeErro } from '../../lib/supabase';
 import { data, diasAte } from '../../lib/formato';
-import { lerPedidosObra, responderPedidoObra, type PedidoObra } from '../../lib/ajuda';
 import {
   NOMES_SITUACAO_HOMOLOGACAO, NOMES_SITUACAO_FORNECEDOR, SELO_HOMOLOGACAO, SELO_SITUACAO_FORNECEDOR, formatarCnpj, lerARegularizar, lerFornecedoresCadastro, resumoDocsFornecedor, lerAcessosPorEmpresa,
   type FornecedorARegularizar, type FornecedorCadastro,
 } from '../../lib/homologacao';
 import { lerTiposFornecedor, nomesDosTipos, type TipoFornecedor } from '../../lib/tiposFornecedor';
 import { lerCategorias, type CategoriaServico } from '../../lib/categorias';
-import { NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
+import { NovoFornecedor } from './Dialogos';
 import { FichaFornecedor } from './Ficha';
 
-const ABAS = [
-  ['cadastro', 'Fornecedores'],
-  ['pedidos', 'Pedidos de obra'],
-] as const;
-type Aba = (typeof ABAS)[number][0];
 
 // Filtros da lista: ficam na URL, então voltar da ficha mantém o que estava filtrado.
 type ChaveFiltro = 'doc' | 'contrato' | 'acesso' | 'sit' | 'tipo' | 'cat';
@@ -30,19 +24,16 @@ const FILTROS_LISTA: { chave: ChaveFiltro; rotulo: string; opcoes: [string, stri
 ];
 const CHAVES_FILTRO: ChaveFiltro[] = ['doc', 'contrato', 'acesso', 'sit', 'tipo', 'cat'];
 
-const hora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-// Fornecedores (Suprimentos): uma lista só com o cadastro, o acesso ao portal e o que falta regularizar (BP, contrato),
-// e a aba dos pedidos para atuar em outra obra.
+// Fornecedores (Suprimentos e administrativo): uma lista só com o cadastro, o acesso ao portal e o que falta regularizar (BP, contrato).
+// Os pedidos para atuar em outra obra ficam em Notificações.
 export function Fornecedores() {
   const [params, setParams] = useSearchParams();
   const pedida = params.get('aba');
-  const aba: Aba = pedida === 'pedidos' ? 'pedidos' : 'cadastro';
   const empresa = params.get('empresa');
   const [empresas, setEmpresas] = useState<FornecedorCadastro[] | null>(null);
   const [acessos, setAcessos] = useState<Awaited<ReturnType<typeof lerAcessosPorEmpresa>> | null>(null);
   const [regularizar, setRegularizar] = useState<FornecedorARegularizar[] | null>(null);
-  const [pedidos, setPedidos] = useState<PedidoObra[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [novo, setNovo] = useState(false);
@@ -73,18 +64,15 @@ export function Fornecedores() {
   };
   const [categoriasL, setCategoriasL] = useState<CategoriaServico[]>([]);
   const [tiposF, setTiposF] = useState<TipoFornecedor[]>([]);
-  const [contrato, setContrato] = useState<PedidoContrato | null>(null);
-  const [recusar, setRecusar] = useState<PedidoObra | null>(null);
 
   const carregar = useCallback(async () => {
     try {
-      const [e, r, p, a, tf] = await Promise.all([lerFornecedoresCadastro(), lerARegularizar(), lerPedidosObra(), lerAcessosPorEmpresa(), lerTiposFornecedor(true)]);
+      const [e, r, a, tf] = await Promise.all([lerFornecedoresCadastro(), lerARegularizar(), lerAcessosPorEmpresa(), lerTiposFornecedor(true)]);
       setTiposF(tf);
       lerCategorias(true).then(setCategoriasL).catch(() => setCategoriasL([]));
       setEmpresas(e);
       setAcessos(a);
       setRegularizar(r);
-      setPedidos(p);
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
     }
@@ -133,33 +121,22 @@ export function Fornecedores() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresas, busca, acessos, regPor, ...CHAVES_FILTRO.map((k) => filtros[k])]);
 
-  if (empresa) return <FichaFornecedor empresaId={empresa} voltarRotulo={aba === 'pedidos' ? 'Pedidos de obra' : 'Fornecedores'} aoVoltar={voltarDaFicha} />;
+  if (pedida === 'pedidos') return <Navigate to="/notificacoes?tipo=pedido_obra" replace />;
+  if (empresa) return <FichaFornecedor empresaId={empresa} voltarRotulo="Fornecedores" aoVoltar={voltarDaFicha} />;
 
-  const pendentes = (pedidos ?? []).filter((p) => p.situacao === 'pendente');
-  const respondidos = (pedidos ?? []).filter((p) => p.situacao !== 'pendente').slice(0, 50);
   const carregando = !empresas && !erro;
 
   return (
     <Pagina
       titulo="Fornecedores"
-      apoio="Todos os fornecedores do portal, acesso ao portal (login), o que falta regularizar (código BP e contrato de cada obra) e os pedidos para atuar em outra obra."
+      apoio="Todos os fornecedores do portal, acesso ao portal (login), o que falta regularizar (código BP e contrato de cada obra)."
       acoes={<button type="button" className="botao" onClick={() => setNovo(true)}>Novo fornecedor</button>}
-      abas={
-        <nav className="abas abas-botoes" aria-label="Fornecedores">
-          {ABAS.map(([a, nome]) => (
-            <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => novosParams((p) => (a === 'cadastro' ? p.delete('aba') : p.set('aba', a)))}>
-              {nome}
-              {a === 'pedidos' && !!pendentes.length && <span className="contador">{pendentes.length}</span>}
-            </button>
-          ))}
-        </nav>
-      }
     >
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
       {carregando && <Carregando />}
 
-      {!carregando && aba === 'cadastro' && (
+      {!carregando && (
         <>
           <div className="filtros filtros-linha">
             <label className="campo campo-busca">
@@ -300,110 +277,6 @@ export function Fornecedores() {
         </>
       )}
 
-      {!carregando && aba === 'pedidos' && (
-        <>
-          <p className="apoio">
-            Para aprovar um pedido, registre o contrato da obra. A obra é liberada para o fornecedor na hora e ele recebe o aviso na Ajuda. Se a obra entra num
-            contrato que já existe, abra o fornecedor e edite esse contrato.
-          </p>
-          <section className="bloco">
-            <h2 className="bloco-titulo">Aguardando <span className="sub">{pendentes.length}</span></h2>
-            {pendentes.length === 0 ? (
-              <p className="vazio">Nenhum pedido aguardando.</p>
-            ) : (
-              <div className="tabela-rolagem">
-                <table className="tabela tabela-lista">
-                  <thead>
-                    <tr>
-                      <th scope="col">Fornecedor</th>
-                      <th scope="col">Obra pedida</th>
-                      <th scope="col">Contrato e observação</th>
-                      <th scope="col">Pedido</th>
-                      <th scope="col"><span className="sr">Ações</span></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pendentes.map((p) => {
-                      const emp = empresas?.find((e) => e.empresa_id === p.empresa_id);
-                      return (
-                        <tr key={p.id}>
-                          <th scope="row">
-                            {p.empresas?.razao_social}
-                            <small className="sub">{formatarCnpj(p.empresas?.cnpj ?? '')}</small>
-                          </th>
-                          <td>{p.obras?.nome}</td>
-                          <td className="quebra">
-                            {p.numero_contrato ? `Contrato informado: ${p.numero_contrato}` : <span className="sub">Sem contrato informado</span>}
-                            {p.observacao && <small className="sub">{p.observacao}</small>}
-                          </td>
-                          <td>
-                            {hora(p.pedido_em)}
-                            {p.usuarios && <small className="sub">{p.usuarios.nome}</small>}
-                          </td>
-                          <td className="acoes">
-                            <button
-                              type="button"
-                              className="botao botao-pequeno"
-                              onClick={() =>
-                                setContrato({
-                                  empresaId: p.empresa_id,
-                                  empresaNome: p.empresas?.razao_social ?? '',
-                                  codigoBp: emp?.codigo_bp ?? null,
-                                  contrato: null,
-                                  obrasIniciais: [p.obra_id],
-                                  numeroInicial: p.numero_contrato,
-                                  titulo: `Contrato da obra ${p.obras?.nome ?? ''}`,
-                                })
-                              }
-                            >
-                              Registrar contrato
-                            </button>
-                            <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => abrir(p.empresa_id, 'obras')}>Abrir fornecedor</button>
-                            <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => setRecusar(p)}>Recusar</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-          {respondidos.length > 0 && (
-            <section className="bloco">
-              <h2 className="bloco-titulo">Respondidos</h2>
-              <div className="tabela-rolagem">
-                <table className="tabela tabela-lista">
-                  <thead>
-                    <tr>
-                      <th scope="col">Fornecedor</th>
-                      <th scope="col">Obra</th>
-                      <th scope="col">Resposta</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {respondidos.map((p) => (
-                      <tr key={p.id}>
-                        <th scope="row">{p.empresas?.razao_social}</th>
-                        <td>{p.obras?.nome}</td>
-                        <td className="quebra">
-                          <span className={`selo ${p.situacao === 'aprovado' ? 'selo-liberado' : 'selo-pendente_fornecedor'}`}>{p.situacao === 'aprovado' ? 'Aprovado' : 'Recusado'}</span>
-                          <small className="sub">
-                            {p.analisado_em ? data(p.analisado_em) : ''}
-                            {p.numero_contrato && p.situacao === 'aprovado' ? `, contrato ${p.numero_contrato}` : ''}
-                            {p.motivo_recusa ? `: ${p.motivo_recusa}` : ''}
-                          </small>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-        </>
-      )}
-
       <NovoFornecedor
         aberto={novo}
         aoFechar={() => setNovo(false)}
@@ -411,29 +284,6 @@ export function Fornecedores() {
           setNovo(false);
           setOk(`${msg} Acompanhe em Homologação.`);
           carregar();
-        }}
-      />
-      <RegistrarContrato
-        pedido={contrato}
-        aoFechar={() => setContrato(null)}
-        aoRegistrar={async (msg) => {
-          setContrato(null);
-          setOk(`${msg} O pedido foi aprovado e o fornecedor recebeu o aviso.`);
-          await carregar();
-        }}
-      />
-      <PedirMotivo
-        aberto={!!recusar}
-        titulo={recusar ? `Recusar: ${recusar.obras?.nome ?? ''}` : ''}
-        apoio="O motivo vai para o fornecedor na Ajuda."
-        botao="Recusar pedido"
-        aoFechar={() => setRecusar(null)}
-        aoConfirmar={async (m) => {
-          if (!recusar) return;
-          await responderPedidoObra(recusar.id, false, m);
-          setRecusar(null);
-          setOk('Pedido recusado. O fornecedor recebeu o motivo na Ajuda.');
-          await carregar();
         }}
       />
     </Pagina>

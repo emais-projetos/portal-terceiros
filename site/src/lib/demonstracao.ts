@@ -332,6 +332,49 @@ function historicoDe(id: unknown) {
   return lista.sort((a, b) => b.em.localeCompare(a.em));
 }
 
+// Notificações fictícias: o que é com o perfil aparece como "comigo", o resto para acompanhar.
+function notificacoesDe(modo: ModoDemo) {
+  const perfil = perfilDoModo(modo);
+  const n = (chave: string, tipo: string, vez: string, titulo: string, dias: number, extra: Record<string, unknown> = {}) => ({
+    chave, tipo, vez, titulo, desde: quando(-dias), detalhe: null, empresa_id: null, empresa: null, obra: null, ref: null, extra: null, ...extra,
+    comigo: vez === perfil || vez === 'voce',
+  });
+  if (perfil === 'admin' || perfil === 'suprimentos') {
+    return [
+      n('sst-1', 'validar_sst', 'admin', 'Validar o PGR enviado na homologação', 2, {
+        empresa_id: E4, empresa: 'HIDRÁULICA NOVA LTDA', ref: 'd6000000-0000-4000-8000-000000000009',
+        detalhe: 'O Suprimentos só homologa depois da validação do administrativo.',
+        extra: { documento: 'PGR (inventário de riscos)', data_emissao: dias(-40), vencimento: dias(325), validade_dias: 365, arquivos: [{ caminho: 'demo', nome: 'pgr_hidraulica.pdf' }] },
+      }),
+      n('sst-2', 'validar_sst', 'admin', 'Validar o PCMSO enviado na homologação', 2, {
+        empresa_id: E4, empresa: 'HIDRÁULICA NOVA LTDA', ref: 'd6000000-0000-4000-8000-000000000010',
+        extra: { documento: 'PCMSO', data_emissao: dias(-350), vencimento: dias(15), validade_dias: 365, arquivos: [{ caminho: 'demo', nome: 'pcmso.pdf' }] },
+      }),
+      n('hom-1', 'homologacao', 'suprimentos', 'Homologação enviada para análise', 6, { empresa_id: E4, empresa: 'HIDRÁULICA NOVA LTDA', detalhe: '1 documento para conferir; PGR e PCMSO aguardando o administrativo.' }),
+      n('ctr-1', 'registrar_contrato', 'suprimentos', 'Homologado e sem contrato registrado', 0, {
+        empresa_id: 'd1000000-0000-4000-8000-000000000005', empresa: 'ARTEFATOS EXEMPLO LTDA', detalhe: 'Sem o contrato, o administrativo não consegue liberar o portal.', extra: { codigo_bp: null, obras_ids: [] },
+      }),
+      n('lib-1', 'liberar_portal', 'admin', 'Homologado e com contrato: falta liberar o portal', 1, {
+        empresa_id: 'd1000000-0000-4000-8000-000000000006', empresa: 'ESQUADRIAS MODELO LTDA', obra: nomeObra(O1), detalhe: 'Contrato 052/2026 registrado pelo Suprimentos.',
+      }),
+      n('ped-1', 'pedido_obra', 'suprimentos', 'Pedido para atuar em outra obra', 2, {
+        empresa_id: E2, empresa: 'PINTURAS MODELO LTDA', obra: nomeObra(O2), ref: 'd6300000-0000-4000-8000-000000000001', detalhe: 'Equipe disponível a partir de dezembro',
+        extra: { obra_id: O2, numero_contrato: null, codigo_bp: '100002' },
+      }),
+      ...(perfil === 'admin'
+        ? [n('aj-1', 'ajuda', 'admin', 'Fornecedor Exemplo: "Como envio o ASO de um colaborador novo?"', 0, { ref: 'd8800000-0000-4000-8000-000000000001', empresa: 'ELÉTRICA EXEMPLO LTDA', detalhe: '2 mensagens sem resposta' })]
+        : [n('aj-2', 'ajuda', 'voce', 'Resposta da Emais na Ajuda', 0, { detalhe: '"O contrato da Pinturas Modelo já foi assinado, pode registrar."' })]),
+    ];
+  }
+  if (perfil === 'fornecedor' && modo === 'fornecedor') {
+    return [
+      n('aj-3', 'ajuda', 'voce', 'Resposta da Emais na Ajuda', 0, { detalhe: '"Pode enviar o ASO em Colaboradores, no nome da pessoa."' }),
+      n('ped-2', 'pedido_obra', 'suprimentos', 'Seu pedido para atuar em outra obra', 2, { obra: nomeObra(O2), detalhe: 'Aguardando o Suprimentos registrar o contrato da obra.' }),
+    ];
+  }
+  return perfil === 'fornecedor' ? [] : [n('aj-4', 'ajuda', 'voce', 'Resposta da Emais na Ajuda', 1, { detalhe: '"A integração de segunda foi remarcada para as 8h."' })];
+}
+
 const blocoVazio = { conformidade: null, vistorias: 0, ultima: null, meses: [], mais_nao: [] };
 
 // ------------------------------------------------------------------ Respostas
@@ -381,6 +424,7 @@ const RPCS: Record<string, (modo: ModoDemo, args: Record<string, unknown>) => un
   detalhe_homologacao: (_m, a) => detalheDe(a.p_empresa),
   fornecedores_cadastro: (_m, a) => (a.p_empresa ? fornecedoresCadastro.filter((f) => f.empresa_id === a.p_empresa) : fornecedoresCadastro),
   historico_fornecedor: (_m, a) => historicoDe(a.p_empresa),
+  minhas_notificacoes: (m) => notificacoesDe(m),
   fornecedores_a_regularizar: () => [
     { empresa_id: E3, razao_social: 'TERRAPLENAGEM AMOSTRA LTDA', cnpj: '33333333000173', homologacao: 'anterior', sem_bp: true, obras_sem_contrato: ['LOTEAMENTO DEMONSTRAÇÃO'], contratos_vencendo: [], certidoes: [] },
   ],
@@ -525,9 +569,11 @@ export async function fetchComDemo(entrada: RequestInfo | URL, init?: RequestIni
   return json(200, linhas, faixa);
 }
 
+const perfilDoModo = (modo: ModoDemo): 'fornecedor' | 'tst' | 'engenharia' | 'suprimentos' | 'admin' => (modo === 'homologacao' ? 'fornecedor' : modo);
+
 // Usuário de mentira para o menu e as telas do perfil escolhido.
 export function usuarioDemo(modo: ModoDemo) {
-  const perfil = modo === 'homologacao' ? 'fornecedor' : modo;
+  const perfil = perfilDoModo(modo);
   const nomes: Record<ModoDemo, string> = {
     fornecedor: 'Fornecedor Exemplo', homologacao: 'Fornecedor Novo Exemplo', tst: 'TST Exemplo', engenharia: 'Engenharia Exemplo', suprimentos: 'Suprimentos Exemplo',
   };
