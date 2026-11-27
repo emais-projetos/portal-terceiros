@@ -3344,3 +3344,35 @@ button.celula:hover {
 .ficha-aviso { margin-bottom: 16px; }
 .ficha-etapas-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 760px) { .ficha-etapas-4 { grid-template-columns: 1fr; } }
+
+/* Lista de fornecedores compacta */
+.filtros-linha { align-items: flex-end; gap: 10px 12px; margin-bottom: 8px; }
+.filtros-linha .campo-busca { flex: 1 1 260px; }
+.campo-filtro { flex: 0 1 auto; }
+.campo-filtro select { min-width: 150px; }
+.campo-filtro select.filtro-ativo { border-color: var(--petroleo); background-color: #e8f3f1; font-weight: 600; }
+.barra-resultado { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 10px; }
+.tabela-densa th, .tabela-densa td { padding: 9px 12px; }
+.tabela-densa td { white-space: nowrap; }
+.tabela-densa tbody th { min-width: 260px; }
+.tabela-densa .sub { font-size: var(--fs-apoio); }
+.nome-com-selos { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.selo-mini { font-size: 0.75rem; padding: 1px 8px; }
+.acoes-seta { color: var(--suave); font-size: 1.25rem; line-height: 1; text-align: right; }
+.linha-clicavel:hover .acoes-seta { color: var(--petroleo); }
+@media (max-width: 760px) {
+  .acoes-seta { display: none; }
+  .tabela-densa tbody th { min-width: 0; }
+  .campo-filtro { flex: 1 1 45%; }
+  .campo-filtro select { min-width: 0; width: 100%; }
+}
+.filtros-linha .campo-busca { flex: 1 1 200px; max-width: 340px; }
+.campo-filtro select { min-width: 118px; }
+@media (min-width: 761px) { .tabela-densa td.num { text-align: left; } .tabela-densa tbody th { min-width: 300px; } }
+.campo-filtro select { max-width: 190px; }
+@media (max-width: 760px) {
+  .tabela-densa td, .tabela-densa th { white-space: normal; }
+  .tabela-densa td.acoes-seta { display: none; }
+  .tabela-densa tr { grid-template-columns: 1fr; }
+  .campo-filtro select { max-width: none; }
+}

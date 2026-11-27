@@ -10,7 +10,7 @@ import {
   type FornecedorARegularizar, type FornecedorCadastro,
 } from '../../lib/homologacao';
 import { lerTiposFornecedor, nomesDosTipos, type TipoFornecedor } from '../../lib/tiposFornecedor';
-import { lerCategorias, nomesDasCategorias, type CategoriaServico } from '../../lib/categorias';
+import { lerCategorias, type CategoriaServico } from '../../lib/categorias';
 import { NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
 import { FichaFornecedor } from './Ficha';
 
@@ -20,19 +20,15 @@ const ABAS = [
 ] as const;
 type Aba = (typeof ABAS)[number][0];
 
-const FILTROS = [
-  ['todos', 'Todos'],
-  ['vencido', 'Com documento vencido'],
-  ['vencendo', 'Vencendo'],
-  ['faltando', 'Documento faltando'],
-  ['contrato', 'Sem contrato ou BP'],
-  ['regularizar', 'A regularizar'],
-  ['sem_acesso', 'Sem acesso ao portal'],
-  ['nunca', 'Nunca entrou'],
-  ['bloqueados', 'Bloqueados'],
-  ['inativos', 'Inativos'],
-] as const;
-type Filtro = (typeof FILTROS)[number][0];
+// Filtros da lista: ficam na URL, então voltar da ficha mantém o que estava filtrado.
+type ChaveFiltro = 'doc' | 'contrato' | 'acesso' | 'sit' | 'tipo' | 'cat';
+const FILTROS_LISTA: { chave: ChaveFiltro; rotulo: string; opcoes: [string, string][] }[] = [
+  { chave: 'doc', rotulo: 'Documentos', opcoes: [['', 'Todos'], ['vencido', 'Com vencido'], ['vencendo', 'Vencendo'], ['faltando', 'Faltando']] },
+  { chave: 'contrato', rotulo: 'Contrato e BP', opcoes: [['', 'Todos'], ['regularizar', 'A regularizar'], ['sem', 'Sem contrato ou BP']] },
+  { chave: 'acesso', rotulo: 'Acesso ao portal', opcoes: [['', 'Todos'], ['sem', 'Sem acesso'], ['nunca', 'Nunca entrou']] },
+  { chave: 'sit', rotulo: 'Situação', opcoes: [['', 'Ativos'], ['bloqueados', 'Só bloqueados'], ['inativos', 'Inativos']] },
+];
+const CHAVES_FILTRO: ChaveFiltro[] = ['doc', 'contrato', 'acesso', 'sit', 'tipo', 'cat'];
 
 const hora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
@@ -45,15 +41,36 @@ export function Fornecedores() {
   const empresa = params.get('empresa');
   const [empresas, setEmpresas] = useState<FornecedorCadastro[] | null>(null);
   const [acessos, setAcessos] = useState<Awaited<ReturnType<typeof lerAcessosPorEmpresa>> | null>(null);
-  const [filtro, setFiltro] = useState<Filtro>(pedida === 'regularizar' ? 'regularizar' : pedida === 'acessos' ? 'sem_acesso' : 'todos');
   const [regularizar, setRegularizar] = useState<FornecedorARegularizar[] | null>(null);
   const [pedidos, setPedidos] = useState<PedidoObra[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [novo, setNovo] = useState(false);
-  const [busca, setBusca] = useState('');
-  const [tipoFiltro, setTipoFiltro] = useState('');
-  const [categoriaFiltro, setCategoriaFiltro] = useState('');
+  const filtros = Object.fromEntries(CHAVES_FILTRO.map((k) => [k, params.get(k) ?? ''])) as Record<ChaveFiltro, string>;
+  // Links antigos: ?aba=regularizar e ?aba=acessos viram os filtros novos.
+  if (pedida === 'regularizar' && !filtros.contrato) filtros.contrato = 'regularizar';
+  if (pedida === 'acessos' && !filtros.acesso) filtros.acesso = 'sem';
+  const [busca, setBuscaLocal] = useState(params.get('q') ?? '');
+  const algumFiltro = !!busca.trim() || CHAVES_FILTRO.some((k) => filtros[k]);
+  function novosParams(muda: (p: URLSearchParams) => void) {
+    const p = new URLSearchParams(params);
+    if (p.get('aba') === 'regularizar' || p.get('aba') === 'acessos') {
+      if (p.get('aba') === 'regularizar' && !p.get('contrato')) p.set('contrato', 'regularizar');
+      if (p.get('aba') === 'acessos' && !p.get('acesso')) p.set('acesso', 'sem');
+      p.delete('aba');
+    }
+    muda(p);
+    setParams(p, { replace: true });
+  }
+  const mudarFiltro = (k: ChaveFiltro, v: string) => novosParams((p) => (v ? p.set(k, v) : p.delete(k)));
+  const setBusca = (v: string) => {
+    setBuscaLocal(v);
+    novosParams((p) => (v.trim() ? p.set('q', v) : p.delete('q')));
+  };
+  const limparFiltros = () => {
+    setBuscaLocal('');
+    novosParams((p) => ['q', ...CHAVES_FILTRO].forEach((k) => p.delete(k)));
+  };
   const [categoriasL, setCategoriasL] = useState<CategoriaServico[]>([]);
   const [tiposF, setTiposF] = useState<TipoFornecedor[]>([]);
   const [contrato, setContrato] = useState<PedidoContrato | null>(null);
@@ -77,7 +94,17 @@ export function Fornecedores() {
     if (!empresa) carregar();
   }, [carregar, empresa]);
 
-  const abrir = (id: string, ficha?: string) => setParams({ ...(aba === 'cadastro' ? {} : { aba }), empresa: id, ...(ficha ? { ficha } : {}) });
+  const abrir = (id: string, ficha?: string) => {
+    const p = new URLSearchParams(params);
+    p.set('empresa', id);
+    if (ficha) p.set('ficha', ficha);
+    setParams(p);
+  };
+  const voltarDaFicha = () => {
+    const p = new URLSearchParams(params);
+    ['empresa', 'ficha', 'filtro', 'foco'].forEach((k) => p.delete(k));
+    setParams(p);
+  };
   const regPor = useMemo(() => new Map((regularizar ?? []).map((r) => [r.empresa_id, r])), [regularizar]);
 
   const filtradas = useMemo(() => {
@@ -86,26 +113,27 @@ export function Fornecedores() {
     return (empresas ?? []).filter((e) => {
       const nome = `${e.razao_social} ${e.dados.nome_fantasia ?? ''} ${e.dados.cidade ?? ''} ${acessos?.porEmpresa.get(e.empresa_id)?.email ?? ''}`.toLowerCase();
       if (termo && !nome.includes(termo) && !(digitos.length >= 3 && e.cnpj.includes(digitos))) return false;
-      if (tipoFiltro && !(e.tipos?.length ? e.tipos : ['mao_de_obra']).includes(tipoFiltro)) return false;
-      if (categoriaFiltro && !(e.categorias ?? []).includes(categoriaFiltro)) return false;
-      // Inativo só aparece no filtro dele; bloqueado aparece em todos.
-      if (filtro === 'inativos') return e.situacao === 'inativo';
-      if (e.situacao === 'inativo') return false;
-      if (filtro === 'bloqueados') return e.situacao === 'bloqueado';
+      if (filtros.tipo && !(e.tipos?.length ? e.tipos : ['mao_de_obra']).includes(filtros.tipo)) return false;
+      if (filtros.cat && !(e.categorias ?? []).includes(filtros.cat)) return false;
+      // Inativo só aparece no filtro dele; bloqueado aparece junto com os ativos.
+      if (filtros.sit === 'inativos') { if (e.situacao !== 'inativo') return false; }
+      else if (e.situacao === 'inativo') return false;
+      if (filtros.sit === 'bloqueados' && e.situacao !== 'bloqueado') return false;
       const r = resumoDocsFornecedor(e);
-      if (filtro === 'vencido') return r.vencidos.length > 0 || r.certidoesVencidas.length > 0 || e.colaboradores.com_vencido > 0;
-      if (filtro === 'vencendo') return r.vencendo.length > 0 || e.colaboradores.com_vencendo > 0 || (e.certidoes.length > r.certidoesVencidas.length);
-      if (filtro === 'faltando') return r.faltando.length > 0;
-      if (filtro === 'contrato') return !e.subcontratada && (!e.codigo_bp || e.contratos_ativos === 0);
+      if (filtros.doc === 'vencido' && !(r.vencidos.length > 0 || r.certidoesVencidas.length > 0 || e.colaboradores.com_vencido > 0)) return false;
+      if (filtros.doc === 'vencendo' && !(r.vencendo.length > 0 || e.colaboradores.com_vencendo > 0 || e.certidoes.length > r.certidoesVencidas.length)) return false;
+      if (filtros.doc === 'faltando' && !(r.faltando.length > 0)) return false;
+      if (filtros.contrato === 'regularizar' && !regPor.has(e.empresa_id)) return false;
+      if (filtros.contrato === 'sem' && !(!e.subcontratada && (!e.codigo_bp || e.contratos_ativos === 0))) return false;
       const ac = acessos?.porEmpresa.get(e.empresa_id);
-      if (filtro === 'regularizar') return regPor.has(e.empresa_id);
-      if (filtro === 'sem_acesso') return !ac || !ac.ativo;
-      if (filtro === 'nunca') return !!ac && ac.ativo && !ac.ultimo_login;
+      if (filtros.acesso === 'sem' && !(!ac || !ac.ativo)) return false;
+      if (filtros.acesso === 'nunca' && !(!!ac && ac.ativo && !ac.ultimo_login)) return false;
       return true;
     });
-  }, [empresas, busca, filtro, acessos, regPor, tipoFiltro, categoriaFiltro]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresas, busca, acessos, regPor, ...CHAVES_FILTRO.map((k) => filtros[k])]);
 
-  if (empresa) return <FichaFornecedor empresaId={empresa} voltarRotulo={aba === 'pedidos' ? 'Pedidos de obra' : 'Fornecedores'} aoVoltar={() => setParams(aba === 'cadastro' ? {} : { aba })} />;
+  if (empresa) return <FichaFornecedor empresaId={empresa} voltarRotulo={aba === 'pedidos' ? 'Pedidos de obra' : 'Fornecedores'} aoVoltar={voltarDaFicha} />;
 
   const pendentes = (pedidos ?? []).filter((p) => p.situacao === 'pendente');
   const respondidos = (pedidos ?? []).filter((p) => p.situacao !== 'pendente').slice(0, 50);
@@ -119,7 +147,7 @@ export function Fornecedores() {
       abas={
         <nav className="abas abas-botoes" aria-label="Fornecedores">
           {ABAS.map(([a, nome]) => (
-            <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => setParams(a === 'cadastro' ? {} : { aba: a })}>
+            <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => novosParams((p) => (a === 'cadastro' ? p.delete('aba') : p.set('aba', a)))}>
               {nome}
               {a === 'pedidos' && !!pendentes.length && <span className="contador">{pendentes.length}</span>}
             </button>
@@ -133,150 +161,135 @@ export function Fornecedores() {
 
       {!carregando && aba === 'cadastro' && (
         <>
-          <div className="filtros">
+          <div className="filtros filtros-linha">
             <label className="campo campo-busca">
               <span>Buscar</span>
               <input type="search" value={busca} placeholder="Nome, cidade, CNPJ ou e-mail de login" onChange={(e) => setBusca(e.target.value)} />
             </label>
-            <label className="campo">
+            {FILTROS_LISTA.map((f) => (
+              <label key={f.chave} className="campo campo-filtro">
+                <span>{f.rotulo}</span>
+                <select value={filtros[f.chave]} aria-invalid={false} className={filtros[f.chave] ? 'filtro-ativo' : undefined} onChange={(e) => mudarFiltro(f.chave, e.target.value)}>
+                  {f.opcoes.map(([v, nome]) => (
+                    <option key={v} value={v}>
+                      {nome}
+                      {v === 'regularizar' && regularizar?.length ? ` (${regularizar.length})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            <label className="campo campo-filtro">
               <span>Tipo</span>
-              <select value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)}>
+              <select value={filtros.tipo} className={filtros.tipo ? 'filtro-ativo' : undefined} onChange={(e) => mudarFiltro('tipo', e.target.value)}>
                 <option value="">Todos</option>
                 {tiposF.map((t) => <option key={t.codigo} value={t.codigo}>{t.nome}</option>)}
               </select>
             </label>
-            <label className="campo">
+            <label className="campo campo-filtro">
               <span>Categoria</span>
-              <select value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
+              <select value={filtros.cat} className={filtros.cat ? 'filtro-ativo' : undefined} onChange={(e) => mudarFiltro('cat', e.target.value)}>
                 <option value="">Todas</option>
                 {categoriasL.map((c) => <option key={c.codigo} value={c.codigo}>{c.nome}</option>)}
               </select>
             </label>
-            <div className="chips" role="group" aria-label="Filtrar fornecedores">
-              {FILTROS.map(([f, nome]) => (
-                <button key={f} type="button" className="chip" aria-pressed={filtro === f} onClick={() => setFiltro(f)}>
-                  {nome}
-                  {f === 'regularizar' && !!regularizar?.length && <span className="chip-numero">{regularizar.length}</span>}
-                </button>
-              ))}
-            </div>
           </div>
-          <p className="dica">{filtradas.length} de {(empresas ?? []).filter((e) => e.situacao !== 'inativo').length} fornecedores ativos. Documentos e colaboradores contam só quem tem colaborador em obra.</p>
+          <div className="barra-resultado">
+            <span className="sub">
+              {filtradas.length} de {(empresas ?? []).filter((e) => e.situacao !== 'inativo').length} fornecedores ativos
+              {filtros.sit === 'inativos' ? ' (mostrando os inativos)' : ''}
+            </span>
+            {algumFiltro && <button type="button" className="botao-link link-acao" onClick={limparFiltros}>Limpar filtros</button>}
+          </div>
           {filtradas.length === 0 ? (
             <p className="vazio">Nenhum fornecedor encontrado.</p>
           ) : (
             <div className="tabela-rolagem">
-              <table className="tabela tabela-lista">
+              <table className="tabela tabela-lista tabela-densa">
                 <thead>
                   <tr>
                     <th scope="col">Fornecedor</th>
-                    <th scope="col">Contato</th>
-                    <th scope="col">Acesso ao portal</th>
-                    <th scope="col">Homologação e contrato</th>
+                    <th scope="col">Homologação</th>
+                    <th scope="col">Contrato</th>
                     <th scope="col">Documentos</th>
                     <th scope="col">Colaboradores</th>
-                    <th scope="col"><span className="sr">Ações</span></th>
+                    <th scope="col">Acesso ao portal</th>
+                    <th scope="col"><span className="sr">Abrir</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtradas.map((e) => {
                     const r = resumoDocsFornecedor(e);
                     const local = [e.dados.cidade, e.dados.estado].filter(Boolean).join('/');
-                    const vencendoCert = e.certidoes.length - r.certidoesVencidas.length;
+                    const ac = acessos?.porEmpresa.get(e.empresa_id);
+                    const reg = regPor.get(e.empresa_id);
+                    const vencidos = r.vencidos.length + r.certidoesVencidas.length;
+                    const vencendo = r.vencendo.length + (e.certidoes.length - r.certidoesVencidas.length);
+                    const terminoPerto = e.proximo_termino && diasAte(e.proximo_termino) <= 30;
                     return (
                       <tr key={e.empresa_id} className="linha-clicavel" onClick={() => abrir(e.empresa_id)}>
                         <th scope="row">
-                          {e.razao_social}
-                          {e.receita?.situacao && e.receita.situacao !== 'ATIVA' && (
-                            <> <span className="selo selo-bloqueado" title={e.receita.aviso ?? undefined}>Receita: {e.receita.situacao}</span></>
-                          )}
-                          {e.situacao && e.situacao !== 'ativo' && (
-                            <> <span className={`selo ${SELO_SITUACAO_FORNECEDOR[e.situacao]}`} title={e.situacao_motivo ?? undefined}>{NOMES_SITUACAO_FORNECEDOR[e.situacao]}</span></>
-                          )}
+                          <span className="nome-com-selos">
+                            {e.razao_social}
+                            {e.situacao && e.situacao !== 'ativo' && (
+                              <span className={`selo selo-mini ${SELO_SITUACAO_FORNECEDOR[e.situacao]}`} title={e.situacao_motivo ?? undefined}>{NOMES_SITUACAO_FORNECEDOR[e.situacao]}</span>
+                            )}
+                            {e.receita?.situacao && e.receita.situacao !== 'ATIVA' && (
+                              <span className="selo selo-mini selo-bloqueado" title={e.receita.aviso ?? undefined}>Receita: {e.receita.situacao.toLowerCase()}</span>
+                            )}
+                          </span>
                           <small className="sub">
-                            {formatarCnpj(e.cnpj)}
-                            {local ? ` · ${local}` : ''}
-                            {e.subcontratada ? ' · subcontratada' : ''}
+                            {[formatarCnpj(e.cnpj), local, nomesDosTipos(e.tipos, tiposF), e.subcontratada ? 'subcontratada' : ''].filter(Boolean).join(' · ')}
                           </small>
-                          <small className="sub">{[nomesDosTipos(e.tipos, tiposF), nomesDasCategorias(e.categorias, categoriasL) || e.dados.ramo].filter(Boolean).join(' · ')}</small>
                         </th>
-                        <td className="quebra">
-                          {e.dados.contato || <span className="sub">Sem contato</span>}
-                          {(e.dados.telefone || e.dados.celular) && <small className="sub">{[e.dados.telefone, e.dados.celular].filter(Boolean).join(' / ')}</small>}
-                          <small className="sub">{e.dados.email_empresa || e.email_acesso || 'Sem e-mail'}</small>
+                        <td className="num" data-rotulo="Homologação">
+                          <span className={`selo selo-mini ${SELO_HOMOLOGACAO[e.homologacao]}`}>{e.homologacao === 'anterior' ? 'Anterior' : NOMES_SITUACAO_HOMOLOGACAO[e.homologacao]}</span>
+                          {e.homologacao === 'homologada' && !e.liberado_em && <small className="sub texto-alerta">portal não liberado</small>}
                         </td>
-                        <td className="quebra">
-                          {(() => {
-                            const ac = acessos?.porEmpresa.get(e.empresa_id);
-                            if (!ac) return <span className="texto-alerta">Sem acesso</span>;
-                            const outras = ac.empresas.length - 1;
-                            return (
-                              <>
-                                {ac.email}
-                                <small className={`sub${!ac.ativo ? ' texto-erro' : !ac.ultimo_login ? ' texto-alerta' : ''}`}>
-                                  {!ac.ativo ? 'Desativado' : ac.ultimo_login ? `Último acesso em ${data(ac.ultimo_login)}` : 'Nunca entrou'}
-                                </small>
-                                {outras > 0 && <small className="sub">Cuida de mais {outras} empresa{outras > 1 ? 's' : ''}</small>}
-                              </>
-                            );
-                          })()}
-                        </td>
-                        <td>
-                          <span className={`selo ${SELO_HOMOLOGACAO[e.homologacao]}`}>{e.homologacao === 'anterior' ? 'Anterior ao portal' : NOMES_SITUACAO_HOMOLOGACAO[e.homologacao]}</span>
-                          {e.homologacao === 'homologada' && !e.liberado_em && <small className="sub">Portal ainda não liberado</small>}
-                          {!e.subcontratada && (
-                            <small className={`sub${!e.codigo_bp || e.contratos_ativos === 0 ? ' texto-alerta' : ''}`}>
-                              {e.codigo_bp ? `BP ${e.codigo_bp}` : 'Sem BP'}
-                              {' · '}
-                              {e.contratos_ativos === 0
-                                ? 'sem contrato'
-                                : `${e.contratos_ativos} contrato(s)${e.proximo_termino ? `, ${diasAte(e.proximo_termino) < 0 ? 'venceu' : 'vence'} em ${data(e.proximo_termino)}` : ''}`}
-                            </small>
-                          )}
-                          {(() => {
-                            const r = regPor.get(e.empresa_id);
-                            if (!r) return null;
-                            const itens = [
-                              r.sem_bp ? 'código BP' : '',
-                              r.obras_sem_contrato.length ? `contrato de ${r.obras_sem_contrato.join(', ')}` : '',
-                              ...r.contratos_vencendo.map((c) => `contrato ${c.numero} ${diasAte(c.termino) < 0 ? 'venceu' : 'vence'} em ${data(c.termino)}`),
-                              ...r.certidoes.map((c) => `${c.tipo} ${diasAte(c.vencimento) < 0 ? 'venceu' : 'vence'} em ${data(c.vencimento)}`),
-                            ].filter(Boolean);
-                            return itens.length ? <small className="sub texto-alerta">A regularizar: {itens.join('; ')}</small> : null;
-                          })()}
-                        </td>
-                        <td>
-                          {r.vencidos.length === 0 && r.vencendo.length === 0 && r.faltando.length === 0 && e.certidoes.length === 0 ? (
-                            <span className="sub">{e.documentos.length ? 'Em dia' : 'Sem cobrança'}</span>
+                        <td className="num" data-rotulo="Contrato">
+                          {e.subcontratada ? (
+                            <span className="sub">pela contratante</span>
+                          ) : !e.codigo_bp || e.contratos_ativos === 0 ? (
+                            <span className="texto-alerta" title={reg ? 'Em A regularizar' : undefined}>{!e.codigo_bp && e.contratos_ativos === 0 ? 'Sem BP e contrato' : !e.codigo_bp ? 'Sem BP' : 'Sem contrato'}</span>
                           ) : (
-                            <span className="selos-linha">
-                              {r.vencidos.length > 0 && <span className="selo selo-doc-vencido" title={r.vencidos.map((d) => d.nome).join(', ')}>{r.vencidos.length} vencido(s)</span>}
-                              {r.faltando.length > 0 && <span className="selo selo-doc-nao_enviado" title={r.faltando.map((d) => d.nome).join(', ')}>{r.faltando.length} faltando</span>}
-                              {r.vencendo.length > 0 && <span className="selo selo-doc-a_vencer" title={r.vencendo.map((d) => d.nome).join(', ')}>{r.vencendo.length} vencendo</span>}
-                              {r.certidoesVencidas.length > 0 && <span className="selo selo-doc-vencido" title={r.certidoesVencidas.map((d) => d.nome).join(', ')}>{r.certidoesVencidas.length} certidão vencida</span>}
-                              {vencendoCert > 0 && <span className="selo selo-doc-a_vencer">{vencendoCert} certidão vencendo</span>}
+                            <span className={terminoPerto ? 'texto-alerta' : undefined}>
+                              {e.contratos_ativos} ativo{e.contratos_ativos > 1 ? 's' : ''}
+                              {terminoPerto && e.proximo_termino ? `, ${diasAte(e.proximo_termino) < 0 ? 'venceu' : 'vence'} ${data(e.proximo_termino).slice(0, 5)}` : ''}
                             </span>
                           )}
                         </td>
-                        <td>
-                          {e.colaboradores.em_obra === 0 ? (
-                            <span className="sub">{e.exige_colaboradores === false ? 'Não se aplica' : 'Nenhum em obra'}</span>
+                        <td className="num" data-rotulo="Documentos">
+                          {vencidos || r.faltando.length || vencendo ? (
+                            <span className="selos-linha">
+                              {vencidos > 0 && <span className="selo selo-mini selo-doc-vencido">{vencidos} vencido{vencidos > 1 ? 's' : ''}</span>}
+                              {r.faltando.length > 0 && <span className="selo selo-mini selo-doc-nao_enviado">{r.faltando.length} faltando</span>}
+                              {vencendo > 0 && <span className="selo selo-mini selo-doc-a_vencer">{vencendo} vencendo</span>}
+                            </span>
                           ) : (
-                            <>
-                              {e.colaboradores.em_obra} em obra
-                              <small className="sub">{e.colaboradores.liberados} liberado(s)</small>
-                              {(e.colaboradores.com_vencido > 0 || e.colaboradores.com_vencendo > 0) && (
-                                <small className={`sub${e.colaboradores.com_vencido ? ' texto-erro' : ' texto-alerta'}`}>
-                                  {[e.colaboradores.com_vencido ? `${e.colaboradores.com_vencido} com doc. vencido` : '', e.colaboradores.com_vencendo ? `${e.colaboradores.com_vencendo} vencendo` : ''].filter(Boolean).join(', ')}
-                                </small>
-                              )}
-                            </>
+                            <span className="sub">{e.documentos.length ? 'Em dia' : 'Sem cobrança'}</span>
                           )}
                         </td>
-                        <td className="acoes">
-                          <button type="button" className="botao botao-secundario botao-pequeno" onClick={(ev) => { ev.stopPropagation(); abrir(e.empresa_id, 'cadastro'); }}>Editar</button>
-                          <button type="button" className="botao botao-pequeno" onClick={(ev) => { ev.stopPropagation(); abrir(e.empresa_id); }}>Abrir</button>
+                        <td className="num" data-rotulo="Colaboradores">
+                          {e.colaboradores.em_obra === 0 ? (
+                            <span className="sub">{e.exige_colaboradores === false ? 'Não se aplica' : 'Nenhum'}</span>
+                          ) : (
+                            <span className={e.colaboradores.com_vencido ? 'texto-erro' : undefined}>
+                              {e.colaboradores.liberados} de {e.colaboradores.em_obra} liberados
+                            </span>
+                          )}
                         </td>
+                        <td className="num" data-rotulo="Acesso">
+                          {!ac ? (
+                            <span className="texto-alerta">Sem acesso</span>
+                          ) : !ac.ativo ? (
+                            <span className="texto-erro">Desativado</span>
+                          ) : ac.ultimo_login ? (
+                            <span>Entrou {data(ac.ultimo_login)}</span>
+                          ) : (
+                            <span className="texto-alerta">Nunca entrou</span>
+                          )}
+                        </td>
+                        <td className="acoes acoes-seta" aria-hidden="true">›</td>
                       </tr>
                     );
                   })}
