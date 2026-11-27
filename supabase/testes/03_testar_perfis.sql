@@ -1167,6 +1167,8 @@ select teste.entrar(:S1);
 select count(analisar_documento_homologacao(d.id, true)) from homologacao_documentos d where d.empresa_id = :'EH' and d.status = 'em_analise';
 select teste.bloqueado('Homologação: sem responsável', format($q$select homologar_fornecedor(%L, '{}', null, '')$q$, :'EH'));
 select homologar_fornecedor(:'EH', '{"habilitacao":"sim"}', 'Ok', 'Responsável Suprimentos');
+select teste.igual('Histórico: a devolução do documento fica registrada', format($q$select 1 from jsonb_array_elements(historico_fornecedor(%L)) x where x->>'acao' = 'documento_homologacao_devolvido' and x->'detalhe'->>'motivo' = 'Certidão vencida' and x->>'quem' is not null$q$, :'EH'), 1);
+select teste.igual('Histórico: as aprovações dos documentos ficam registradas', format($q$select 1 where (select count(*) from jsonb_array_elements(historico_fornecedor(%L)) x where x->>'acao' = 'documento_homologacao_aprovado') >= 2$q$, :'EH'), 1);
 select teste.bloqueado('Liberação: Suprimentos não libera o portal', format($q$select liberar_portal_fornecedor(%L)$q$, :'EH'));
 select teste.sair();
 select teste.igual('Homologação: cartão CNPJ, PGR e PCMSO entram aprovados em Documentos da empresa', format($q$select 1 from documentos where empresa_id = %L and status = 'aprovado' and tipo_codigo in ('cartao_cnpj', 'pgr', 'pcmso') and dados->>'origem' = 'homologacao'$q$, :'EH'), 3);

@@ -227,9 +227,21 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
 
   return (
     <>
-      <SituacaoAtual h={h} />
+      <Andamento
+        h={h}
+        tipos={tipos}
+        camposFaltando={camposFaltando.length + (semCategoria ? 1 : 0) + (semReferencia ? 1 : 0) + formatosErrados.length}
+        camposTotal={obrigatorios.length + (campoCategorias?.obrigatorio ? 1 : 0) + (referenciaObrigatoria ? 1 : 0)}
+        docsFaltando={docsFaltando.length}
+        enviando={enviando || salvando}
+        aoIr={(id) => {
+          if (id === 'f31-dados') setTentouEnviar(true);
+          document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }}
+        aoEnviar={enviar}
+      />
 
-      <section className="bloco">
+      <section className="bloco" id="f31-dados">
         <h2 className="bloco-titulo">Dados da empresa</h2>
         <p className="apoio">CNPJ {formatarCnpj(h.cnpj)}</p>
         <div className="grade-2">
@@ -380,7 +392,7 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
         </div>
       )}
 
-      <section className="bloco">
+      <section className="bloco" id="f31-documentos">
         <h2 className="bloco-titulo">Documentos</h2>
         <p className="apoio">
           {h.situacao === 'homologada'
@@ -401,7 +413,7 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
       </section>
 
       {editavel && (
-        <section className="bloco bloco-concluir">
+        <section className="bloco bloco-concluir" id="f31-enviar">
           <h2 className="bloco-titulo">Enviar para o Suprimentos</h2>
           {pronto ? (
             <p className="apoio">Tudo preenchido. Depois de enviar, os dados ficam travados até a resposta do Suprimentos.</p>
@@ -438,31 +450,113 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
   );
 }
 
-function SituacaoAtual({ h }: { h: MinhaHomologacao }) {
-  let conteudo: ReactNode = null;
-  let classe = 'aviso aviso-info';
-  if (h.situacao === 'convidada') {
-    conteudo = <>Preencha os dados, envie os documentos e clique em <strong>Enviar para homologação</strong>, no fim da página. Dá para salvar e continuar depois.</>;
-  } else if (h.situacao === 'devolvida') {
-    classe = 'aviso aviso-alerta';
-    conteudo = (
-      <>
-        <strong>O Suprimentos pediu correções.</strong> {h.motivo ?? 'Veja os documentos devolvidos abaixo.'} Corrija e envie de novo para homologação.
-      </>
-    );
-  } else if (h.situacao === 'enviada') {
-    conteudo = <><strong>Em análise no Suprimentos</strong>{h.enviada_em ? ` desde ${data(h.enviada_em)}` : ''}. Você recebe a resposta por e-mail.</>;
-  } else if (h.situacao === 'homologada' && !h.liberado) {
-    classe = 'aviso aviso-ok';
-    conteudo = <><strong>Empresa homologada.</strong> O administrativo da Emais vai liberar o portal para o cadastro dos colaboradores. Você recebe um e-mail quando estiver liberado.</>;
-  } else if (h.situacao === 'homologada') {
-    classe = 'aviso aviso-ok';
-    conteudo = <><strong>Empresa homologada.</strong> Mantenha as certidões em dia: quando uma vencer, o portal avisa e você envia a nova aqui.</>;
-  } else if (h.situacao === 'reprovada') {
-    classe = 'aviso aviso-erro';
-    conteudo = <><strong>Homologação não aprovada.</strong> {h.motivo ?? ''} Para mais informações, fale com o Suprimentos da Emais pela Ajuda.</>;
+type EtapaF31 = { nome: string; info: string; estado: 'feito' | 'atual' | 'falta' | 'erro' };
+
+// Andamento da homologação para o fornecedor: as etapas e o que fazer agora, com o botão que leva até lá.
+function Andamento({ h, tipos, camposFaltando, camposTotal, docsFaltando, enviando, aoIr, aoEnviar }: {
+  h: MinhaHomologacao;
+  tipos: TipoHomologacao[];
+  camposFaltando: number;
+  camposTotal: number;
+  docsFaltando: number;
+  enviando: boolean;
+  aoIr: (id: string) => void;
+  aoEnviar: () => void;
+}) {
+  const s = h.situacao;
+  const editando = s === 'convidada' || s === 'devolvida';
+  const docsTotal = tipos.filter((t) => t.obrigatorio).length;
+  const devolvidos = tipos.filter((t) => documentoAtual(h.documentos, t.codigo)?.status === 'devolvido');
+  // Depois de homologado: certidão vencida ou vencendo em até 30 dias.
+  const renovar = tipos
+    .map((t) => ({ t, d: documentoAtual(h.documentos, t.codigo) }))
+    .filter((x) => x.d?.status === 'aprovado' && x.d.vencimento && diasAte(x.d.vencimento) <= 30)
+    .sort((a, b) => (a.d!.vencimento ?? '').localeCompare(b.d!.vencimento ?? ''));
+
+  const etapas: EtapaF31[] = [
+    {
+      nome: 'Dados da empresa',
+      info: !editando ? 'preenchidos' : camposFaltando ? `falta${camposFaltando > 1 ? 'm' : ''} ${camposFaltando} de ${camposTotal}` : 'completos',
+      estado: !editando || !camposFaltando ? 'feito' : 'atual',
+    },
+    {
+      nome: 'Documentos',
+      info: !editando ? 'enviados' : docsFaltando ? `${docsTotal - docsFaltando} de ${docsTotal} obrigatórios` : 'todos enviados',
+      estado: !editando || !docsFaltando ? 'feito' : 'atual',
+    },
+    {
+      nome: 'Análise do Suprimentos',
+      info: s === 'enviada' ? `desde ${data(h.enviada_em)}` : s === 'devolvida' ? 'pediu correções' : s === 'homologada' ? 'aprovada' : s === 'reprovada' ? 'não aprovada' : 'depois do envio',
+      estado: s === 'enviada' ? 'atual' : s === 'homologada' ? 'feito' : s === 'reprovada' ? 'erro' : s === 'devolvida' ? 'atual' : 'falta',
+    },
+    {
+      nome: 'Portal liberado',
+      info: h.liberado ? 'colaboradores e documentos' : s === 'homologada' ? 'aguardando o administrativo' : '-',
+      estado: h.liberado ? 'feito' : s === 'homologada' ? 'atual' : 'falta',
+    },
+  ];
+
+  let passo: { texto: ReactNode; botao?: { rotulo: string; fazer: () => void } };
+  if (editando && camposFaltando) {
+    passo = { texto: `Preencher os dados da empresa: falta${camposFaltando > 1 ? 'm' : ''} ${camposFaltando} item${camposFaltando > 1 ? 's' : ''}. Dá para salvar e continuar depois.`, botao: { rotulo: 'Ir para os dados', fazer: () => aoIr('f31-dados') } };
+  } else if (editando && docsFaltando) {
+    passo = {
+      texto: devolvidos.length
+        ? `Enviar de novo ${devolvidos.length === 1 ? devolvidos[0].nome : `${devolvidos.length} documentos devolvidos`}${docsFaltando > devolvidos.length ? ` e mais ${docsFaltando - devolvidos.length} que faltam` : ''}.`
+        : `Enviar ${docsFaltando === 1 ? '1 documento obrigatório' : `${docsFaltando} documentos obrigatórios`}.`,
+      botao: { rotulo: 'Ir para os documentos', fazer: () => aoIr('f31-documentos') },
+    };
+  } else if (editando) {
+    passo = { texto: 'Tudo preenchido. Envie para o Suprimentos conferir.', botao: { rotulo: enviando ? 'Enviando' : 'Enviar para homologação', fazer: aoEnviar } };
+  } else if (s === 'enviada') {
+    passo = { texto: 'Aguardar a análise do Suprimentos. Você recebe a resposta por e-mail, e não precisa fazer nada até lá.' };
+  } else if (s === 'homologada' && !h.liberado) {
+    passo = { texto: 'Aguardar o administrativo da Emais liberar o portal para o cadastro dos colaboradores. Você recebe um e-mail quando estiver liberado.' };
+  } else if (s === 'homologada' && renovar.length) {
+    const r = renovar[0];
+    const dias = diasAte(r.d!.vencimento!);
+    passo = {
+      texto: `Enviar ${r.t.nome} atualizado: ${dias < 0 ? 'venceu' : 'vence'} em ${data(r.d!.vencimento)}${renovar.length > 1 ? `, e mais ${renovar.length - 1} perto do vencimento` : ''}.`,
+      botao: { rotulo: 'Ir para os documentos', fazer: () => aoIr('f31-documentos') },
+    };
+  } else if (s === 'homologada') {
+    passo = { texto: 'Nada pendente. Quando uma certidão estiver perto de vencer, o portal avisa e você envia a nova aqui.' };
+  } else {
+    passo = { texto: <>Homologação não aprovada{h.motivo ? `: ${h.motivo}` : ''}. Para mais informações, fale com o Suprimentos da Emais pela Ajuda.</> };
   }
-  return conteudo ? <p className={classe} role="status">{conteudo}</p> : null;
+
+  const titulo =
+    s === 'convidada' ? 'Cadastro em preenchimento' :
+    s === 'devolvida' ? 'O Suprimentos pediu correções' :
+    s === 'enviada' ? 'Em análise no Suprimentos' :
+    s === 'homologada' ? 'Empresa homologada' : 'Homologação não aprovada';
+
+  return (
+    <section className="ficha-cartao" aria-label="Andamento da homologação">
+      <div className="ficha-homologacao">
+        <div>
+          <span className="ficha-rotulo">Andamento</span>
+          <strong className={`ficha-destaque${s === 'reprovada' ? ' texto-erro' : ''}`}>{titulo}</strong>
+          {s === 'devolvida' && h.motivo && <p className="ficha-linha">Observação do Suprimentos: {h.motivo}</p>}
+        </div>
+        <div className="ficha-proximo" role="status">
+          <span className="ficha-proximo-rotulo">Próximo passo</span>
+          <span>{passo.texto}</span>
+          {passo.botao && (
+            <button type="button" className="botao botao-pequeno" disabled={enviando} onClick={passo.botao.fazer}>{passo.botao.rotulo}</button>
+          )}
+        </div>
+      </div>
+      <ol className="ficha-etapas ficha-etapas-4" aria-label="Etapas da homologação">
+        {etapas.map((e) => (
+          <li key={e.nome} className={`etapa-${e.estado}`}>
+            <strong>{e.nome}</strong>
+            <span>{e.info}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
 }
 
 const ROTULO_DOC: Record<string, string> = { em_analise: 'Em análise', aprovado: 'Aprovado', devolvido: 'Devolvido', nao: 'Não enviado', vencido: 'Vencido' };

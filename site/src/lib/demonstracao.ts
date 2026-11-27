@@ -371,7 +371,12 @@ const RPCS: Record<string, (modo: ModoDemo, args: Record<string, unknown>) => un
     if (m !== 'fornecedor') return p;
     return { ...p, colaboradores: p.colaboradores.filter((c) => c.empresa_id === E1), medicoes: p.medicoes.filter((x) => x.empresa_id === E1) };
   },
-  minha_homologacao: (m) => (m === 'homologacao' ? minhaHomologacao : []),
+  minha_homologacao: (m) => {
+    if (m === 'homologacao') return minhaHomologacao;
+    if (m !== 'fornecedor') return [];
+    const x = detalheDe(E1);
+    return [{ empresa_id: E1, razao_social: x.razao_social, cnpj: x.cnpj, situacao: 'homologada', liberado: true, tipos: x.tipos, categorias: x.categorias, dados: x.dados, motivo: null, enviada_em: x.enviada_em, documentos: x.documentos }];
+  },
   lista_homologacoes: () => listaHomologacoes,
   detalhe_homologacao: (_m, a) => detalheDe(a.p_empresa),
   fornecedores_cadastro: (_m, a) => (a.p_empresa ? fornecedoresCadastro.filter((f) => f.empresa_id === a.p_empresa) : fornecedoresCadastro),

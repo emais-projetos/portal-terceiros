@@ -82,7 +82,7 @@ const ROTULOS_CAMPOS: Record<string, string> = {
 };
 
 // Texto de cada acontecimento do histórico.
-function textoEvento(e: EventoFornecedor, nomeObra: (id: string) => string): string {
+function textoEvento(e: EventoFornecedor, nomeObra: (id: string) => string, nomeTipo: (codigo: string) => string): string {
   const x = (e.detalhe ?? {}) as Record<string, unknown>;
   const t = (k: string) => (typeof x[k] === 'string' && (x[k] as string).trim() ? (x[k] as string).trim() : '');
   const sit = (k: string) => NOMES_SITUACAO_FORNECEDOR[t(k) as keyof typeof NOMES_SITUACAO_FORNECEDOR] ?? t(k);
@@ -107,6 +107,8 @@ function textoEvento(e: EventoFornecedor, nomeObra: (id: string) => string): str
     case 'contrato_registrado': return `Contrato ${t('numero')} registrado`;
     case 'contrato_alterado': return `Contrato ${t('numero')} alterado`;
     case 'contrato_encerrado': return `Contrato encerrado${t('motivo') ? `: ${t('motivo')}` : ''}`;
+    case 'documento_homologacao_aprovado': return `${nomeTipo(t('tipo'))} aprovado`;
+    case 'documento_homologacao_devolvido': return `${nomeTipo(t('tipo'))} devolvido${t('motivo') ? `: ${t('motivo')}` : ''}`;
     case 'pedido_obra_aprovado': return `Pedido para atuar em ${nomeObra(t('obra_id')) || 'outra obra'} aprovado`;
     case 'pedido_obra_recusado': return `Pedido para atuar em ${nomeObra(t('obra_id')) || 'outra obra'} recusado${t('motivo') ? `: ${t('motivo')}` : ''}`;
     default: return e.acao.replace(/_/g, ' ');
@@ -228,9 +230,12 @@ export function FichaFornecedor({ empresaId, aoVoltar, voltarRotulo = 'Voltar' }
       ...pedidos.map((p) => [p.obra_id, p.obras?.nome ?? ''] as [string, string]),
     ]);
     const nomeTipo = (c: string) => tiposHom.find((t) => t.codigo === c)?.nome ?? 'Documento';
-    const itens: ItemHistorico[] = eventos.map((e) => ({ em: e.em, texto: textoEvento(e, (id) => obrasConhecidas.get(id) ?? ''), quem: e.quem }));
-    // A análise dos documentos da homologação não vira evento: entra pelo próprio documento.
+    const itens: ItemHistorico[] = eventos.map((e) => ({ em: e.em, texto: textoEvento(e, (id) => obrasConhecidas.get(id) ?? '', nomeTipo), quem: e.quem }));
+    // Análises anteriores à migração 072 não viraram evento: entram pelo próprio documento (só a última de cada um).
+    const temEvento = (doc: DocumentoHomologacao) =>
+      eventos.some((e) => e.acao.startsWith('documento_homologacao_') && (e.detalhe as Record<string, unknown> | null)?.tipo === doc.tipo && !!doc.analisado_em && Math.abs(Date.parse(e.em) - Date.parse(doc.analisado_em)) < 60000);
     for (const doc of d.documentos) {
+      if (temEvento(doc)) continue;
       if (doc.status === 'aprovado' && doc.analisado_em) itens.push({ em: doc.analisado_em, texto: `${nomeTipo(doc.tipo)} aprovado`, quem: doc.analisado_por ?? null });
       if (doc.status === 'devolvido') itens.push({ em: doc.analisado_em ?? doc.enviado_em, texto: `${nomeTipo(doc.tipo)} devolvido${doc.motivo ? `: ${doc.motivo}` : ''}`, quem: doc.analisado_por ?? null });
     }
