@@ -6,15 +6,14 @@ import { mensagemDeErro } from '../../lib/supabase';
 import { data, diasAte } from '../../lib/formato';
 import { lerPedidosObra, responderPedidoObra, type PedidoObra } from '../../lib/ajuda';
 import {
-  NOMES_SITUACAO_HOMOLOGACAO, formatarCnpj, lerARegularizar, lerFornecedoresCadastro, resumoDocsFornecedor,
+  NOMES_SITUACAO_HOMOLOGACAO, formatarCnpj, lerARegularizar, lerFornecedoresCadastro, resumoDocsFornecedor, lerAcessosPorEmpresa,
   type FornecedorARegularizar, type FornecedorCadastro,
 } from '../../lib/homologacao';
 import { EditarCadastro, NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
 import { DetalheFornecedor, SELO_HOMOLOGACAO } from './Homologacoes';
 
 const ABAS = [
-  ['cadastro', 'Cadastro'],
-  ['regularizar', 'A regularizar'],
+  ['cadastro', 'Fornecedores'],
   ['pedidos', 'Pedidos de obra'],
 ] as const;
 type Aba = (typeof ABAS)[number][0];
@@ -25,18 +24,24 @@ const FILTROS = [
   ['vencendo', 'Vencendo'],
   ['faltando', 'Documento faltando'],
   ['contrato', 'Sem contrato ou BP'],
+  ['regularizar', 'A regularizar'],
+  ['sem_acesso', 'Sem acesso ao portal'],
+  ['nunca', 'Nunca entrou'],
 ] as const;
 type Filtro = (typeof FILTROS)[number][0];
 
 const hora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-// Fornecedores (Suprimentos): cadastro de todos, o que falta regularizar (BP, contrato) e os pedidos de outra obra.
+// Fornecedores (Suprimentos): uma lista só com o cadastro, o acesso ao portal e o que falta regularizar (BP, contrato),
+// e a aba dos pedidos para atuar em outra obra.
 export function Fornecedores() {
   const [params, setParams] = useSearchParams();
-  const aba = (params.get('aba') as Aba) || 'cadastro';
+  const pedida = params.get('aba');
+  const aba: Aba = pedida === 'pedidos' ? 'pedidos' : 'cadastro';
   const empresa = params.get('empresa');
   const [empresas, setEmpresas] = useState<FornecedorCadastro[] | null>(null);
-  const [filtro, setFiltro] = useState<Filtro>('todos');
+  const [acessos, setAcessos] = useState<Awaited<ReturnType<typeof lerAcessosPorEmpresa>> | null>(null);
+  const [filtro, setFiltro] = useState<Filtro>(pedida === 'regularizar' ? 'regularizar' : pedida === 'acessos' ? 'sem_acesso' : 'todos');
   const [editando, setEditando] = useState<FornecedorCadastro | null>(null);
   const [regularizar, setRegularizar] = useState<FornecedorARegularizar[] | null>(null);
   const [pedidos, setPedidos] = useState<PedidoObra[] | null>(null);
@@ -49,8 +54,9 @@ export function Fornecedores() {
 
   const carregar = useCallback(async () => {
     try {
-      const [e, r, p] = await Promise.all([lerFornecedoresCadastro(), lerARegularizar(), lerPedidosObra()]);
+      const [e, r, p, a] = await Promise.all([lerFornecedoresCadastro(), lerARegularizar(), lerPedidosObra(), lerAcessosPorEmpresa()]);
       setEmpresas(e);
+      setAcessos(a);
       setRegularizar(r);
       setPedidos(p);
     } catch (e) {
@@ -63,21 +69,26 @@ export function Fornecedores() {
   }, [carregar, empresa]);
 
   const abrir = (id: string) => setParams({ ...(aba === 'cadastro' ? {} : { aba }), empresa: id });
+  const regPor = useMemo(() => new Map((regularizar ?? []).map((r) => [r.empresa_id, r])), [regularizar]);
 
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     const digitos = termo.replace(/\D/g, '');
     return (empresas ?? []).filter((e) => {
-      const nome = `${e.razao_social} ${e.dados.nome_fantasia ?? ''} ${e.dados.cidade ?? ''}`.toLowerCase();
+      const nome = `${e.razao_social} ${e.dados.nome_fantasia ?? ''} ${e.dados.cidade ?? ''} ${acessos?.porEmpresa.get(e.empresa_id)?.email ?? ''}`.toLowerCase();
       if (termo && !nome.includes(termo) && !(digitos.length >= 3 && e.cnpj.includes(digitos))) return false;
       const r = resumoDocsFornecedor(e);
       if (filtro === 'vencido') return r.vencidos.length > 0 || r.certidoesVencidas.length > 0 || e.colaboradores.com_vencido > 0;
       if (filtro === 'vencendo') return r.vencendo.length > 0 || e.colaboradores.com_vencendo > 0 || (e.certidoes.length > r.certidoesVencidas.length);
       if (filtro === 'faltando') return r.faltando.length > 0;
       if (filtro === 'contrato') return !e.subcontratada && (!e.codigo_bp || e.contratos_ativos === 0);
+      const ac = acessos?.porEmpresa.get(e.empresa_id);
+      if (filtro === 'regularizar') return regPor.has(e.empresa_id);
+      if (filtro === 'sem_acesso') return !ac || !ac.ativo;
+      if (filtro === 'nunca') return !!ac && ac.ativo && !ac.ultimo_login;
       return true;
     });
-  }, [empresas, busca, filtro]);
+  }, [empresas, busca, filtro, acessos, regPor]);
 
   if (empresa) return <DetalheFornecedor empresaId={empresa} aoVoltar={() => setParams(aba === 'cadastro' ? {} : { aba })} />;
 
@@ -88,14 +99,13 @@ export function Fornecedores() {
   return (
     <Pagina
       titulo="Fornecedores"
-      apoio="Todos os fornecedores do portal, o que falta regularizar no cadastro (código BP e contrato de cada obra) e os pedidos para atuar em outra obra."
+      apoio="Todos os fornecedores do portal, acesso ao portal (login), o que falta regularizar (código BP e contrato de cada obra) e os pedidos para atuar em outra obra."
       acoes={<button type="button" className="botao" onClick={() => setNovo(true)}>Novo fornecedor</button>}
       abas={
         <nav className="abas abas-botoes" aria-label="Fornecedores">
           {ABAS.map(([a, nome]) => (
             <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => setParams(a === 'cadastro' ? {} : { aba: a })}>
               {nome}
-              {a === 'regularizar' && !!regularizar?.length && <span className="sub"> {regularizar.length}</span>}
               {a === 'pedidos' && !!pendentes.length && <span className="contador">{pendentes.length}</span>}
             </button>
           ))}
@@ -111,11 +121,14 @@ export function Fornecedores() {
           <div className="filtros">
             <label className="campo campo-busca">
               <span>Buscar</span>
-              <input type="search" value={busca} placeholder="Nome, cidade ou CNPJ" onChange={(e) => setBusca(e.target.value)} />
+              <input type="search" value={busca} placeholder="Nome, cidade, CNPJ ou e-mail de login" onChange={(e) => setBusca(e.target.value)} />
             </label>
             <div className="chips" role="group" aria-label="Filtrar fornecedores">
               {FILTROS.map(([f, nome]) => (
-                <button key={f} type="button" className="chip" aria-pressed={filtro === f} onClick={() => setFiltro(f)}>{nome}</button>
+                <button key={f} type="button" className="chip" aria-pressed={filtro === f} onClick={() => setFiltro(f)}>
+                  {nome}
+                  {f === 'regularizar' && !!regularizar?.length && <span className="chip-numero">{regularizar.length}</span>}
+                </button>
               ))}
             </div>
           </div>
@@ -129,6 +142,7 @@ export function Fornecedores() {
                   <tr>
                     <th scope="col">Fornecedor</th>
                     <th scope="col">Contato</th>
+                    <th scope="col">Acesso ao portal</th>
                     <th scope="col">Homologação e contrato</th>
                     <th scope="col">Documentos</th>
                     <th scope="col">Colaboradores</th>
@@ -156,6 +170,22 @@ export function Fornecedores() {
                           {(e.dados.telefone || e.dados.celular) && <small className="sub">{[e.dados.telefone, e.dados.celular].filter(Boolean).join(' / ')}</small>}
                           <small className="sub">{e.dados.email_empresa || e.email_acesso || 'Sem e-mail'}</small>
                         </td>
+                        <td className="quebra">
+                          {(() => {
+                            const ac = acessos?.porEmpresa.get(e.empresa_id);
+                            if (!ac) return <span className="texto-alerta">Sem acesso</span>;
+                            const outras = ac.empresas.length - 1;
+                            return (
+                              <>
+                                {ac.email}
+                                <small className={`sub${!ac.ativo ? ' texto-erro' : !ac.ultimo_login ? ' texto-alerta' : ''}`}>
+                                  {!ac.ativo ? 'Desativado' : ac.ultimo_login ? `Último acesso em ${data(ac.ultimo_login)}` : 'Nunca entrou'}
+                                </small>
+                                {outras > 0 && <small className="sub">Cuida de mais {outras} empresa{outras > 1 ? 's' : ''}</small>}
+                              </>
+                            );
+                          })()}
+                        </td>
                         <td>
                           <span className={`selo ${SELO_HOMOLOGACAO[e.homologacao]}`}>{e.homologacao === 'anterior' ? 'Anterior ao portal' : NOMES_SITUACAO_HOMOLOGACAO[e.homologacao]}</span>
                           {e.homologacao === 'homologada' && !e.liberado_em && <small className="sub">Portal ainda não liberado</small>}
@@ -168,6 +198,17 @@ export function Fornecedores() {
                                 : `${e.contratos_ativos} contrato(s)${e.proximo_termino ? `, ${diasAte(e.proximo_termino) < 0 ? 'venceu' : 'vence'} em ${data(e.proximo_termino)}` : ''}`}
                             </small>
                           )}
+                          {(() => {
+                            const r = regPor.get(e.empresa_id);
+                            if (!r) return null;
+                            const itens = [
+                              r.sem_bp ? 'código BP' : '',
+                              r.obras_sem_contrato.length ? `contrato de ${r.obras_sem_contrato.join(', ')}` : '',
+                              ...r.contratos_vencendo.map((c) => `contrato ${c.numero} ${diasAte(c.termino) < 0 ? 'venceu' : 'vence'} em ${data(c.termino)}`),
+                              ...r.certidoes.map((c) => `${c.tipo} ${diasAte(c.vencimento) < 0 ? 'venceu' : 'vence'} em ${data(c.vencimento)}`),
+                            ].filter(Boolean);
+                            return itens.length ? <small className="sub texto-alerta">A regularizar: {itens.join('; ')}</small> : null;
+                          })()}
                         </td>
                         <td>
                           {r.vencidos.length === 0 && r.vencendo.length === 0 && r.faltando.length === 0 && e.certidoes.length === 0 ? (
@@ -204,54 +245,6 @@ export function Fornecedores() {
                       </tr>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
-      )}
-
-      {!carregando && aba === 'regularizar' && (
-        <>
-          <p className="apoio">
-            Fornecedores que já usam o portal com algum dado faltando. Nada aqui trava a liberação dos colaboradores: é só para manter o cadastro em dia com o SAP.
-          </p>
-          {!regularizar?.length ? (
-            <p className="vazio">Nenhum fornecedor a regularizar.</p>
-          ) : (
-            <div className="tabela-rolagem">
-              <table className="tabela tabela-lista">
-                <thead>
-                  <tr>
-                    <th scope="col">Fornecedor</th>
-                    <th scope="col">O que falta</th>
-                    <th scope="col"><span className="sr">Regularizar</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {regularizar.map((r) => (
-                    <tr key={r.empresa_id}>
-                      <th scope="row">
-                        {r.razao_social}
-                        <small className="sub">{formatarCnpj(r.cnpj)}</small>
-                      </th>
-                      <td className="quebra">
-                        <ul className="lista-simples">
-                          {r.sem_bp && <li>Código BP do SAP</li>}
-                          {r.obras_sem_contrato.length > 0 && <li>Contrato da obra: {r.obras_sem_contrato.join(', ')}</li>}
-                          {r.contratos_vencendo.map((c) => (
-                            <li key={c.id}>Contrato {c.numero} {diasAte(c.termino) < 0 ? 'venceu' : 'vence'} em {data(c.termino)}</li>
-                          ))}
-                          {r.certidoes.map((c) => (
-                            <li key={c.tipo}>{c.tipo} {diasAte(c.vencimento) < 0 ? 'venceu' : 'vence'} em {data(c.vencimento)} (pedido ao fornecedor por e-mail)</li>
-                          ))}
-                        </ul>
-                      </td>
-                      <td className="acoes">
-                        <button type="button" className="botao botao-pequeno" onClick={() => abrir(r.empresa_id)}>Regularizar</button>
-                      </td>
-                    </tr>
-                  ))}
                 </tbody>
               </table>
             </div>
@@ -374,6 +367,8 @@ export function Fornecedores() {
       />
       <EditarCadastro
         fornecedor={editando}
+        acesso={editando ? acessos?.porEmpresa.get(editando.empresa_id) ?? null : null}
+        acessos={acessos?.lista ?? []}
         aoFechar={() => setEditando(null)}
         aoSalvar={async (msg) => {
           setEditando(null);

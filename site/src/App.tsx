@@ -56,7 +56,7 @@ export function App() {
       <Route path="/homologacao" element={<SoPerfil perfil={['suprimentos', 'fornecedor']}><HomologacaoPorPerfil /></SoPerfil>} />
       <Route path="/fornecedores" element={<SoPerfil perfil="suprimentos"><Fornecedores /></SoPerfil>} />
       <Route path="/configuracao" element={<SoPerfil perfil="suprimentos"><Configuracao /></SoPerfil>} />
-      <Route path="/fornecedores-acessos" element={<SoPerfil perfil="suprimentos"><Acessos modo="suprimentos" /></SoPerfil>} />
+      <Route path="/fornecedores-acessos" element={<Navigate to="/fornecedores?aba=acessos" replace />} />
       <Route path="/emails" element={<Navigate to="/configuracao?aba=emails" replace />} />
       <Route path="/seguranca" element={<SoPerfil perfil={['admin', 'tst', 'engenharia']}><Seguranca /></SoPerfil>} />
       <Route path="/seguranca/vistoria/:id" element={<SoPerfil perfil={['admin', 'tst']}><VistoriaPagina /></SoPerfil>} />

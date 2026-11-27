@@ -112,10 +112,21 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
           return;
         }
         // Fornecedor: confere se a empresa ainda está na homologação, antes de mostrar o menu.
-        supabase.rpc('minha_homologacao').then(({ data: h }) => {
+        // Um mesmo acesso pode ter empresas já liberadas e uma empresa nova em homologação: aí o menu fica completo
+        // e a Homologação aparece como mais um item. Só fica preso na Homologação quem não tem nenhuma empresa liberada.
+        Promise.all([
+          supabase.rpc('minha_homologacao'),
+          supabase.from('empresas').select('id', { count: 'exact', head: true }).not('portal_liberado_em', 'is', null),
+        ]).then(([{ data: h }, { count }]) => {
           if (cancelado) return;
           const lista = (h ?? []) as { liberado: boolean; situacao: string }[];
-          setHomologacao(lista.length === 0 ? 'nenhuma' : lista.every((x) => !x.liberado) ? 'fechado' : lista.some((x) => x.situacao === 'homologada') ? 'aberto' : 'nenhuma');
+          const temLiberada = (count ?? 0) > 0 || lista.some((x) => x.liberado);
+          setHomologacao(
+            lista.length === 0 ? 'nenhuma'
+              : !temLiberada ? 'fechado'
+              : lista.some((x) => !x.liberado || x.situacao === 'homologada') ? 'aberto'
+              : 'nenhuma',
+          );
           setUsuario(data as Usuario);
           setSituacao('ok');
         });

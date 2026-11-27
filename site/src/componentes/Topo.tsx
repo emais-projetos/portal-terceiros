@@ -217,10 +217,8 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
             icone: 'fornecedores',
             contador: (sup?.pedidos ?? 0) + (sup?.contrato ?? 0) || null,
             filhos: [
-              { to: '/fornecedores', rotulo: 'Cadastro', ativo: abaFornecedores('cadastro') },
-              { to: '/fornecedores?aba=regularizar', rotulo: 'A regularizar', ativo: abaFornecedores('regularizar') },
+              { to: '/fornecedores', rotulo: 'Cadastro e acesso', ativo: (c, b) => c === '/fornecedores' && new URLSearchParams(b).get('aba') !== 'pedidos' },
               { to: '/fornecedores?aba=pedidos', rotulo: 'Pedidos de obra', ativo: abaFornecedores('pedidos'), contador: sup?.pedidos || null },
-              { to: '/fornecedores-acessos', rotulo: 'Acessos ao portal', ativo: (c) => c === '/fornecedores-acessos' },
             ],
           },
           {

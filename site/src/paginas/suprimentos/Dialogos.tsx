@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Dialogo } from '../../componentes/Dialogo';
-import { copiarTexto, linkOutlook } from '../../lib/admin';
+import { copiarTexto, enviarAcesso, gerarLinkAcesso, linkOutlook, mudarAtivoAcesso, type Acesso, type LinkAcesso } from '../../lib/admin';
+import { EnvioDoLink } from '../admin/Acessos';
 import { data as dataBr } from '../../lib/formato';
 import { mensagemDeErro } from '../../lib/supabase';
 import { cnpjValido, hojeIso, somarDias, soDigitos, tamanhoArquivo } from '../../lib/formato';
 import {
   cadastrarFornecedor, registrarContrato, lerObrasAtivas, formatarCnpj, salvarCadastroFornecedor, trocarEmailAcesso,
-  criarAcessoFornecedor, lerConvite, marcarEnviadoOutlook, reenviarConvite,
+  criarAcessoFornecedor, lerConvite, marcarEnviadoOutlook, reenviarConvite, lerAcessosPorEmpresa, tirarEmpresaDoAcesso, vincularEmpresaAoAcesso,
   type ContratoFornecedor, type ConviteFila, type DadosF31, type FornecedorCadastro, type ObraSimples,
 } from '../../lib/homologacao';
 
@@ -48,9 +49,11 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [feito, setFeito] = useState<{ empresaId: string; msg: string } | null>(null);
+  const [acessos, setAcessos] = useState<Acesso[]>([]);
 
   useEffect(() => {
     if (!aberto) return;
+    lerAcessosPorEmpresa().then((r) => setAcessos(r.lista)).catch(() => setAcessos([]));
     setFeito(null);
     setRazao('');
     setCnpj('');
@@ -63,6 +66,7 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
   const cnpjOk = cnpjValido(cnpj);
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const pronto = razao.trim().length >= 3 && cnpjOk && emailOk;
+  const existente = emailOk ? acessos.find((a) => a.email.toLowerCase() === email.trim().toLowerCase()) ?? null : null;
 
   async function enviar(e: FormEvent) {
     e.preventDefault();
@@ -70,8 +74,13 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
     setEnviando(true);
     setErro(null);
     try {
-      const r = await cadastrarFornecedor({ razao: razao.trim(), cnpj: soDigitos(cnpj), email: email.trim().toLowerCase(), contato: contato.trim(), obras: marcadas });
-      setFeito({ empresaId: r.empresaId, msg: r.aviso ?? `${razao.trim()} cadastrado. O convite para preencher a homologação vai para ${email.trim().toLowerCase()}.` });
+      const r = await cadastrarFornecedor({ razao: razao.trim(), cnpj: soDigitos(cnpj), email: email.trim().toLowerCase(), contato: contato.trim(), obras: marcadas, acessoExistente: existente });
+      setFeito({
+        empresaId: r.empresaId,
+        msg: r.aviso ?? (existente
+          ? `${razao.trim()} cadastrado no acesso de ${existente.nome} (${existente.email}), que agora cuida de ${existente.empresas.length + 1} empresas. O convite da homologação vai para esse e-mail.`
+          : `${razao.trim()} cadastrado. O convite para preencher a homologação vai para ${email.trim().toLowerCase()}.`),
+      });
     } catch (er) {
       setErro(mensagemDeErro(er as Error));
     } finally {
@@ -108,7 +117,13 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
           <label className="campo">
             <span>E-mail do fornecedor</span>
             <input type="email" value={email} maxLength={200} aria-invalid={!!email && !emailOk} onChange={(e) => setEmail(e.target.value)} />
-            <small className="dica">Vira o login do fornecedor no portal.</small>
+            {existente ? (
+              <small className="texto-alerta">
+                Este e-mail já é o login de {existente.nome}, que cuida de {existente.empresas.map((x) => x.razao_social).join(', ') || 'nenhuma empresa'}. A empresa nova entra nesse mesmo acesso.
+              </small>
+            ) : (
+              <small className="dica">Vira o login do fornecedor no portal. Se for o e-mail de um login que já existe, a empresa entra nesse acesso.</small>
+            )}
           </label>
           <label className="campo">
             <span>Pessoa de contato</span>
@@ -299,10 +314,11 @@ const GRUPOS_CADASTRO: { titulo: string; campos: [keyof DadosF31, string, { max?
   { titulo: 'Dados bancários', campos: [['banco', 'Banco'], ['agencia', 'Agência', { max: 20 }], ['conta', 'Conta', { max: 30 }]] },
 ];
 
-export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor: FornecedorCadastro | null; aoFechar: () => void; aoSalvar: (msg: string) => void }) {
+export function EditarCadastro({ fornecedor, acesso: acessoAtual = null, acessos = [], aoFechar, aoSalvar }: {
+  fornecedor: FornecedorCadastro | null; acesso?: Acesso | null; acessos?: Acesso[]; aoFechar: () => void; aoSalvar: (msg: string) => void;
+}) {
   const [razao, setRazao] = useState('');
   const [cnpj, setCnpj] = useState('');
-  const [acesso, setAcesso] = useState('');
   const [emails, setEmails] = useState('');
   const [dados, setDados] = useState<Partial<DadosF31>>({});
   const [enviando, setEnviando] = useState(false);
@@ -312,19 +328,13 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
     if (!fornecedor) return;
     setRazao(fornecedor.razao_social);
     setCnpj(formatarCnpj(fornecedor.cnpj));
-    setAcesso(fornecedor.email_acesso ?? '');
     setEmails(fornecedor.emails_contato ?? '');
     setDados({ ...fornecedor.dados });
     setErro(null);
   }, [fornecedor]);
 
   const cnpjOk = cnpjValido(cnpj) || soDigitos(cnpj) === fornecedor?.cnpj;
-  const emHomologacao = !!fornecedor && !fornecedor.liberado_em && (fornecedor.homologacao === 'convidada' || fornecedor.homologacao === 'devolvida');
-  const podeCriarAcesso = !!fornecedor && !fornecedor.email_acesso && emHomologacao;
-  const acessoMudou = !!fornecedor?.email_acesso && acesso.trim().toLowerCase() !== fornecedor.email_acesso;
-  const criarAcesso = podeCriarAcesso && acesso.trim() !== '';
-  const acessoOk = (!fornecedor?.email_acesso && !criarAcesso) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(acesso.trim());
-  const pronto = razao.trim().length >= 3 && cnpjOk && acessoOk;
+  const pronto = razao.trim().length >= 3 && cnpjOk;
 
   async function enviar(e: FormEvent) {
     e.preventDefault();
@@ -335,25 +345,7 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
       const saida: Partial<DadosF31> = {};
       for (const g of GRUPOS_CADASTRO) for (const [c] of g.campos) (saida as Record<string, string>)[c] = String(dados[c] ?? '').trim();
       await salvarCadastroFornecedor(fornecedor.empresa_id, razao.trim(), soDigitos(cnpj), emails, saida);
-      const novo = acesso.trim().toLowerCase();
-      if (acessoMudou || criarAcesso) {
-        try {
-          if (criarAcesso) await criarAcessoFornecedor(fornecedor.empresa_id, razao.trim(), novo);
-          else await trocarEmailAcesso(fornecedor.empresa_id, novo);
-          // Em homologação, o convite que ainda não saiu é refeito para o e-mail novo.
-          if (emHomologacao) await reenviarConvite(fornecedor.empresa_id);
-        } catch (er) {
-          setErro(`O cadastro foi salvo, mas o e-mail de acesso não ${criarAcesso ? 'foi criado' : 'mudou'}: ${mensagemDeErro(er as Error)}`);
-          return;
-        }
-      }
-      aoSalvar(
-        criarAcesso
-          ? `Cadastro atualizado e acesso criado com ${novo}. O convite foi refeito para este e-mail.`
-          : acessoMudou
-            ? `Cadastro atualizado. O fornecedor agora entra no portal com ${novo}, com a mesma senha.${emHomologacao ? ' O convite foi refeito para o e-mail novo.' : ''}`
-            : 'Cadastro atualizado.',
-      );
+      aoSalvar('Cadastro atualizado.');
     } catch (er) {
       setErro(mensagemDeErro(er as Error));
     } finally {
@@ -366,6 +358,7 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
       {fornecedor && (
         <form className="formulario formulario-largo" onSubmit={enviar} noValidate>
           <p className="apoio">Tudo o que for salvo aqui aparece na hora para o administrativo, para o fornecedor e nos e-mails do portal.</p>
+          <AcessoDaEmpresa fornecedor={fornecedor} acesso={acessoAtual} acessos={acessos} aoMudar={aoSalvar} />
           <div className="grade-2">
             <label className="campo">
               <span>Razão social</span>
@@ -375,24 +368,6 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
               <span>CNPJ</span>
               <input value={cnpj} inputMode="numeric" maxLength={18} aria-invalid={!cnpjOk} onChange={(e) => setCnpj(e.target.value)} onBlur={() => cnpjValido(cnpj) && setCnpj(formatarCnpj(soDigitos(cnpj)))} />
               {!cnpjOk && <small className="campo-erro">CNPJ inválido. Confira os números.</small>}
-            </label>
-            <label className="campo">
-              <span>E-mail de acesso ao portal</span>
-              {podeCriarAcesso ? (
-                <>
-                  <input type="email" value={acesso} maxLength={200} aria-invalid={!acessoOk} placeholder="e-mail do fornecedor" onChange={(e) => setAcesso(e.target.value)} />
-                  <small className="texto-alerta">O fornecedor ainda não tem acesso. Ao salvar, o portal cria o login com este e-mail e refaz o convite.</small>
-                </>
-              ) : fornecedor.email_acesso ? (
-                <>
-                  <input type="email" value={acesso} maxLength={200} aria-invalid={!acessoOk} onChange={(e) => setAcesso(e.target.value)} />
-                  <small className={acessoMudou ? 'texto-alerta' : 'dica'}>
-                    {acessoMudou ? 'É o login do fornecedor: ele passa a entrar com o e-mail novo, com a mesma senha.' : 'É o login do fornecedor no portal.'}
-                  </small>
-                </>
-              ) : (
-                <span className="valor-fixo">Sem acesso ao portal. O acesso é criado pelo administrativo, em Acessos.</span>
-              )}
             </label>
             <label className="campo">
               <span>Outros e-mails para avisos</span>
@@ -427,6 +402,202 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
         </form>
       )}
     </Dialogo>
+  );
+}
+
+// Acesso ao portal da empresa, dentro do cadastro: criar, usar um login que já existe, trocar o e-mail,
+// mandar o convite e tirar a empresa do login. Um login pode cuidar de várias empresas; cada empresa tem um só.
+function AcessoDaEmpresa({ fornecedor, acesso, acessos, aoMudar }: { fornecedor: FornecedorCadastro; acesso: Acesso | null; acessos: Acesso[]; aoMudar: (msg: string) => void }) {
+  const [email, setEmail] = useState('');
+  const [nome, setNome] = useState('');
+  const [trocando, setTrocando] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [link, setLink] = useState<LinkAcesso | null>(null);
+
+  useEffect(() => {
+    setEmail(acesso ? acesso.email : fornecedor.email_acesso ?? String(fornecedor.dados.email_empresa ?? ''));
+    setNome(acesso ? acesso.nome : fornecedor.razao_social);
+    setTrocando(false);
+    setErro(null);
+  }, [acesso, fornecedor]);
+
+  const emHomologacao = !fornecedor.liberado_em && (fornecedor.homologacao === 'convidada' || fornecedor.homologacao === 'devolvida');
+  const limpo = email.trim().toLowerCase();
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(limpo);
+  const existente = !acesso && emailOk ? acessos.find((a) => a.email.toLowerCase() === limpo) ?? null : null;
+  const outras = acesso ? acesso.empresas.filter((e) => e.id !== fornecedor.empresa_id) : [];
+  const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+  async function fazer(acao: () => Promise<string>) {
+    setOcupado(true);
+    setErro(null);
+    try {
+      aoMudar(await acao());
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <fieldset className="campo-grupo">
+      <legend>Acesso ao portal</legend>
+      {acesso ? (
+        <>
+          <p>
+            <strong>{acesso.email}</strong> <span className="sub">({acesso.nome})</span>
+            <br />
+            <span className="sub">
+              {!acesso.ativo ? 'Acesso desativado' : acesso.ultimo_login ? `Último acesso em ${dia(acesso.ultimo_login)}` : 'Ainda não entrou no portal'}
+            </span>
+          </p>
+          {outras.length > 0 && <p className="dica">Este login também cuida de: {outras.map((e) => e.razao_social).join(', ')}.</p>}
+          {trocando ? (
+            <div className="grade-2">
+              <label className="campo">
+                <span>Novo e-mail de login</span>
+                <input type="email" value={email} maxLength={200} aria-invalid={!emailOk} onChange={(e) => setEmail(e.target.value)} />
+                <small className="texto-alerta">
+                  A senha não muda.{outras.length > 0 ? ` A troca vale para as ${outras.length + 1} empresas deste login.` : ''}
+                </small>
+              </label>
+              <div className="linha-botoes linha-botoes-baixo">
+                <button
+                  type="button"
+                  className="botao botao-pequeno"
+                  disabled={ocupado || !emailOk || limpo === acesso.email.toLowerCase()}
+                  onClick={() =>
+                    fazer(async () => {
+                      await trocarEmailAcesso(fornecedor.empresa_id, limpo);
+                      if (emHomologacao) await reenviarConvite(fornecedor.empresa_id);
+                      return `O login agora é ${limpo}, com a mesma senha.${emHomologacao ? ' O convite da homologação foi refeito para o e-mail novo.' : ''}`;
+                    })
+                  }
+                >
+                  Trocar e-mail
+                </button>
+                <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => setTrocando(false)}>Cancelar</button>
+              </div>
+            </div>
+          ) : (
+            <div className="linha-botoes">
+              {acesso.ativo && !emHomologacao && (
+                <>
+                  <button
+                    type="button"
+                    className="botao botao-secundario botao-pequeno"
+                    disabled={ocupado}
+                    onClick={() =>
+                      fazer(async () => {
+                        const r = await enviarAcesso(acesso.id);
+                        return `${acesso.ultimo_login ? 'Link de nova senha' : 'Convite'} na fila do envio automático para ${r.email}.`;
+                      })
+                    }
+                  >
+                    Enviar acesso
+                  </button>
+                  <button
+                    type="button"
+                    className="botao botao-secundario botao-pequeno"
+                    disabled={ocupado}
+                    onClick={async () => {
+                      setOcupado(true);
+                      setErro(null);
+                      try {
+                        setLink(await gerarLinkAcesso(acesso.id));
+                      } catch (e) {
+                        setErro(mensagemDeErro(e as Error));
+                      } finally {
+                        setOcupado(false);
+                      }
+                    }}
+                  >
+                    Copiar texto do acesso
+                  </button>
+                </>
+              )}
+              <button type="button" className="botao botao-secundario botao-pequeno" disabled={ocupado} onClick={() => setTrocando(true)}>Trocar e-mail</button>
+              {outras.length > 0 ? (
+                <button
+                  type="button"
+                  className="botao botao-discreto botao-pequeno"
+                  disabled={ocupado}
+                  onClick={() =>
+                    fazer(async () => {
+                      await tirarEmpresaDoAcesso(acesso, fornecedor.empresa_id);
+                      return `${fornecedor.razao_social} saiu do login ${acesso.email}. Agora a empresa está sem acesso ao portal.`;
+                    })
+                  }
+                >
+                  Tirar desta empresa
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="botao botao-discreto botao-pequeno"
+                  disabled={ocupado}
+                  onClick={() =>
+                    fazer(async () => {
+                      await mudarAtivoAcesso(acesso.id, !acesso.ativo);
+                      return acesso.ativo ? `Acesso ${acesso.email} desativado.` : `Acesso ${acesso.email} reativado.`;
+                    })
+                  }
+                >
+                  {acesso.ativo ? 'Desativar acesso' : 'Reativar acesso'}
+                </button>
+              )}
+            </div>
+          )}
+          {emHomologacao && <p className="dica">Em homologação: o convite da homologação é o e-mail de acesso. Ele fica em Homologação, no detalhe do fornecedor.</p>}
+        </>
+      ) : (
+        <>
+          <p className="texto-alerta">Esta empresa ainda não tem acesso ao portal.</p>
+          <div className="grade-2">
+            <label className="campo">
+              <span>E-mail de login</span>
+              <input type="email" value={email} maxLength={200} aria-invalid={!!email && !emailOk} placeholder="e-mail do fornecedor" onChange={(e) => setEmail(e.target.value)} />
+              {existente ? (
+                <small className="texto-alerta">
+                  Já é o login de {existente.nome}, que cuida de {existente.empresas.map((x) => x.razao_social).join(', ') || 'nenhuma empresa'}. A empresa entra nesse mesmo acesso.
+                </small>
+              ) : (
+                <small className="dica">Se for o e-mail de um login que já existe, a empresa entra nesse acesso.</small>
+              )}
+            </label>
+            {!existente && (
+              <label className="campo">
+                <span>Nome do acesso</span>
+                <input value={nome} maxLength={200} onChange={(e) => setNome(e.target.value)} />
+              </label>
+            )}
+          </div>
+          <div className="linha-botoes">
+            <button
+              type="button"
+              className="botao botao-pequeno"
+              disabled={ocupado || !emailOk || (!existente && nome.trim().length < 2)}
+              onClick={() =>
+                fazer(async () => {
+                  if (existente) await vincularEmpresaAoAcesso(existente, fornecedor.empresa_id);
+                  else await criarAcessoFornecedor(fornecedor.empresa_id, nome.trim(), limpo);
+                  if (emHomologacao) await reenviarConvite(fornecedor.empresa_id);
+                  return existente
+                    ? `${fornecedor.razao_social} entrou no acesso de ${existente.nome} (${existente.email}).`
+                    : `Acesso criado com ${limpo}.${emHomologacao ? ' O convite da homologação foi refeito para este e-mail.' : ' Use "Enviar acesso" ou "Copiar texto do acesso" para mandar o convite.'}`;
+                })
+              }
+            >
+              {existente ? 'Usar este acesso' : 'Criar acesso'}
+            </button>
+          </div>
+        </>
+      )}
+      {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
+      <EnvioDoLink link={link} empresas={acesso?.empresas ?? []} aoFechar={() => setLink(null)} />
+    </fieldset>
   );
 }
 

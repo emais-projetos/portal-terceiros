@@ -865,7 +865,7 @@ function EditarAcesso({
   );
 }
 
-function EnvioDoLink({ link, empresas, aoFechar }: { link: LinkAcesso | null; empresas: { razao_social: string }[]; aoFechar: () => void }) {
+export function EnvioDoLink({ link, empresas, aoFechar }: { link: LinkAcesso | null; empresas: { razao_social: string }[]; aoFechar: () => void }) {
   const [copiado, setCopiado] = useState<string | null>(null);
   useEffect(() => setCopiado(null), [link]);
   if (!link) return <Dialogo aberto={false} titulo="" aoFechar={aoFechar}>{null}</Dialogo>;

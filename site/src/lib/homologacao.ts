@@ -3,6 +3,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase, enderecoDoSite } from './supabase';
 import { nomeSeguro, tipoDoArquivo } from './fornecedor';
+import { editarAcesso, lerAcessosFornecedores, type Acesso } from './admin';
 
 export type SituacaoHomologacao = 'anterior' | 'convidada' | 'enviada' | 'devolvida' | 'homologada' | 'reprovada';
 
@@ -297,12 +298,39 @@ export async function lerDetalheHomologacao(empresaId: string): Promise<DetalheH
   return data as DetalheHomologacao;
 }
 
-export async function cadastrarFornecedor(dados: { razao: string; cnpj: string; email: string; contato: string; obras: string[] }): Promise<{ empresaId: string; aviso: string | null }> {
+// Acesso ao portal de cada empresa (login do fornecedor). Um login pode cuidar de várias empresas.
+export async function lerAcessosPorEmpresa(): Promise<{ lista: Acesso[]; porEmpresa: Map<string, Acesso> }> {
+  const lista = await lerAcessosFornecedores();
+  const porEmpresa = new Map<string, Acesso>();
+  lista.forEach((a) => a.empresas.forEach((e) => porEmpresa.set(e.id, a)));
+  return { lista, porEmpresa };
+}
+
+// Liga ou tira a empresa de um login que já existe (mesma ação do administrativo em Acessos > Editar).
+export async function vincularEmpresaAoAcesso(acesso: Acesso, empresaId: string) {
+  return editarAcesso({ usuario_id: acesso.id, nome: acesso.nome, email: acesso.email, empresas: [...new Set([...acesso.empresas.map((e) => e.id), empresaId])], obras: [] });
+}
+export async function tirarEmpresaDoAcesso(acesso: Acesso, empresaId: string) {
+  return editarAcesso({ usuario_id: acesso.id, nome: acesso.nome, email: acesso.email, empresas: acesso.empresas.map((e) => e.id).filter((id) => id !== empresaId), obras: [] });
+}
+
+export async function cadastrarFornecedor(dados: { razao: string; cnpj: string; email: string; contato: string; obras: string[]; acessoExistente?: Acesso | null }): Promise<{ empresaId: string; aviso: string | null }> {
   const { data, error } = await supabase.rpc('cadastrar_fornecedor_homologacao', {
     p_razao: dados.razao, p_cnpj: dados.cnpj, p_email: dados.email, p_contato: dados.contato || null, p_obras: dados.obras,
   });
   if (error) throw error;
   const empresaId = data as string;
+  // E-mail que já é login de fornecedor: a empresa nova entra nesse acesso.
+  if (dados.acessoExistente) {
+    try {
+      await vincularEmpresaAoAcesso(dados.acessoExistente, empresaId);
+    } catch (e) {
+      return { empresaId, aviso: `O fornecedor foi cadastrado, mas não entrou no acesso ${dados.acessoExistente.email}: ${(e as Error).message}` };
+    }
+    const { error: e4 } = await supabase.rpc('enviar_convite_homologacao', { p_empresa: empresaId });
+    if (e4) return { empresaId, aviso: `O fornecedor foi cadastrado, mas o convite não entrou na fila: ${e4.message}` };
+    return { empresaId, aviso: null };
+  }
   // Cria o login do fornecedor (primeiro acesso por código) e coloca o convite da homologação na fila.
   const { error: e2 } = await supabase.functions.invoke('gerenciar-acesso', {
     body: { acao: 'criar', nome: dados.razao, email: dados.email, perfil: 'fornecedor', empresas: [empresaId], obras: [], enviar: false, destino: enderecoDoSite },

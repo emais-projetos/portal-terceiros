@@ -7,7 +7,7 @@ import { data, diasAte } from '../../lib/formato';
 import { useSessao } from '../../lib/sessao';
 import {
   ITENS_QUALIFICACAO, NOMES_SITUACAO_HOMOLOGACAO, abrirArquivoHomologacao, analisarDocumentoHomologacao, devolverHomologacao, documentoAtual,
-  encerrarContrato, formatarCnpj, homologarFornecedor, lerDetalheHomologacao, lerListaHomologacoes, lerTiposHomologacao, reenviarConvite, lerCamposHomologacao, respostaAdicional, lerFornecedoresCadastro, resumoDocsFornecedor,
+  encerrarContrato, formatarCnpj, homologarFornecedor, lerDetalheHomologacao, lerListaHomologacoes, lerTiposHomologacao, reenviarConvite, lerCamposHomologacao, respostaAdicional, lerFornecedoresCadastro, resumoDocsFornecedor, lerAcessosPorEmpresa,
   reprovarHomologacao,
   type CampoHomologacao, type DetalheHomologacao, type FornecedorCadastro, type DocumentoHomologacao, type ItemHomologacao, type RespostaQualificacao, type SituacaoHomologacao, type TipoHomologacao,
 } from '../../lib/homologacao';
@@ -158,10 +158,14 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
   const [qualificacao, setQualificacao] = useState<Record<string, RespostaQualificacao>>({});
   const [comentarios, setComentarios] = useState('');
   const [responsavel, setResponsavel] = useState('');
+  const [acessos, setAcessos] = useState<Awaited<ReturnType<typeof lerAcessosPorEmpresa>> | null>(null);
 
   const carregar = useCallback(async () => {
     try {
-      const [x, t, c, f] = await Promise.all([lerDetalheHomologacao(empresaId), lerTiposHomologacao(true), lerCamposHomologacao(), lerFornecedoresCadastro(empresaId)]);
+      const [x, t, c, f, a] = await Promise.all([
+        lerDetalheHomologacao(empresaId), lerTiposHomologacao(true), lerCamposHomologacao(), lerFornecedoresCadastro(empresaId), lerAcessosPorEmpresa().catch(() => null),
+      ]);
+      setAcessos(a);
       setD(x);
       setCad(f[0] ?? null);
       // Documento removido da configuração só aparece se este fornecedor já tinha enviado.
@@ -601,6 +605,8 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
       />
       <EditarCadastro
         fornecedor={editando}
+        acesso={editando ? acessos?.porEmpresa.get(editando.empresa_id) ?? null : null}
+        acessos={acessos?.lista ?? []}
         aoFechar={() => setEditando(null)}
         aoSalvar={async (msg) => {
           setEditando(null);
