@@ -1051,6 +1051,16 @@ select teste.igual('Receita: cadastro mostra a situação', format($q$select 1 f
 select teste.sair();
 select teste.igual('Receita: F.31 nasce com os dados da Receita', format($q$select 1 from homologacoes where empresa_id = %L and dados->>'ramo' = 'Construção de Edifícios' and dados->>'cidade' = 'Barretos' and dados->>'email' = 'receita@teste.com'$q$, :'ERF'), 1);
 select teste.igual('Receita: sem razão social, e-mail do contador nem campo vazio', format($q$select 1 from homologacoes where empresa_id = %L and not dados ? 'razao_social' and not dados ? 'email_empresa' and not dados ? 'numero'$q$, :'ERF'), 1);
+-- Histórico da ficha do fornecedor
+select teste.entrar(:F1);
+select teste.igual('Histórico: fornecedor não vê', format($q$select jsonb_array_elements(historico_fornecedor(%L))$q$, :E1), 0);
+select teste.sair();
+select teste.entrar(:S1);
+select teste.igual('Histórico: Suprimentos vê as mudanças de situação', format($q$select 1 from jsonb_array_elements(historico_fornecedor(%L)) x where x->>'acao' = 'situacao_fornecedor_alterada'$q$, :E1), 3);
+select teste.sair();
+select teste.entrar(:A);
+select teste.igual('Histórico: administrativo vê o mesmo', format($q$select 1 from jsonb_array_elements(historico_fornecedor(%L)) x where x->>'acao' = 'situacao_fornecedor_alterada'$q$, :E1), 3);
+select teste.sair();
 -- Funil da homologação
 select teste.entrar(:F1);
 select teste.igual('Funil: fornecedor não vê', $q$select jsonb_array_elements(funil_homologacao())$q$, 0);

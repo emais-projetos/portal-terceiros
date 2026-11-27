@@ -214,6 +214,7 @@ const FUNCOES = {
   lista_categorias_servico: '',
   definir_categorias_fornecedor: 'p_empresa uuid, p_categorias text[]',
   funil_homologacao: '',
+  historico_fornecedor: 'p_empresa uuid',
 };
 // Valores inofensivos: ids que não existem, datas antigas. Só serviriam para mostrar se a função roda sem login.
 function valor(tipo) {

@@ -6,13 +6,13 @@ import { mensagemDeErro } from '../../lib/supabase';
 import { data, diasAte } from '../../lib/formato';
 import { lerPedidosObra, responderPedidoObra, type PedidoObra } from '../../lib/ajuda';
 import {
-  NOMES_SITUACAO_HOMOLOGACAO, NOMES_SITUACAO_FORNECEDOR, SELO_SITUACAO_FORNECEDOR, formatarCnpj, lerARegularizar, lerFornecedoresCadastro, resumoDocsFornecedor, lerAcessosPorEmpresa,
+  NOMES_SITUACAO_HOMOLOGACAO, NOMES_SITUACAO_FORNECEDOR, SELO_HOMOLOGACAO, SELO_SITUACAO_FORNECEDOR, formatarCnpj, lerARegularizar, lerFornecedoresCadastro, resumoDocsFornecedor, lerAcessosPorEmpresa,
   type FornecedorARegularizar, type FornecedorCadastro,
 } from '../../lib/homologacao';
 import { lerTiposFornecedor, nomesDosTipos, type TipoFornecedor } from '../../lib/tiposFornecedor';
 import { lerCategorias, nomesDasCategorias, type CategoriaServico } from '../../lib/categorias';
-import { EditarCadastro, NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
-import { DetalheFornecedor, SELO_HOMOLOGACAO } from './Homologacoes';
+import { NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
+import { FichaFornecedor } from './Ficha';
 
 const ABAS = [
   ['cadastro', 'Fornecedores'],
@@ -46,7 +46,6 @@ export function Fornecedores() {
   const [empresas, setEmpresas] = useState<FornecedorCadastro[] | null>(null);
   const [acessos, setAcessos] = useState<Awaited<ReturnType<typeof lerAcessosPorEmpresa>> | null>(null);
   const [filtro, setFiltro] = useState<Filtro>(pedida === 'regularizar' ? 'regularizar' : pedida === 'acessos' ? 'sem_acesso' : 'todos');
-  const [editando, setEditando] = useState<FornecedorCadastro | null>(null);
   const [regularizar, setRegularizar] = useState<FornecedorARegularizar[] | null>(null);
   const [pedidos, setPedidos] = useState<PedidoObra[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -78,7 +77,7 @@ export function Fornecedores() {
     if (!empresa) carregar();
   }, [carregar, empresa]);
 
-  const abrir = (id: string) => setParams({ ...(aba === 'cadastro' ? {} : { aba }), empresa: id });
+  const abrir = (id: string, ficha?: string) => setParams({ ...(aba === 'cadastro' ? {} : { aba }), empresa: id, ...(ficha ? { ficha } : {}) });
   const regPor = useMemo(() => new Map((regularizar ?? []).map((r) => [r.empresa_id, r])), [regularizar]);
 
   const filtradas = useMemo(() => {
@@ -106,7 +105,7 @@ export function Fornecedores() {
     });
   }, [empresas, busca, filtro, acessos, regPor, tipoFiltro, categoriaFiltro]);
 
-  if (empresa) return <DetalheFornecedor empresaId={empresa} aoVoltar={() => setParams(aba === 'cadastro' ? {} : { aba })} />;
+  if (empresa) return <FichaFornecedor empresaId={empresa} voltarRotulo={aba === 'pedidos' ? 'Pedidos de obra' : 'Fornecedores'} aoVoltar={() => setParams(aba === 'cadastro' ? {} : { aba })} />;
 
   const pendentes = (pedidos ?? []).filter((p) => p.situacao === 'pendente');
   const respondidos = (pedidos ?? []).filter((p) => p.situacao !== 'pendente').slice(0, 50);
@@ -275,7 +274,7 @@ export function Fornecedores() {
                           )}
                         </td>
                         <td className="acoes">
-                          <button type="button" className="botao botao-secundario botao-pequeno" onClick={(ev) => { ev.stopPropagation(); setEditando(e); }}>Editar</button>
+                          <button type="button" className="botao botao-secundario botao-pequeno" onClick={(ev) => { ev.stopPropagation(); abrir(e.empresa_id, 'cadastro'); }}>Editar</button>
                           <button type="button" className="botao botao-pequeno" onClick={(ev) => { ev.stopPropagation(); abrir(e.empresa_id); }}>Abrir</button>
                         </td>
                       </tr>
@@ -346,7 +345,7 @@ export function Fornecedores() {
                             >
                               Registrar contrato
                             </button>
-                            <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => abrir(p.empresa_id)}>Abrir fornecedor</button>
+                            <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => abrir(p.empresa_id, 'obras')}>Abrir fornecedor</button>
                             <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => setRecusar(p)}>Recusar</button>
                           </td>
                         </tr>
@@ -399,17 +398,6 @@ export function Fornecedores() {
           setNovo(false);
           setOk(`${msg} Acompanhe em Homologação.`);
           carregar();
-        }}
-      />
-      <EditarCadastro
-        fornecedor={editando}
-        acesso={editando ? acessos?.porEmpresa.get(editando.empresa_id) ?? null : null}
-        acessos={acessos?.lista ?? []}
-        aoFechar={() => setEditando(null)}
-        aoSalvar={async (msg) => {
-          setEditando(null);
-          setOk(`${msg}`);
-          await carregar();
         }}
       />
       <RegistrarContrato

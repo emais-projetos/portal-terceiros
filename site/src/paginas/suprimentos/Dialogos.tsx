@@ -6,13 +6,12 @@ import { data as dataBr } from '../../lib/formato';
 import { mensagemDeErro } from '../../lib/supabase';
 import { cnpjValido, hojeIso, somarDias, soDigitos, tamanhoArquivo } from '../../lib/formato';
 import {
-  cadastrarFornecedor, registrarContrato, lerObrasAtivas, formatarCnpj, salvarCadastroFornecedor, trocarEmailAcesso,
+  cadastrarFornecedor, registrarContrato, lerObrasAtivas, formatarCnpj, trocarEmailAcesso,
   criarAcessoFornecedor, lerConvite, marcarEnviadoOutlook, reenviarConvite, lerAcessosPorEmpresa, tirarEmpresaDoAcesso, vincularEmpresaAoAcesso,
   lerFornecedoresCadastro, mudarSituacaoFornecedor, NOMES_SITUACAO_FORNECEDOR, SELO_SITUACAO_FORNECEDOR,
   type ContratoFornecedor, type ConviteFila, type DadosF31, type FornecedorCadastro, type ObraSimples, type SituacaoFornecedor,
 } from '../../lib/homologacao';
-import { definirTiposFornecedor, lerTiposFornecedor, type TipoFornecedor } from '../../lib/tiposFornecedor';
-import { definirCategoriasFornecedor, lerCategorias, type CategoriaServico } from '../../lib/categorias';
+import { lerTiposFornecedor, type TipoFornecedor } from '../../lib/tiposFornecedor';
 import { consultarReceita, receitaAtiva, ROTULOS_RECEITA, type CamposReceita, type ConsultaReceita } from '../../lib/receita';
 import { CartaoReceita } from '../../componentes/CartaoReceita';
 
@@ -44,7 +43,7 @@ function EscolherObras({ obras, marcadas, aoMudar }: { obras: ObraSimples[]; mar
   );
 }
 
-function useTiposFornecedor(aberto: boolean) {
+export function useTiposFornecedor(aberto: boolean) {
   const [tipos, setTipos] = useState<TipoFornecedor[]>([]);
   useEffect(() => {
     if (aberto) lerTiposFornecedor().then(setTipos).catch(() => setTipos([]));
@@ -52,7 +51,7 @@ function useTiposFornecedor(aberto: boolean) {
   return tipos;
 }
 
-function oQueOTipoPede(t: TipoFornecedor): string {
+export function oQueOTipoPede(t: TipoFornecedor): string {
   if (!t.colaboradores) return 'Só documentos da empresa';
   return t.mensal ? 'Colaboradores, integração e mensal trabalhista' : 'Colaboradores e integração, sem mensal trabalhista';
 }
@@ -413,16 +412,18 @@ export function PedirMotivo({ aberto, titulo, apoio, botao, minimo = 3, rotulo =
 
 // Consulta na Receita dentro do cadastro: mostra a situação e o que difere do cadastro; "Usar" leva o dado para o formulário
 // (só grava ao salvar o cadastro).
-function ReceitaNoCadastro({
+export function ReceitaNoCadastro({
   fornecedor,
   razao,
   dados,
   aoUsar,
+  avisoUsar = 'O que você usar só fica gravado quando salvar o cadastro.',
 }: {
   fornecedor: FornecedorCadastro;
   razao: string;
   dados: Partial<DadosF31>;
   aoUsar: (campo: keyof CamposReceita, valor: string) => void;
+  avisoUsar?: string;
 }) {
   const [consulta, setConsulta] = useState<ConsultaReceita | null>(null);
   const [consultando, setConsultando] = useState(false);
@@ -489,7 +490,7 @@ function ReceitaNoCadastro({
               Preencher os {vazios.length} campos vazios
             </button>
           )}
-          <p className="dica">O que você usar só fica gravado quando salvar o cadastro.</p>
+          <p className="dica">{avisoUsar}</p>
         </>
       ))}
       <div className="linha-botoes">
@@ -502,145 +503,12 @@ function ReceitaNoCadastro({
 }
 
 // Campos que o Suprimentos edita no cadastro. CNPJ e e-mail de acesso ficam com o administrativo (Acessos).
-const GRUPOS_CADASTRO: { titulo: string; campos: [keyof DadosF31, string, { max?: number; tipo?: string; dica?: string }?][] }[] = [
+export const GRUPOS_CADASTRO: { titulo: string; campos: [keyof DadosF31, string, { max?: number; tipo?: string; dica?: string }?][] }[] = [
   { titulo: 'Dados da empresa', campos: [['nome_fantasia', 'Nome fantasia'], ['ramo', 'Ramo de atividade'], ['praca', 'Praça de atuação'], ['inscricao_estadual', 'Inscrição estadual'], ['inscricao_municipal', 'Inscrição municipal']] },
   { titulo: 'Endereço', campos: [['cep', 'CEP', { max: 9 }], ['endereco', 'Endereço'], ['numero', 'Número', { max: 20 }], ['complemento', 'Complemento'], ['bairro', 'Bairro'], ['cidade', 'Cidade'], ['estado', 'Estado', { max: 2, dica: 'Sigla, ex.: SP' }]] },
   { titulo: 'Contato', campos: [['contato', 'Pessoa de contato'], ['telefone', 'Telefone', { tipo: 'tel', max: 20 }], ['celular', 'Celular', { tipo: 'tel', max: 20 }], ['email_empresa', 'E-mail da empresa', { tipo: 'email' }]] },
   { titulo: 'Dados bancários', campos: [['banco', 'Banco'], ['agencia', 'Agência', { max: 20 }], ['conta', 'Conta', { max: 30 }]] },
 ];
-
-export function EditarCadastro({ fornecedor, acesso: acessoAtual = null, acessos = [], aoFechar, aoSalvar }: {
-  fornecedor: FornecedorCadastro | null; acesso?: Acesso | null; acessos?: Acesso[]; aoFechar: () => void; aoSalvar: (msg: string) => void;
-}) {
-  const tiposF = useTiposFornecedor(!!fornecedor);
-  const [tipos, setTipos] = useState<string[]>([]);
-  const [listaCategorias, setListaCategorias] = useState<CategoriaServico[]>([]);
-  const [categorias, setCategorias] = useState<string[]>([]);
-  const [razao, setRazao] = useState('');
-  const [cnpj, setCnpj] = useState('');
-  const [emails, setEmails] = useState('');
-  const [dados, setDados] = useState<Partial<DadosF31>>({});
-  const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!fornecedor) return;
-    setRazao(fornecedor.razao_social);
-    setCnpj(formatarCnpj(fornecedor.cnpj));
-    setEmails(fornecedor.emails_contato ?? '');
-    setDados({ ...fornecedor.dados });
-    setTipos(fornecedor.tipos?.length ? fornecedor.tipos : ['mao_de_obra']);
-    setCategorias(fornecedor.categorias ?? []);
-    lerCategorias().then(setListaCategorias).catch(() => setListaCategorias([]));
-    setErro(null);
-  }, [fornecedor]);
-
-  const cnpjOk = cnpjValido(cnpj) || soDigitos(cnpj) === fornecedor?.cnpj;
-  const pronto = razao.trim().length >= 3 && cnpjOk && tipos.length > 0;
-  const tiposAntes = fornecedor?.tipos?.length ? fornecedor.tipos : ['mao_de_obra'];
-  const tiposMudaram = tipos.length !== tiposAntes.length || tipos.some((t) => !tiposAntes.includes(t));
-  const catAntes = fornecedor?.categorias ?? [];
-  const categoriasMudaram = categorias.length !== catAntes.length || categorias.some((c) => !catAntes.includes(c));
-
-  async function enviar(e: FormEvent) {
-    e.preventDefault();
-    if (!fornecedor || !pronto) return;
-    setEnviando(true);
-    setErro(null);
-    try {
-      const saida: Partial<DadosF31> = {};
-      for (const g of GRUPOS_CADASTRO) for (const [c] of g.campos) (saida as Record<string, string>)[c] = String(dados[c] ?? '').trim();
-      if (tiposMudaram) await definirTiposFornecedor(fornecedor.empresa_id, tipos);
-      if (categoriasMudaram) await definirCategoriasFornecedor(fornecedor.empresa_id, categorias);
-      await salvarCadastroFornecedor(fornecedor.empresa_id, razao.trim(), soDigitos(cnpj), emails, saida);
-      aoSalvar('Cadastro atualizado.');
-    } catch (er) {
-      setErro(mensagemDeErro(er as Error));
-    } finally {
-      setEnviando(false);
-    }
-  }
-
-  return (
-    <Dialogo aberto={!!fornecedor} titulo="Editar cadastro" aoFechar={aoFechar} largura="larga">
-      {fornecedor && (
-        <form className="formulario formulario-largo" onSubmit={enviar} noValidate>
-          <p className="apoio">Tudo o que for salvo aqui aparece na hora para o administrativo, para o fornecedor e nos e-mails do portal.</p>
-          <AcessoDaEmpresa fornecedor={fornecedor} acesso={acessoAtual} acessos={acessos} aoMudar={aoSalvar} />
-          <SituacaoDoFornecedor fornecedor={fornecedor} aoMudar={aoSalvar} />
-          <div className="grade-2">
-            <label className="campo">
-              <span>Razão social</span>
-              <input value={razao} maxLength={200} aria-invalid={razao.trim().length < 3} onChange={(e) => setRazao(e.target.value)} />
-            </label>
-            <label className="campo">
-              <span>CNPJ</span>
-              <input value={cnpj} inputMode="numeric" maxLength={18} aria-invalid={!cnpjOk} onChange={(e) => setCnpj(e.target.value)} onBlur={() => cnpjValido(cnpj) && setCnpj(formatarCnpj(soDigitos(cnpj)))} />
-              {!cnpjOk && <small className="campo-erro">CNPJ inválido. Confira os números.</small>}
-            </label>
-            <label className="campo">
-              <span>Outros e-mails para avisos</span>
-              <input value={emails} maxLength={600} placeholder="financeiro@empresa.com; rh@empresa.com" onChange={(e) => setEmails(e.target.value)} />
-              <small className="dica">Recebem os avisos junto com o e-mail de acesso. Separe por ponto e vírgula, até 10.</small>
-            </label>
-          </div>
-          <ReceitaNoCadastro
-            fornecedor={fornecedor}
-            razao={razao}
-            dados={dados}
-            aoUsar={(campo, valor) => (campo === 'razao_social' ? setRazao(valor) : setDados((d) => ({ ...d, [campo]: valor })))}
-          />
-          <EscolherTipos tipos={tiposF} marcados={tipos} aoMudar={setTipos} />
-          <fieldset className="campo-grupo">
-            <legend>Categorias de serviço</legend>
-            {fornecedor.dados.ramo && <p className="dica">Ramo informado pelo fornecedor: {fornecedor.dados.ramo}</p>}
-            <div className="opcoes opcoes-colunas">
-              {listaCategorias.map((c) => (
-                <label key={c.codigo} className="opcao">
-                  <input
-                    type="checkbox"
-                    checked={categorias.includes(c.codigo)}
-                    onChange={(e) => setCategorias((l) => (e.target.checked ? [...l, c.codigo] : l.filter((x) => x !== c.codigo)))}
-                  />
-                  <span>{c.nome}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          {tiposMudaram && (
-            <p className="aviso aviso-info">
-              Ao salvar, o fornecedor passa a ver os documentos da homologação do(s) tipo(s) marcado(s), e a cobrança do mensal trabalhista segue o tipo novo.
-            </p>
-          )}
-          {GRUPOS_CADASTRO.map((g) => (
-            <fieldset key={g.titulo} className="campo-grupo">
-              <legend>{g.titulo}</legend>
-              <div className="grade-3">
-                {g.campos.map(([c, rotulo, extra]) => (
-                  <label key={c} className="campo">
-                    <span>{rotulo}</span>
-                    <input
-                      type={extra?.tipo ?? 'text'}
-                      value={String(dados[c] ?? '')}
-                      maxLength={extra?.max ?? 200}
-                      onChange={(e) => setDados((d) => ({ ...d, [c]: e.target.value }))}
-                    />
-                    {extra?.dica && <small className="dica">{extra.dica}</small>}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          ))}
-          {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
-          <div className="linha-botoes">
-            <button className="botao" type="submit" disabled={!pronto || enviando}>{enviando ? 'Salvando' : 'Salvar cadastro'}</button>
-            <button className="botao botao-discreto" type="button" onClick={aoFechar}>Cancelar</button>
-          </div>
-        </form>
-      )}
-    </Dialogo>
-  );
-}
 
 const EFEITO_SITUACAO: Record<SituacaoFornecedor, string> = {
   ativo: 'Trabalha com a Emais normalmente.',
@@ -650,7 +518,7 @@ const EFEITO_SITUACAO: Record<SituacaoFornecedor, string> = {
 };
 
 // Situação do fornecedor com a Emais, dentro do cadastro: ativo, inativo ou bloqueado, sempre com motivo.
-function SituacaoDoFornecedor({ fornecedor, aoMudar }: { fornecedor: FornecedorCadastro; aoMudar: (msg: string) => void }) {
+export function SituacaoDoFornecedor({ fornecedor, aoMudar }: { fornecedor: FornecedorCadastro; aoMudar: (msg: string) => void }) {
   const atual: SituacaoFornecedor = fornecedor.situacao ?? (fornecedor.ativa ? 'ativo' : 'inativo');
   const [nova, setNova] = useState<SituacaoFornecedor | null>(null);
   const [motivo, setMotivo] = useState('');
@@ -771,7 +639,7 @@ function SituacaoDoFornecedor({ fornecedor, aoMudar }: { fornecedor: FornecedorC
 
 // Acesso ao portal da empresa, dentro do cadastro: criar, usar um login que já existe, trocar o e-mail,
 // mandar o convite e tirar a empresa do login. Um login pode cuidar de várias empresas; cada empresa tem um só.
-function AcessoDaEmpresa({ fornecedor, acesso, acessos, aoMudar }: { fornecedor: FornecedorCadastro; acesso: Acesso | null; acessos: Acesso[]; aoMudar: (msg: string) => void }) {
+export function AcessoDaEmpresa({ fornecedor, acesso, acessos, aoMudar }: { fornecedor: FornecedorCadastro; acesso: Acesso | null; acessos: Acesso[]; aoMudar: (msg: string) => void }) {
   const [email, setEmail] = useState('');
   const [nome, setNome] = useState('');
   const [trocando, setTrocando] = useState(false);
@@ -914,7 +782,7 @@ function AcessoDaEmpresa({ fornecedor, acesso, acessos, aoMudar }: { fornecedor:
               )}
             </div>
           )}
-          {emHomologacao && <p className="dica">Em homologação: o convite da homologação é o e-mail de acesso. Ele fica em Homologação, no detalhe do fornecedor.</p>}
+          {emHomologacao && <p className="dica">Em homologação: o convite da homologação é o e-mail de acesso. Ele fica na aba Homologação da ficha do fornecedor.</p>}
         </>
       ) : (
         <>

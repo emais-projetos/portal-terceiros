@@ -7,7 +7,9 @@ import { FaixaVerComo } from './FaixaVerComo';
 
 // Estrutura das telas com login: menu lateral fixo e, à direita, o cabeçalho da página (título, ações e abas),
 // que fica preso no topo ao rolar.
-export function Pagina({ titulo, apoio, acoes, abas, children }: { titulo: string; apoio?: ReactNode; acoes?: ReactNode; abas?: ReactNode; children: ReactNode }) {
+export function Pagina({ titulo, apoio, acoes, abas, voltar, selos, children }: {
+  titulo: string; apoio?: ReactNode; acoes?: ReactNode; abas?: ReactNode; voltar?: ReactNode; selos?: ReactNode; children: ReactNode;
+}) {
   const { usuario } = useSessao();
   const { pathname, search } = useLocation();
   const grupo = grupoDaPagina(usuario?.perfil, pathname, search);
@@ -19,8 +21,15 @@ export function Pagina({ titulo, apoio, acoes, abas, children }: { titulo: strin
           <div className="cabecalho-interno">
             <section className="cabecalho cabecalho-com-acoes">
               <div>
-                {grupo && <span className="cabecalho-grupo">{grupo}</span>}
-                <h1>{titulo}</h1>
+                {voltar ?? (grupo && <span className="cabecalho-grupo">{grupo}</span>)}
+                {selos ? (
+                  <div className="titulo-com-selos">
+                    <h1>{titulo}</h1>
+                    {selos}
+                  </div>
+                ) : (
+                  <h1>{titulo}</h1>
+                )}
                 {apoio && <p className="apoio">{apoio}</p>}
               </div>
               {acoes && <div className="cabecalho-acoes">{acoes}</div>}

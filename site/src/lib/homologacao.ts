@@ -16,6 +16,15 @@ export const NOMES_SITUACAO_HOMOLOGACAO: Record<SituacaoHomologacao, string> = {
   reprovada: 'Reprovado',
 };
 
+export const SELO_HOMOLOGACAO: Record<SituacaoHomologacao, string> = {
+  anterior: 'selo-aprovado_admin',
+  convidada: 'selo-em_cadastro',
+  enviada: 'selo-em_analise',
+  devolvida: 'selo-pendente_fornecedor',
+  homologada: 'selo-liberado',
+  reprovada: 'selo-bloqueado',
+};
+
 export type TipoHomologacao = {
   codigo: string;
   nome: string;
@@ -563,7 +572,8 @@ export async function lerFornecedoresCadastro(empresaId?: string): Promise<Forne
   return (data ?? []) as FornecedorCadastro[];
 }
 
-export async function salvarCadastroFornecedor(empresaId: string, razao: string, cnpj: string, emails: string, dados: Partial<DadosF31>) {
+// Grava por partes: dados só com os campos que vieram (o banco junta com o resto); emails null = não mexe nos e-mails.
+export async function salvarCadastroFornecedor(empresaId: string, razao: string, cnpj: string, emails: string | null, dados: Partial<DadosF31>) {
   const { error } = await supabase.rpc('salvar_cadastro_fornecedor', { p_empresa: empresaId, p_razao: razao, p_cnpj: cnpj, p_emails: emails, p_dados: dados });
   if (error) throw error;
 }
@@ -621,4 +631,13 @@ export async function criarAcessoFornecedor(empresaId: string, nome: string, ema
     body: { acao: 'criar', nome, email, perfil: 'fornecedor', empresas: [empresaId], obras: [], enviar: false, destino: enderecoDoSite },
   });
   if (error) await erroDaFuncao(error);
+}
+
+// Histórico do fornecedor (eventos do cadastro, da homologação, dos contratos e dos pedidos de obra), mais recentes primeiro.
+export type EventoFornecedor = { em: string; acao: string; tabela: string; detalhe: Record<string, unknown> | null; quem: string | null };
+
+export async function lerHistoricoFornecedor(empresaId: string): Promise<EventoFornecedor[]> {
+  const { data, error } = await supabase.rpc('historico_fornecedor', { p_empresa: empresaId });
+  if (error) throw error;
+  return (data ?? []) as EventoFornecedor[];
 }

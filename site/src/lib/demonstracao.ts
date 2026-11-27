@@ -268,12 +268,18 @@ const detalheHomologacao = {
   dados: dadosHomologacao, qualificacao: null, comentarios: null, responsavel: null, motivo: null, convidada_em: dias(-12), enviada_em: dias(-6), decidida_em: null,
   decidida_por: null, obras_previstas: [{ id: O1, nome: 'RESIDENCIAL EXEMPLO' }], documentos: docsHomologacao, contratos: [], obras_ativas: obras.map((o) => ({ id: o.id, nome: o.nome })),
 };
+const dadosCadastro = {
+  nome_fantasia: 'Exemplo', ramo: 'Instalações', praca: 'Noroeste paulista', inscricao_estadual: '123456789110', endereco: 'Rua Exemplo', numero: '120', bairro: 'Centro',
+  cep: '15000-000', cidade: 'São José do Rio Preto', estado: 'SP', contato: 'Responsável Exemplo', telefone: '(17) 0000-0000', email_empresa: 'contato@empresa.exemplo',
+  banco: 'Banco Exemplo', agencia: '0001', conta: '12345-6',
+};
 const fornecedoresCadastro = empresasComObras.map((e) => ({
   empresa_id: e.id, razao_social: e.razao_social, cnpj: e.cnpj, ativa: true, homologacao: e.homologacao, codigo_bp: e.codigo_bp, liberado_em: e.portal_liberado_em,
   tipos: e.tipos, categorias: e.categorias, exige_colaboradores: e.exige_colaboradores, exige_mensal: e.exige_mensal,
   situacao: e.id === E3 ? 'bloqueado' : 'ativo', situacao_motivo: e.id === E3 ? 'Documento de seguro adulterado na medição' : null,
   situacao_em: e.id === E3 ? dias(-3) : null, situacao_por: e.id === E3 ? 'Suprimentos Exemplo' : null,
-  email_acesso: e.email_acesso, emails_contato: null, dados: { cidade: 'São José do Rio Preto', estado: 'SP', contato: 'Responsável Exemplo', telefone: '(17) 0000-0000' },
+  email_acesso: e.email_acesso, emails_contato: e.id === E1 ? 'financeiro@eletrica.exemplo' : null, dados: dadosCadastro,
+  receita: e.id === E4 ? null : { situacao: 'ATIVA', consultada_em: quando(-1), aviso: null, situacao_desde: '03/11/2015', abertura: '03/11/2015', cnae: '4321-5/00 Instalação e manutenção elétrica' },
   subcontratada: false, obras: e.obras.map(nomeObra), contratos_ativos: e.codigo_bp ? 1 : 0, proximo_termino: e.codigo_bp ? dias(90) : null,
   documentos: docsEmpresa.filter((d) => d.empresa_id === e.id).map((d) => ({ nome: nomeTipo(d.tipo_codigo), situacao: d.situacao, vencimento: d.vencimento, impeditivo: true })),
   certidoes: [], colaboradores: {
@@ -282,6 +288,49 @@ const fornecedoresCadastro = empresasComObras.map((e) => ({
     com_vencendo: pessoas.filter((p) => p.empresa === e.id && Object.values(p.docs).includes('a_vencer')).length,
   },
 }));
+
+// Ficha de quem já está no portal (homologado ou anterior): documentos aprovados, contrato e histórico fictícios.
+type TipoHomDemo = { codigo: string; ativo: boolean; obrigatorio: boolean; validade_dias: number | null; tipos_fornecedor?: string[] };
+function detalheDe(id: unknown) {
+  const e = empresasComObras.find((x) => x.id === id);
+  if (!e || e.id === E4) return detalheHomologacao;
+  const homologada = e.homologacao === 'homologada';
+  const tiposHom = (referencia.homologacao_tipos as unknown as TipoHomDemo[]).filter((t) => t.ativo && (t.tipos_fornecedor ?? []).some((x) => e.tipos.includes(x)));
+  const vencendo = tiposHom.find((t) => t.obrigatorio && t.validade_dias)?.codigo;
+  const documentos = homologada
+    ? tiposHom.filter((t) => t.obrigatorio).map((t, i) => ({
+        id: `d6100000-0000-4000-8000-0000000000${String(i).padStart(2, '0')}`, tipo: t.codigo, data_emissao: dias(-240 + i), status: 'aprovado', motivo: null,
+        vencimento: t.validade_dias ? (t.codigo === vencendo ? dias(9) : dias(60 + i * 10)) : null, arquivos: [{ caminho: 'demo', nome: `${t.codigo}.pdf` }],
+        enviado_em: quando(-242), analisado_por: 'Suprimentos Exemplo', analisado_em: dias(-235),
+      }))
+    : [];
+  const contratos = e.codigo_bp
+    ? [{ id: `d6200000-0000-4000-8000-0000000000${e.id.slice(-2)}`, numero: `0${e.id.slice(-1)}5/2026`, codigo_bp: e.codigo_bp, inicio: dias(-200), termino: dias(e.id === E1 ? 25 : 160),
+        arquivo: 'demo', arquivo_nome: 'contrato.pdf', situacao: 'ativo', obras: e.obras.map((o) => ({ id: o, nome: nomeObra(o) })) }]
+    : [];
+  return {
+    empresa_id: e.id, razao_social: e.razao_social, cnpj: e.cnpj, situacao: e.homologacao, codigo_bp: e.codigo_bp, tipos: e.tipos, categorias: e.categorias,
+    liberado_em: e.portal_liberado_em, email: e.email_acesso, dados: dadosCadastro, qualificacao: homologada ? { documentos: 'sim', missao: 'sim', certificacao: 'na' } : null,
+    comentarios: null, responsavel: homologada ? 'Responsável Exemplo' : null, motivo: null, convidada_em: homologada ? dias(-250) : null, enviada_em: homologada ? dias(-240) : null,
+    decidida_em: homologada ? dias(-230) : null, decidida_por: homologada ? 'Suprimentos Exemplo' : null, obras_previstas: [], documentos, contratos,
+    obras_ativas: e.obras.map((o) => ({ id: o, nome: nomeObra(o), numero_contrato: contratos[0]?.numero ?? null })),
+  };
+}
+function historicoDe(id: unknown) {
+  const e = empresasComObras.find((x) => x.id === id);
+  if (!e) return [];
+  const ev = (n: number, acao: string, detalhe: Record<string, unknown> = {}, tabela = 'empresas') => ({ em: quando(n), acao, tabela, detalhe, quem: 'Suprimentos Exemplo' });
+  if (e.id === E4) return [ev(-6, 'homologacao_enviada', {}), ev(-12, 'convite_homologacao', { para: 'contato@hidraulica.exemplo' }), ev(-12, 'homologacao_cadastrada', {})];
+  const lista = [
+    ev(-5, 'cadastro_alterado', { campos: ['telefone', 'email_empresa'] }),
+    ...(e.id === E3 ? [ev(-3, 'situacao_fornecedor_alterada', { de: 'ativo', para: 'bloqueado', motivo: 'Documento de seguro adulterado na medição' })] : []),
+    ...(e.codigo_bp ? [ev(-200, 'contrato_registrado', { numero: `0${e.id.slice(-1)}5/2026` }, 'contratos_fornecedor')] : []),
+    ...(e.homologacao === 'homologada'
+      ? [ev(-200, 'portal_liberado'), ev(-230, 'homologada', { responsavel: 'Responsável Exemplo' }), ev(-240, 'homologacao_enviada'), ev(-250, 'convite_homologacao', { para: e.email_acesso })]
+      : []),
+  ];
+  return lista.sort((a, b) => b.em.localeCompare(a.em));
+}
 
 const blocoVazio = { conformidade: null, vistorias: 0, ultima: null, meses: [], mais_nao: [] };
 
@@ -308,6 +357,11 @@ const TABELAS: Record<string, (modo: ModoDemo) => Linha[]> = {
   seg_modelos: () => referencia.seg_modelos as unknown as Linha[],
   funcoes: () => [...new Set(pessoas.map((p) => p.funcao))].map((nome, i) => ({ id: `d7000000-0000-4000-8000-0000000000${i}0`, nome })),
   usuarios: () => [],
+  pedidos_obra: () => [{
+    id: 'd6300000-0000-4000-8000-000000000001', empresa_id: E2, obra_id: O2, numero_contrato: null, observacao: 'Equipe disponível a partir de dezembro', situacao: 'pendente',
+    pedido_em: quando(-2), analisado_em: null, motivo_recusa: null, empresas: { razao_social: 'PINTURAS MODELO LTDA', cnpj: '22222222000182' }, obras: { nome: nomeObra(O2) },
+    usuarios: { nome: 'Fornecedor Exemplo', email: 'contato@pinturas.exemplo' },
+  }],
 };
 
 const RPCS: Record<string, (modo: ModoDemo, args: Record<string, unknown>) => unknown> = {
@@ -319,13 +373,14 @@ const RPCS: Record<string, (modo: ModoDemo, args: Record<string, unknown>) => un
   },
   minha_homologacao: (m) => (m === 'homologacao' ? minhaHomologacao : []),
   lista_homologacoes: () => listaHomologacoes,
-  detalhe_homologacao: () => detalheHomologacao,
-  fornecedores_cadastro: () => fornecedoresCadastro,
+  detalhe_homologacao: (_m, a) => detalheDe(a.p_empresa),
+  fornecedores_cadastro: (_m, a) => (a.p_empresa ? fornecedoresCadastro.filter((f) => f.empresa_id === a.p_empresa) : fornecedoresCadastro),
+  historico_fornecedor: (_m, a) => historicoDe(a.p_empresa),
   fornecedores_a_regularizar: () => [
     { empresa_id: E3, razao_social: 'TERRAPLENAGEM AMOSTRA LTDA', cnpj: '33333333000173', homologacao: 'anterior', sem_bp: true, obras_sem_contrato: ['LOTEAMENTO DEMONSTRAÇÃO'], contratos_vencendo: [], certidoes: [] },
   ],
   fornecedores_para_liberar: () => [],
-  contadores_suprimentos: () => ({ homologacao: 1, pedidos: 0, contrato: 1 }),
+  contadores_suprimentos: () => ({ homologacao: 1, pedidos: 1, contrato: 1 }),
   historico_configuracao_homologacao: () => [],
   funil_homologacao: () => {
     // Doze fornecedores fictícios espalhados pelas etapas.

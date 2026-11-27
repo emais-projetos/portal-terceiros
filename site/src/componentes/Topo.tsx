@@ -155,6 +155,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
         itens: [
           { to: '/analise', rotulo: 'Análise de documentos', icone: 'analise', contador: naFila },
           { to: '/colaboradores', rotulo: 'Colaboradores', icone: 'colaboradores' },
+          { to: '/fornecedores', rotulo: 'Fornecedores', icone: 'fornecedores' },
           { to: '/liberacao', rotulo: 'Aviso de liberação', icone: 'liberacao' },
           { to: '/integracoes', rotulo: 'Integração', icone: 'integracao' },
         ],
