@@ -215,6 +215,8 @@ const FUNCOES = {
   definir_categorias_fornecedor: 'p_empresa uuid, p_categorias text[]',
   funil_homologacao: '',
   historico_fornecedor: 'p_empresa uuid',
+  minhas_notificacoes: '',
+  marcar_validacao_admin: 'p_codigo text, p_valida boolean',
 };
 // Valores inofensivos: ids que não existem, datas antigas. Só serviriam para mostrar se a função roda sem login.
 function valor(tipo) {

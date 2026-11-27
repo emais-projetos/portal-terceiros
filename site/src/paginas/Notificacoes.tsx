@@ -10,6 +10,7 @@ import { responderPedidoObra } from '../lib/ajuda';
 import { abrirArquivoHomologacao, analisarDocumentoHomologacao, liberarPortal } from '../lib/homologacao';
 import { NOMES_TIPO, NOMES_VEZ, abrirAjuda, lerNotificacoes, type Notificacao, type TipoNotificacao } from '../lib/notificacoes';
 import { PedirMotivo, RegistrarContrato, type PedidoContrato } from './suprimentos/Dialogos';
+import { Conversas } from './admin/Atendimento';
 
 // Notificações: o que espera alguém (liberações, pedidos de obra, Ajuda), para todos os perfis.
 // Primeiro o que é com quem está logado; o resto fica em "Acompanhar".
@@ -18,6 +19,7 @@ const VISOES = [
   ['comigo', 'Comigo'],
   ['acompanhar', 'Acompanhar'],
   ['todas', 'Todas'],
+  ['conversas', 'Conversas da Ajuda'],
 ] as const;
 type Visao = (typeof VISOES)[number][0];
 
@@ -44,7 +46,9 @@ export function Notificacoes() {
   const { usuario } = useSessao();
   const perfil = usuario?.perfil;
   const [params, setParams] = useSearchParams();
-  const visao = (VISOES.some(([v]) => v === params.get('ver')) ? params.get('ver') : 'comigo') as Visao;
+  // O administrativo responde a Ajuda aqui mesmo (Conversas da Ajuda); os outros perfis usam o botão Ajuda.
+  const visoes = VISOES.filter(([v]) => v !== 'conversas' || perfil === 'admin');
+  const visao = (visoes.some(([v]) => v === params.get('ver')) ? params.get('ver') : 'comigo') as Visao;
   const tipo = params.get('tipo') ?? '';
   const [lista, setLista] = useState<Notificacao[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -135,7 +139,7 @@ export function Notificacoes() {
         return <Link className="botao botao-pequeno" to={`/homologacao?empresa=${n.empresa_id}&ficha=homologacao`}>Analisar</Link>;
       case 'ajuda':
         return perfil === 'admin' ? (
-          <Link className="botao botao-pequeno" to={`/atendimento?c=${n.ref}`}>Responder</Link>
+          <button type="button" className="botao botao-pequeno" onClick={() => setParams({ ver: 'conversas', c: n.ref ?? '' })}>Responder</button>
         ) : (
           <button type="button" className="botao botao-pequeno" onClick={abrirAjuda}>Abrir a Ajuda</button>
         );
@@ -143,7 +147,10 @@ export function Notificacoes() {
   }
 
   return (
-    <Pagina titulo="Notificações" apoio="Tudo o que está esperando alguém: liberações, pedidos de obra e mensagens da Ajuda. Primeiro o que é com você.">
+    <Pagina
+      titulo="Notificações"
+      apoio={perfil === 'admin' ? 'Tudo o que está esperando alguém: liberações, pedidos de obra e a Ajuda. Em Conversas da Ajuda você responde quem escreveu.' : 'Tudo o que está esperando alguém: liberações, pedidos de obra e mensagens da Ajuda. Primeiro o que é com você.'}
+    >
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
       {!lista ? (
@@ -152,14 +159,14 @@ export function Notificacoes() {
         <>
           <div className="filtros filtros-linha">
             <div className="chips" role="group" aria-label="Ver">
-              {VISOES.map(([v, nome]) => (
+              {visoes.map(([v, nome]) => (
                 <button key={v} type="button" className="chip" aria-pressed={visao === v} onClick={() => mudar('ver', v === 'comigo' ? '' : v)}>
                   {nome}
-                  <span className="chip-numero">{v === 'comigo' ? comigo.length : v === 'acompanhar' ? acompanhar.length : lista.length}</span>
+                  {v !== 'conversas' && <span className="chip-numero">{v === 'comigo' ? comigo.length : v === 'acompanhar' ? acompanhar.length : lista.length}</span>}
                 </button>
               ))}
             </div>
-            {tipos.length > 1 && (
+            {tipos.length > 1 && visao !== 'conversas' && (
               <label className="campo campo-filtro">
                 <span>Tipo</span>
                 <select value={tipo} className={tipo ? 'filtro-ativo' : undefined} onChange={(e) => mudar('tipo', e.target.value)}>
@@ -170,7 +177,9 @@ export function Notificacoes() {
             )}
           </div>
 
-          {mostradas.length === 0 ? (
+          {visao === 'conversas' ? (
+            <Conversas />
+          ) : mostradas.length === 0 ? (
             <p className="vazio">
               {visao === 'comigo' ? 'Nada esperando por você agora.' : 'Nada por aqui.'}
               {visao === 'comigo' && acompanhar.length > 0 && <> Há {acompanhar.length} item(ns) com outras áreas em <button type="button" className="botao-link link-acao" onClick={() => mudar('ver', 'acompanhar')}>Acompanhar</button>.</>}

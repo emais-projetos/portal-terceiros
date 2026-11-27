@@ -162,7 +162,6 @@ function gruposPorPerfil(perfil: Perfil | undefined, naFila: number | null, cobr
           { to: '/painel-obra', rotulo: 'Painel da obra', icone: 'painel' },
           { to: '/seguranca', rotulo: 'Segurança da obra', icone: 'seguranca', contador: ncs },
           { to: '/indicadores', rotulo: 'Indicadores', icone: 'indicadores' },
-          { to: '/atendimento', rotulo: 'Atendimento', icone: 'ajuda' },
         ],
       },
       {

@@ -67,7 +67,7 @@ const ORDEM_SIT: Record<SitDoc, number> = { pendente: 1, em_analise: 2, vencendo
 function linhaHomologacao(tipo: TipoHomologacao, docs: DocumentoHomologacao[]): LinhaHom {
   const doc = documentoAtual(docs, tipo.codigo);
   if (!doc) return { tipo, doc, sit: tipo.obrigatorio ? 'pendente' : 'opcional', selo: 'selo-doc-nao_enviado', rotulo: 'Não enviado' };
-  if (doc.status === 'em_analise') return { tipo, doc, sit: 'em_analise', selo: 'selo-doc-em_analise', rotulo: 'Para conferir' };
+  if (doc.status === 'em_analise') return { tipo, doc, sit: 'em_analise', selo: 'selo-doc-em_analise', rotulo: tipo.valida_admin ? 'Com o administrativo' : 'Para conferir' };
   if (doc.status === 'devolvido') return { tipo, doc, sit: tipo.obrigatorio ? 'pendente' : 'opcional', selo: 'selo-doc-devolvido', rotulo: 'Devolvido' };
   const dias = doc.vencimento ? diasAte(doc.vencimento) : null;
   if (dias !== null && dias < 0) return { tipo, doc, sit: 'pendente', selo: 'selo-doc-vencido', rotulo: 'Vencido' };
@@ -861,6 +861,7 @@ function AbaDocumentos({
                             {t.obrigatorio ? 'Obrigatório' : 'Se houver'}
                             {t.validade_dias ? `, vale ${t.validade_dias} dias` : ''}
                             {t.tipo_portal ? ', vale também nos documentos da empresa' : ''}
+                            {t.valida_admin ? ', validado pelo administrativo' : ''}
                           </small>
                           {doc?.status === 'devolvido' && doc.motivo && <small className="sub texto-erro">Devolvido: {doc.motivo}</small>}
                           {doc?.status === 'aprovado' && doc.analisado_por && <small className="sub">Aprovado por {doc.analisado_por}{doc.analisado_em ? ` em ${data(doc.analisado_em)}` : ''}</small>}
@@ -875,12 +876,13 @@ function AbaDocumentos({
                               {doc.arquivos.length > 1 ? `Arquivo ${i + 1}` : 'Ver arquivo'}
                             </button>
                           ))}
-                          {doc?.status === 'em_analise' && (
+                          {doc?.status === 'em_analise' && (!t.valida_admin || ehAdmin) && (
                             <>
-                              <button type="button" className="botao botao-pequeno" disabled={ocupado} onClick={() => aoAprovar(doc, t.nome)}>Aprovar</button>
+                              <button type="button" className="botao botao-pequeno" disabled={ocupado} onClick={() => aoAprovar(doc, t.nome)}>{t.valida_admin ? 'Validar' : 'Aprovar'}</button>
                               <button type="button" className="botao botao-secundario botao-pequeno" disabled={ocupado} onClick={() => aoDevolver(doc)}>Devolver</button>
                             </>
                           )}
+                          {doc?.status === 'em_analise' && t.valida_admin && !ehAdmin && <small className="sub">Validação do administrativo, em Notificações</small>}
                         </td>
                       </tr>
                     );
@@ -969,13 +971,14 @@ function AbaHomologacao({
 }) {
   const dados = d.dados ?? {};
   const analisando = d.situacao === 'enviada';
-  const emAnalise = linhasHom.filter((l) => l.sit === 'em_analise').length;
+  const emAnalise = linhasHom.filter((l) => l.sit === 'em_analise' && !l.tipo.valida_admin).length;
+  const comAdmin = linhasHom.filter((l) => l.sit === 'em_analise' && l.tipo.valida_admin).map((l) => l.tipo.nome.replace(/^SST: /, ''));
   const faltando = linhasHom.filter((l) => l.tipo.ativo && l.tipo.obrigatorio && l.doc?.status !== 'aprovado' && l.sit !== 'em_analise').map((l) => l.tipo.nome);
   const respondidas = ITENS_QUALIFICACAO.filter((i) => qualificacao[i.chave]).length;
   const qualificacaoCompleta = respondidas === ITENS_QUALIFICACAO.length;
   const responsavelOk = responsavel.trim().length >= 3;
   const bloqueado = cad?.situacao === 'bloqueado';
-  const podeHomologar = analisando && !bloqueado && faltando.length === 0 && emAnalise === 0 && qualificacaoCompleta && responsavelOk;
+  const podeHomologar = analisando && !bloqueado && faltando.length === 0 && emAnalise === 0 && comAdmin.length === 0 && qualificacaoCompleta && responsavelOk;
   const receitaRuim = cad?.receita?.situacao && !receitaAtiva(cad.receita.situacao);
   const extras = campos.filter((c) => c.personalizado && (respostaAdicional(dados, c) || c.ativo));
   const referencias = (dados.referencias ?? []).filter((r) => r.empresa);
@@ -993,6 +996,9 @@ function AbaHomologacao({
         <>{faltando.length > 3 ? `Faltam ${faltando.length} obrigatórios sem envio, devolvidos ou vencidos.` : `Faltam aprovados: ${faltando.join(', ')}.`} <button type="button" className="botao-link link-acao" onClick={() => irPara('documentos', { filtro: 'pendente' })}>Ver</button></>
       ) : 'Todos os obrigatórios aprovados',
     },
+    ...(comAdmin.length || linhasHom.some((l) => l.tipo.valida_admin)
+      ? [{ ok: comAdmin.length === 0, texto: (comAdmin.length ? `Aguardando o administrativo validar: ${comAdmin.join(', ')}` : 'Documentos de SST validados pelo administrativo') as ReactNode }]
+      : []),
     { ok: qualificacaoCompleta, texto: `Qualificação respondida (${respondidas} de ${ITENS_QUALIFICACAO.length})` },
     { ok: responsavelOk, texto: 'Responsável pela aprovação informado' },
     ...(bloqueado ? [{ ok: false, texto: 'Fornecedor bloqueado: desbloqueie antes de homologar' as ReactNode }] : []),

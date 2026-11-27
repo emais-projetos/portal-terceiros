@@ -36,6 +36,8 @@ export type TipoHomologacao = {
   personalizado: boolean;
   ativo: boolean;
   tipos_fornecedor: string[];
+  // Validado pelo administrativo (PGR, PCMSO): o Suprimentos não aprova nem devolve.
+  valida_admin?: boolean;
 };
 
 // O documento é pedido a quem tem pelo menos um destes tipos.
@@ -138,6 +140,12 @@ export async function configurarCampo(campo: string, obrigatorio: boolean) {
   if (error) throw error;
 }
 
+export async function marcarValidacaoAdmin(codigo: string, valida: boolean) {
+  const { error } = await supabase.rpc('marcar_validacao_admin', { p_codigo: codigo, p_valida: valida });
+  tiposCache = null;
+  if (error) throw error;
+}
+
 export async function configurarDocumento(codigo: string, obrigatorio: boolean, validadeDias: number | null, tipos: string[] | null = null) {
   const { error } = await supabase.rpc('configurar_documento_homologacao', { p_codigo: codigo, p_obrigatorio: obrigatorio, p_validade_dias: validadeDias, p_tipos: tipos });
   tiposCache = null;
@@ -163,6 +171,7 @@ export type MudancaConfiguracao = {
     formato?: FormatoCampo | 'anexo';
     nome?: string;
     obrigatorio?: boolean | { de: boolean; para: boolean };
+    valida_admin?: { de: boolean; para: boolean };
     validade_dias?: number | null | { de: number | null; para: number | null };
     tipos?: string[] | { entrou: string[]; saiu: string[] } | null;
     nome_antes?: string | null;

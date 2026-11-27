@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Pagina, Mensagem as Aviso } from '../../componentes/Pagina';
+import { Navigate, useSearchParams } from 'react-router-dom';
+import { Mensagem as Aviso } from '../../componentes/Pagina';
 import { Carregando } from '../../componentes/Carregando';
 import { Conversa } from '../../componentes/Conversa';
 import { mensagemDeErro } from '../../lib/supabase';
@@ -14,16 +14,14 @@ import {
 
 const hora = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-// Os pedidos de obra e as liberações ficam em Notificações; aqui ficam as conversas.
+// O Atendimento virou a visão "Conversas da Ajuda" dentro de Notificações; o link antigo leva para lá.
 export function Atendimento() {
-  return (
-    <Pagina titulo="Atendimento" apoio="Dúvidas enviadas pela Ajuda por fornecedores, TST, engenharia e Suprimentos. Pedidos de obra e liberações estão em Notificações.">
-      <Conversas />
-    </Pagina>
-  );
+  const [params] = useSearchParams();
+  const c = params.get('c');
+  return <Navigate to={`/notificacoes?ver=conversas${c ? `&c=${c}` : ''}`} replace />;
 }
 
-function Conversas() {
+export function Conversas() {
   const [params, setParams] = useSearchParams();
   const aberta = params.get('c');
   const [conversas, setConversas] = useState<ConversaAdmin[] | null>(null);

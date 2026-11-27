@@ -218,6 +218,15 @@ select enviar_mensagem('Olá, sou o fornecedor dois', null);
 select pedir_obra(:E2, :O3, null, null);
 select teste.sair();
 
+-- Notificações: Ajuda e pedidos de obra.
+select teste.entrar(:A);
+select teste.igual('Notificações: administrativo vê a Ajuda sem resposta', $q$select 1 from jsonb_array_elements(minhas_notificacoes()) x where x->>'tipo' = 'ajuda' and x->>'comigo' = 'true'$q$, 2);
+select teste.igual('Notificações: administrativo acompanha os pedidos de obra', $q$select 1 from jsonb_array_elements(minhas_notificacoes()) x where x->>'tipo' = 'pedido_obra' and x->>'comigo' = 'false'$q$, 2);
+select teste.entrar(:F1);
+select teste.igual('Notificações: fornecedor só vê o próprio pedido', $q$select 1 from jsonb_array_elements(minhas_notificacoes()) x where x->>'tipo' = 'pedido_obra'$q$, 1);
+select teste.sair();
+select teste.igual('Notificações: sem login, nada', $q$select 1 from jsonb_array_elements(minhas_notificacoes()) x$q$, 0);
+
 -- Ids gerados, para usar nos testes.
 -- Segurança da obra: alojamento e máquina em cada obra; vistoria concluída com item "não" notificada ao fornecedor.
 insert into seg_alojamentos (id, obra_id, nome, empresa_id) values
@@ -1154,8 +1163,19 @@ select teste.entrar(:S1);
 select teste.igual('Suprimentos: lê os modelos de e-mail', $q$select 1 from modelos_email where tipo = 'homologacao_aprovada'$q$, 1);
 select teste.igual('Suprimentos: lista a homologação enviada', format($q$select 1 from jsonb_array_elements(lista_homologacoes()) x where x->>'empresa_id' = %L and x->>'situacao' = 'enviada'$q$, :'EH'), 1);
 select teste.bloqueado('Homologação: homologar sem aprovar os documentos', format($q$select homologar_fornecedor(%L, '{}', null, 'Responsável')$q$, :'EH'));
+select teste.bloqueado('SST: Suprimentos não valida o PGR', format($q$select analisar_documento_homologacao((select id from homologacao_documentos where empresa_id = %L and tipo_codigo = 'pgr' and status = 'em_analise'), true)$q$, :'EH'));
+select teste.igual('Notificações: Suprimentos acompanha o SST com o administrativo', format($q$select 1 from jsonb_array_elements(minhas_notificacoes()) x where x->>'tipo' = 'validar_sst' and x->>'empresa_id' = %L and x->>'comigo' = 'false'$q$, :'EH'), 2);
+select teste.igual('Notificações: homologação enviada é com o Suprimentos', format($q$select 1 from jsonb_array_elements(minhas_notificacoes()) x where x->>'tipo' = 'homologacao' and x->>'empresa_id' = %L and x->>'comigo' = 'true'$q$, :'EH'), 1);
 select count(analisar_documento_homologacao(d.id, d.tipo_codigo <> 'crf_fgts', case when d.tipo_codigo = 'crf_fgts' then 'Certidão vencida' end))
-  from homologacao_documentos d where d.empresa_id = :'EH' and d.status = 'em_analise';
+  from homologacao_documentos d join homologacao_tipos t on t.codigo = d.tipo_codigo where d.empresa_id = :'EH' and d.status = 'em_analise' and not t.valida_admin;
+select teste.sair();
+select teste.entrar(:A);
+select teste.igual('Notificações: SST é com o administrativo', format($q$select 1 from jsonb_array_elements(minhas_notificacoes()) x where x->>'tipo' = 'validar_sst' and x->>'empresa_id' = %L and x->>'comigo' = 'true' and jsonb_array_length(x->'extra'->'arquivos') > 0$q$, :'EH'), 2);
+select count(analisar_documento_homologacao(d.id, true)) from homologacao_documentos d join homologacao_tipos t on t.codigo = d.tipo_codigo
+  where d.empresa_id = :'EH' and d.status = 'em_analise' and t.valida_admin;
+select teste.igual('Notificações: validado sai da lista', $q$select 1 from jsonb_array_elements(minhas_notificacoes()) x where x->>'tipo' = 'validar_sst'$q$, 0);
+select teste.sair();
+select teste.entrar(:S1);
 select devolver_homologacao(:'EH', null);
 select teste.sair();
 select teste.igual('Homologação: devolvida com e-mail de correção', format($q$select 1 from empresas e join envios_fila f on f.empresa_id = e.id where e.id = %L and e.homologacao = 'devolvida' and f.tipo = 'homologacao_correcoes' and f.corpo like '%%Certidão vencida%%'$q$, :'EH'), 1);
@@ -1170,6 +1190,7 @@ select homologar_fornecedor(:'EH', '{"habilitacao":"sim"}', 'Ok', 'Responsável 
 select teste.igual('Histórico: a devolução do documento fica registrada', format($q$select 1 from jsonb_array_elements(historico_fornecedor(%L)) x where x->>'acao' = 'documento_homologacao_devolvido' and x->'detalhe'->>'motivo' = 'Certidão vencida' and x->>'quem' is not null$q$, :'EH'), 1);
 select teste.igual('Histórico: as aprovações dos documentos ficam registradas', format($q$select 1 where (select count(*) from jsonb_array_elements(historico_fornecedor(%L)) x where x->>'acao' = 'documento_homologacao_aprovado') >= 2$q$, :'EH'), 1);
 select teste.bloqueado('Liberação: Suprimentos não libera o portal', format($q$select liberar_portal_fornecedor(%L)$q$, :'EH'));
+select teste.igual('Notificações: homologado sem contrato é com o Suprimentos', format($q$select 1 from jsonb_array_elements(minhas_notificacoes()) x where x->>'tipo' = 'registrar_contrato' and x->>'empresa_id' = %L and x->>'comigo' = 'true'$q$, :'EH'), 1);
 select teste.sair();
 select teste.igual('Homologação: cartão CNPJ, PGR e PCMSO entram aprovados em Documentos da empresa', format($q$select 1 from documentos where empresa_id = %L and status = 'aprovado' and tipo_codigo in ('cartao_cnpj', 'pgr', 'pcmso') and dados->>'origem' = 'homologacao'$q$, :'EH'), 3);
 select teste.igual('Homologação: os arquivos acompanham', format($q$select 1 from arquivos a join documentos d on d.id = a.documento_id where d.empresa_id = %L$q$, :'EH'), 3);
@@ -1193,7 +1214,12 @@ select teste.sair();
 -- Administrativo libera
 select teste.entrar(:A);
 select teste.igual('Liberação: aparece para o administrativo', format($q$select 1 from fornecedores_para_liberar() where empresa_id = %L$q$, :'EH'), 1);
+select teste.igual('Notificações: liberar o portal é com o administrativo', format($q$select 1 from jsonb_array_elements(minhas_notificacoes()) x where x->>'tipo' = 'liberar_portal' and x->>'empresa_id' = %L and x->>'comigo' = 'true' and x->>'obra' = 'OBRA NOVE'$q$, :'EH'), 1);
 select liberar_portal_fornecedor(:'EH');
+select teste.igual('Notificações: liberado sai da lista', format($q$select 1 from jsonb_array_elements(minhas_notificacoes()) x where x->>'empresa_id' = %L and x->>'tipo' in ('liberar_portal', 'registrar_contrato')$q$, :'EH'), 0);
+select teste.sair();
+select teste.entrar(:FH);
+select teste.igual('Notificações: fornecedor não vê as liberações', $q$select 1 from jsonb_array_elements(minhas_notificacoes()) x where x->>'tipo' <> 'ajuda'$q$, 0);
 select teste.sair();
 select teste.igual('Liberação: e-mail do portal liberado', format($q$select 1 from envios_fila where empresa_id = %L and tipo = 'portal_liberado' and corpo like '%%OBRA NOVE%%'$q$, :'EH'), 1);
 select teste.entrar(:FH);

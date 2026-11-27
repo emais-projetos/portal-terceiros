@@ -257,6 +257,7 @@ const dadosHomologacao = {
 const docsHomologacao = [
   { id: 'd6000000-0000-4000-8000-000000000001', tipo: 'contrato_social', data_emissao: dias(-60), vencimento: null, status: 'aprovado', motivo: null, arquivos: [{ caminho: 'demo', nome: 'contrato_social.pdf' }], enviado_em: quando(-6), analisado_por: 'Suprimentos Exemplo', analisado_em: dias(-4) },
   { id: 'd6000000-0000-4000-8000-000000000002', tipo: 'cartao_cnpj', data_emissao: dias(-10), vencimento: dias(170), status: 'em_analise', motivo: null, arquivos: [{ caminho: 'demo', nome: 'cartao_cnpj.pdf' }], enviado_em: quando(-6) },
+  { id: 'd6000000-0000-4000-8000-000000000009', tipo: 'pgr', data_emissao: dias(-40), vencimento: dias(325), status: 'em_analise', motivo: null, arquivos: [{ caminho: 'demo', nome: 'pgr_hidraulica.pdf' }], enviado_em: quando(-2) },
   { id: 'd6000000-0000-4000-8000-000000000003', tipo: 'crf_fgts', data_emissao: dias(-40), vencimento: dias(-10), status: 'devolvido', motivo: 'Certidão vencida, envie a atual', arquivos: [{ caminho: 'demo', nome: 'crf.pdf' }], enviado_em: quando(-6) },
 ];
 const minhaHomologacao = [{ empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'devolvida', liberado: false, tipos: ['mao_de_obra'], categorias: ['instalacoes_hidraulicas'], dados: dadosHomologacao, motivo: 'Confira o CRF do FGTS.', enviada_em: dias(-6), documentos: docsHomologacao }];
@@ -393,7 +394,7 @@ const TABELAS: Record<string, (modo: ModoDemo) => Linha[]> = {
   tipos_documento: () => referencia.tipos_documento as unknown as Linha[],
   tipos_medicao: () => referencia.tipos_medicao as unknown as Linha[],
   parametros: () => referencia.parametros as unknown as Linha[],
-  homologacao_tipos: () => referencia.homologacao_tipos as unknown as Linha[],
+  homologacao_tipos: () => (referencia.homologacao_tipos as unknown as Linha[]).map((t) => ({ ...t, valida_admin: ['pgr', 'pcmso'].includes(String(t.codigo)) })),
   tipos_fornecedor: () => tiposFornecedor,
   categorias_servico: () => categoriasServico,
   homologacao_campos: () => referencia.homologacao_campos as unknown as Linha[],

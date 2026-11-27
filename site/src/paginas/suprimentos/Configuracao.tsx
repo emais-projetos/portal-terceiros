@@ -6,7 +6,7 @@ import { Dialogo } from '../../componentes/Dialogo';
 import { mensagemDeErro } from '../../lib/supabase';
 import { data } from '../../lib/formato';
 import {
-  NOMES_FORMATO, configurarCampo, configurarDocumento, incluirItem, lerCamposHomologacao, lerHistoricoConfiguracao, lerTiposHomologacao, removerItem,
+  NOMES_FORMATO, configurarCampo, configurarDocumento, marcarValidacaoAdmin, incluirItem, lerCamposHomologacao, lerHistoricoConfiguracao, lerTiposHomologacao, removerItem,
   type CampoHomologacao, type FormatoCampo, type MudancaConfiguracao, type TipoHomologacao,
 } from '../../lib/homologacao';
 import {
@@ -46,7 +46,9 @@ export function Configuracao() {
   );
 }
 
-type RascunhoDoc = { obrigatorio: boolean; validade: string; tipos: string[] };
+type RascunhoDoc = { obrigatorio: boolean; validade: string; tipos: string[]; admin: boolean };
+const mudouBasico = (r: RascunhoDoc, t: TipoHomologacao) =>
+  r.obrigatorio !== t.obrigatorio || (r.validade.trim() ? Number(r.validade) : null) !== t.validade_dias || !mesmosTipos(r.tipos, t.tipos_fornecedor ?? []);
 type Rascunho = { campos: Record<string, boolean>; docs: Record<string, RascunhoDoc> };
 
 const mesmosTipos = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
@@ -74,7 +76,7 @@ function FormularioHomologacao() {
       setRascunho({
         campos: Object.fromEntries(c.filter((x) => x.ativo).map((x) => [x.campo, x.obrigatorio])),
         docs: Object.fromEntries(
-          t.filter((x) => x.ativo).map((x) => [x.codigo, { obrigatorio: x.obrigatorio, validade: x.validade_dias ? String(x.validade_dias) : '', tipos: x.tipos_fornecedor ?? [] }]),
+          t.filter((x) => x.ativo).map((x) => [x.codigo, { obrigatorio: x.obrigatorio, validade: x.validade_dias ? String(x.validade_dias) : '', tipos: x.tipos_fornecedor ?? [], admin: !!x.valida_admin }]),
         ),
       });
     } catch (e) {
@@ -95,7 +97,7 @@ function FormularioHomologacao() {
   const camposMudados = (campos ?? []).filter((c) => !c.fixo && rascunho.campos[c.campo] !== c.obrigatorio);
   const docsMudados = tipos.filter((t) => {
     const r = rascunho.docs[t.codigo];
-    return r && (r.obrigatorio !== t.obrigatorio || (r.validade.trim() ? Number(r.validade) : null) !== t.validade_dias || !mesmosTipos(r.tipos, t.tipos_fornecedor ?? []));
+    return r && (mudouBasico(r, t) || r.admin !== !!t.valida_admin);
   });
   const docsVisiveis = filtroTipo ? tipos.filter((t) => (rascunho.docs[t.codigo]?.tipos ?? t.tipos_fornecedor ?? []).includes(filtroTipo)) : tipos;
   const validadeInvalida = tipos.some((t) => {
@@ -112,7 +114,8 @@ function FormularioHomologacao() {
       for (const c of camposMudados) await configurarCampo(c.campo, rascunho.campos[c.campo]);
       for (const t of docsMudados) {
         const r = rascunho.docs[t.codigo];
-        await configurarDocumento(t.codigo, r.obrigatorio, r.validade.trim() ? Number(r.validade) : null, mesmosTipos(r.tipos, t.tipos_fornecedor ?? []) ? null : r.tipos);
+        if (mudouBasico(r, t)) await configurarDocumento(t.codigo, r.obrigatorio, r.validade.trim() ? Number(r.validade) : null, mesmosTipos(r.tipos, t.tipos_fornecedor ?? []) ? null : r.tipos);
+        if (r.admin !== !!t.valida_admin) await marcarValidacaoAdmin(t.codigo, r.admin);
       }
       setOk(`${mudancas === 1 ? '1 alteração salva' : `${mudancas} alterações salvas`}. Vale para os próximos envios dos fornecedores.`);
       await carregar();
@@ -219,6 +222,7 @@ function FormularioHomologacao() {
                 <th scope="col">Documento</th>
                 <th scope="col">Obrigatório</th>
                 <th scope="col">Validade (dias)</th>
+                <th scope="col" title="Só o administrativo aprova ou devolve (ex.: PGR e PCMSO)">Validado pelo adm.</th>
                 {tiposF.map((tf) => (
                   <th key={tf.codigo} scope="col" className="col-tipo" title={tf.nome}>{nomeCurto(tf)}</th>
                 ))}
@@ -227,7 +231,7 @@ function FormularioHomologacao() {
             </thead>
             <tbody>
               {docsVisiveis.map((t) => {
-                const r = rascunho.docs[t.codigo] ?? { obrigatorio: t.obrigatorio, validade: '', tipos: t.tipos_fornecedor ?? [] };
+                const r = rascunho.docs[t.codigo] ?? { obrigatorio: t.obrigatorio, validade: '', tipos: t.tipos_fornecedor ?? [], admin: !!t.valida_admin };
                 const v = r.validade.trim();
                 const invalida = !!v && (!/^\d+$/.test(v) || Number(v) < 1 || Number(v) > 3650);
                 return (
@@ -261,6 +265,15 @@ function FormularioHomologacao() {
                         />
                       </label>
                       {invalida && <small className="campo-erro">Use de 1 a 3650 dias.</small>}
+                    </td>
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`${t.nome}: validado pelo administrativo`}
+                        checked={r.admin}
+                        disabled={salvando}
+                        onChange={(e) => setRascunho((x) => ({ ...x, docs: { ...x.docs, [t.codigo]: { ...r, admin: e.target.checked } } }))}
+                      />
                     </td>
                     {tiposF.map((tf) => (
                       <td key={tf.codigo} className="col-tipo">
@@ -365,6 +378,8 @@ function descreverMudanca(h: MudancaConfiguracao): string {
     return `tipo alterado${p.length ? `: ${p.join(', ')}` : ''}`;
   }
   const partes: string[] = [];
+  const va = d.valida_admin;
+  if (va && typeof va === 'object' && va.de !== va.para) partes.push(va.para ? 'passou a ser validado pelo administrativo' : 'deixou de ser validado pelo administrativo');
   const o = d.obrigatorio;
   if (o && typeof o === 'object' && o.de !== o.para) partes.push(o.para ? 'passou a ser obrigatório' : 'deixou de ser obrigatório');
   const v = d.validade_dias;
