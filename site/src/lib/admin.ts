@@ -89,6 +89,18 @@ export async function lerAcessos(): Promise<Acesso[]> {
   }));
 }
 
+// Suprimentos: os acessos dos fornecedores (mesmo formato da lista do administrativo).
+export async function lerAcessosFornecedores(): Promise<Acesso[]> {
+  const { data, error } = await supabase.rpc('acessos_fornecedores');
+  if (error) throw error;
+  return (data ?? []) as Acesso[];
+}
+
+// Desativa ou reativa pela função (o Suprimentos não altera a tabela de usuários direto).
+export async function mudarAtivoAcesso(usuarioId: string, ativo: boolean) {
+  await chamarFuncaoAcesso({ acao: 'ativo', usuario_id: usuarioId, ativo });
+}
+
 // Modo de teste e pausa do envio automático (Acessos > Regras), para avisar antes de enviar.
 export async function lerEnvioAutomatico(): Promise<{ testePara: string; pausado: boolean }> {
   const { data, error } = await supabase

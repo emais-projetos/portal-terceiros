@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ModelosEmail, Regras } from './RegrasEmails';
 import { ExportacaoMensal } from './Exportacao';
@@ -10,7 +10,7 @@ import { nomesPerfil, useSessao, type Perfil } from '../../lib/sessao';
 import { formatarCnpj } from '../../lib/consultas';
 import { cnpjValido, soDigitos } from '../../lib/formato';
 import {
-  alterarAtivo, cadastrarEmpresa, copiarTexto, criarAcesso, editarAcesso, enviarAcesso, gerarLinkAcesso, lerAcessos, lerEmpresas, lerEnvioAutomatico,
+  alterarAtivo, lerAcessosFornecedores, mudarAtivoAcesso, cadastrarEmpresa, copiarTexto, criarAcesso, editarAcesso, enviarAcesso, gerarLinkAcesso, lerAcessos, lerEmpresas, lerEnvioAutomatico,
   lerEmailsDasEmpresas, lerObras, ligarEmpresasObras, linkOutlook, salvarEmailsEmpresa, type EmailsEmpresa,
   type Acesso, type EmpresaOpcao, type LinkAcesso, type Obra,
 } from '../../lib/admin';
@@ -60,10 +60,22 @@ const ABAS = [
 ] as const;
 type Aba = (typeof ABAS)[number][0];
 
-export function Acessos() {
+// Suprimentos: a mesma tela, só com os acessos de fornecedor (sem perfil a escolher, sem obras e sem empresa nova).
+const SoFornecedor = createContext(false);
+
+export function Acessos({ modo = 'admin' }: { modo?: 'admin' | 'suprimentos' }) {
+  const sup = modo === 'suprimentos';
+  return (
+    <SoFornecedor.Provider value={sup}>
+      <TelaAcessos sup={sup} />
+    </SoFornecedor.Provider>
+  );
+}
+
+function TelaAcessos({ sup }: { sup: boolean }) {
   const { usuario } = useSessao();
   const [params, setParams] = useSearchParams();
-  const aba: Aba = ABAS.some(([a]) => a === params.get('aba')) ? (params.get('aba') as Aba) : 'usuarios';
+  const aba: Aba = !sup && ABAS.some(([a]) => a === params.get('aba')) ? (params.get('aba') as Aba) : 'usuarios';
   const [acessos, setAcessos] = useState<Acesso[] | null>(null);
   const [empresas, setEmpresas] = useState<EmpresaOpcao[]>([]);
   const [obras, setObras] = useState<Obra[]>([]);
@@ -79,9 +91,11 @@ export function Acessos() {
 
   async function carregar() {
     try {
-      const [a, e, o] = await Promise.all([lerAcessos(), lerEmpresas(), lerObras()]);
+      const [a, e, o] = await Promise.all([sup ? lerAcessosFornecedores() : lerAcessos(), lerEmpresas(), lerObras()]);
       setAcessos(a);
-      setEmpresas(e);
+      // O Suprimentos não lê os vínculos direto: quem já tem acesso sai da própria lista de acessos.
+      const comAcesso = new Set(a.flatMap((x) => x.empresas.map((y) => y.id)));
+      setEmpresas(sup ? e.map((x) => ({ ...x, temAcesso: comAcesso.has(x.id) })) : e);
       setObras(o);
     } catch (e) {
       setErro(mensagemDeErro(e as Error));
@@ -146,7 +160,8 @@ export function Acessos() {
     setErro(null);
     setOcupado(a.id);
     try {
-      await alterarAtivo(a.id, !a.ativo);
+      if (sup) await mudarAtivoAcesso(a.id, !a.ativo);
+      else await alterarAtivo(a.id, !a.ativo);
       setOk(a.ativo ? `Acesso de ${a.nome} desativado.` : `Acesso de ${a.nome} reativado.`);
       await carregar();
     } catch (e) {
@@ -158,9 +173,11 @@ export function Acessos() {
 
   return (
     <Pagina
-      titulo="Acessos"
+      titulo={sup ? 'Acessos dos fornecedores' : 'Acessos'}
       apoio={
-        aba === 'regras'
+        sup
+          ? `Login de cada fornecedor no portal. Um acesso pode cuidar de várias empresas (ex.: escritório de contabilidade); cada empresa tem um único acesso. ${semAcesso > 0 ? `${semAcesso} empresas ainda não têm acesso.` : ''}`
+          : aba === 'regras'
           ? 'Prazos das cobranças, validade dos documentos, envio automático e assinatura dos e-mails.'
           : aba === 'emails'
             ? 'Os textos das cobranças. Os dados entram sozinhos nos campos entre chaves, e cada mudança salva vira uma nova revisão.'
@@ -169,7 +186,7 @@ export function Acessos() {
             : `Quem entra no portal. ${semAcesso > 0 ? `${semAcesso} empresas ainda não têm acesso.` : 'Todas as empresas já têm acesso.'}`
       }
       acoes={aba === 'usuarios' ? <button className="botao" type="button" onClick={() => setNovoAberto(true)}>Novo acesso</button> : undefined}
-      abas={
+      abas={sup ? undefined :
         <nav className="abas abas-botoes" aria-label="Acessos">
           {ABAS.map(([a, nome]) => (
             <button key={a} type="button" aria-current={aba === a ? 'page' : undefined} onClick={() => setParams(a === 'usuarios' ? {} : { aba: a })}>
@@ -210,7 +227,7 @@ export function Acessos() {
             <thead>
               <tr>
                 <th scope="col">Nome</th>
-                <th scope="col">Perfil</th>
+                <th scope="col">{sup ? 'Empresas' : 'Perfil'}</th>
                 <th scope="col">Obras</th>
                 <th scope="col">Acesso</th>
                 <th scope="col"><span className="sr">Ações</span></th>
@@ -223,8 +240,8 @@ export function Acessos() {
                     {a.nome}
                     <small className="sub">{a.email}</small>
                   </th>
-                  <td>
-                    {nomesPerfil[a.perfil]}
+                  <td className={sup ? 'quebra' : undefined}>
+                    {sup ? a.empresas.map((e) => e.razao_social).join(', ') || <span className="sub">Sem empresa</span> : nomesPerfil[a.perfil]}
                     {!a.ativo && <small className="sub">Desativado</small>}
                   </td>
                   <td className="quebra">
@@ -235,7 +252,7 @@ export function Acessos() {
                     ) : (
                       <span className="sub">Sem obra</span>
                     )}
-                    {a.perfil === 'fornecedor' && a.empresas.length > 1 && <small className="sub">{a.empresas.length} empresas neste acesso</small>}
+                    {!sup && a.perfil === 'fornecedor' && a.empresas.length > 1 && <small className="sub">{a.empresas.length} empresas neste acesso</small>}
                   </td>
                   <td className="quebra">
                     <SituacaoAcesso a={a} />
@@ -320,6 +337,7 @@ function NovoAcesso({
   aoFechar: () => void;
   aoCriar: (l: LinkAcesso) => void;
 }) {
+  const soFornecedor = useContext(SoFornecedor);
   const [perfil, setPerfil] = useState<Perfil>('fornecedor');
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
@@ -346,7 +364,7 @@ function NovoAcesso({
   const valido =
     nome.trim().length >= 2 &&
     EMAIL_OK.test(email.trim()) &&
-    (perfil !== 'fornecedor' || (selEmpresas.length > 0 && todasComObra(empresas, selEmpresas, obrasForn))) &&
+    (perfil !== 'fornecedor' || (selEmpresas.length > 0 && (soFornecedor || todasComObra(empresas, selEmpresas, obrasForn)))) &&
     ((perfil !== 'tst' && perfil !== 'engenharia') || selObras.length > 0);
 
   async function enviar(e: FormEvent) {
@@ -355,7 +373,7 @@ function NovoAcesso({
     setErro(null);
     setEnviando(true);
     try {
-      if (perfil === 'fornecedor') await ligarEmpresasObras(selEmpresas, obrasForn);
+      if (perfil === 'fornecedor' && !soFornecedor) await ligarEmpresasObras(selEmpresas, obrasForn);
       const l = await criarAcesso({
         nome: nome.trim(),
         email: email.trim(),
@@ -373,9 +391,9 @@ function NovoAcesso({
   }
 
   return (
-    <Dialogo aberto={aberto} titulo="Novo acesso" aoFechar={aoFechar} largura="larga">
+    <Dialogo aberto={aberto} titulo={soFornecedor ? 'Novo acesso de fornecedor' : 'Novo acesso'} aoFechar={aoFechar} largura="larga">
       <form className="formulario formulario-largo" onSubmit={enviar} noValidate>
-        <fieldset className="opcoes">
+        {!soFornecedor && <fieldset className="opcoes">
           <legend>Perfil</legend>
           {(['fornecedor', 'tst', 'engenharia', 'suprimentos', 'admin'] as Perfil[]).map((p) => (
             <label key={p} className="opcao">
@@ -383,7 +401,7 @@ function NovoAcesso({
               <span>{nomesPerfil[p]}</span>
             </label>
           ))}
-        </fieldset>
+        </fieldset>}
 
         <div className="grade-2">
           <label className="campo">
@@ -408,7 +426,7 @@ function NovoAcesso({
             }}
           />
         )}
-        {perfil === 'fornecedor' && <ObrasDoFornecedor empresas={empresas} selecionadas={selEmpresas} obras={obras} marcadas={obrasForn} aoMudar={setObrasForn} />}
+        {perfil === 'fornecedor' && !soFornecedor && <ObrasDoFornecedor empresas={empresas} selecionadas={selEmpresas} obras={obras} marcadas={obrasForn} aoMudar={setObrasForn} />}
 
         {(perfil === 'tst' || perfil === 'engenharia') && <SeletorObras perfil={perfil} obras={obras} selecionadas={selObras} aoMudar={setSelObras} />}
 
@@ -495,6 +513,7 @@ function SeletorEmpresas({
   aoMudar: (l: string[]) => void;
   aoNovaEmpresa: (e: EmpresaOpcao) => void;
 }) {
+  const soFornecedor = useContext(SoFornecedor);
   const [filtro, setFiltro] = useState('');
   const [cadastrando, setCadastrando] = useState(false);
   const lista = useMemo(() => {
@@ -512,7 +531,7 @@ function SeletorEmpresas({
       <small className="dica">Cada empresa tem um único acesso. Um escritório de contabilidade pode responder por várias.</small>
       <div className="em-linha">
         <input type="search" placeholder="Buscar por nome ou CNPJ" value={filtro} onChange={(e) => setFiltro(e.target.value)} />
-        {!cadastrando && (
+        {!cadastrando && !soFornecedor && (
           <button type="button" className="botao botao-secundario" onClick={() => setCadastrando(true)}>
             Cadastrar empresa nova
           </button>
@@ -549,7 +568,7 @@ function SeletorEmpresas({
             </li>
           );
         })}
-        {lista.length === 0 && <li className="sub">Nenhuma empresa encontrada. Se for um fornecedor novo, use "Cadastrar empresa nova".</li>}
+        {lista.length === 0 && <li className="sub">{soFornecedor ? 'Nenhuma empresa encontrada. Fornecedor novo entra por Homologação > Novo fornecedor.' : 'Nenhuma empresa encontrada. Se for um fornecedor novo, use "Cadastrar empresa nova".'}</li>}
       </ul>
     </div>
   );
@@ -703,6 +722,7 @@ function EditarAcesso({
   aoFechar: () => void;
   aoSalvar: (mensagem: string) => void;
 }) {
+  const soFornecedor = useContext(SoFornecedor);
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [selEmpresas, setSelEmpresas] = useState<string[]>([]);
@@ -779,7 +799,7 @@ function EditarAcesso({
   return (
     <Dialogo aberto titulo={`Editar acesso: ${acesso.nome}`} aoFechar={aoFechar} largura="larga">
       <form className="formulario formulario-largo" onSubmit={enviar} noValidate>
-        <p className="apoio">Perfil: {nomesPerfil[perfil]}. Para trocar o perfil, desative este acesso e crie outro.</p>
+        {!soFornecedor && <p className="apoio">Perfil: {nomesPerfil[perfil]}. Para trocar o perfil, desative este acesso e crie outro.</p>}
         <div className="grade-2">
           <label className="campo">
             <span>{perfil === 'fornecedor' ? 'Nome do responsável ou da empresa' : 'Nome'}</span>
@@ -805,7 +825,7 @@ function EditarAcesso({
             }}
           />
         )}
-        {perfil === 'fornecedor' && <ObrasDoFornecedor empresas={empresas} selecionadas={selEmpresas} obras={obras} marcadas={obrasForn} aoMudar={setObrasForn} />}
+        {perfil === 'fornecedor' && !soFornecedor && <ObrasDoFornecedor empresas={empresas} selecionadas={selEmpresas} obras={obras} marcadas={obrasForn} aoMudar={setObrasForn} />}
         {(perfil === 'tst' || perfil === 'engenharia') && <SeletorObras perfil={perfil} obras={obras} selecionadas={selObras} aoMudar={setSelObras} />}
         {perfil === 'admin' && <p className="dica">O administrativo vê todas as obras.</p>}
 

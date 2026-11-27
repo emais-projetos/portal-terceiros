@@ -126,7 +126,7 @@ const abaConfiguracao = (aba: string) => (caminho: string, busca: string) =>
   caminho.startsWith('/configuracao') && (new URLSearchParams(busca).get('aba') ?? 'formulario') === aba;
 
 const abaFornecedores = (aba: string) => (caminho: string, busca: string) =>
-  caminho.startsWith('/fornecedores') && (new URLSearchParams(busca).get('aba') ?? 'cadastro') === aba;
+  caminho === '/fornecedores' && (new URLSearchParams(busca).get('aba') ?? 'cadastro') === aba;
 
 type ExtrasMenu = { homologacao?: 'nenhuma' | 'fechado' | 'aberto'; sup?: ContadoresSuprimentos | null; master?: boolean };
 
@@ -220,6 +220,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
               { to: '/fornecedores', rotulo: 'Cadastro', ativo: abaFornecedores('cadastro') },
               { to: '/fornecedores?aba=regularizar', rotulo: 'A regularizar', ativo: abaFornecedores('regularizar') },
               { to: '/fornecedores?aba=pedidos', rotulo: 'Pedidos de obra', ativo: abaFornecedores('pedidos'), contador: sup?.pedidos || null },
+              { to: '/fornecedores-acessos', rotulo: 'Acessos ao portal', ativo: (c) => c === '/fornecedores-acessos' },
             ],
           },
           {

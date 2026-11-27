@@ -9,6 +9,8 @@
 //   { acao: 'link', usuario_id, destino }     link para mandar à mão
 //   { acao: 'editar', usuario_id, nome, email, empresas?: uuid[], obras?: uuid[], destino }
 //   { acao: 'email_fornecedor', empresa_id, email }  troca o login do fornecedor (administrativo e Suprimentos)
+//   { acao: 'ativo', usuario_id, ativo }    desativa ou reativa o acesso
+// O Suprimentos usa todas as ações, mas só com acessos de fornecedor (um acesso pode ter várias empresas).
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 
 const cabecalhos = {
@@ -83,17 +85,22 @@ Deno.serve(async (req) => {
   // Troca do e-mail de acesso (login) do fornecedor: administrativo e Suprimentos.
   if (corpo.acao === 'email_fornecedor') return trocarEmailFornecedor(servico, chamador.id, corpo);
 
-  // Suprimentos: fora a troca de e-mail, só cria o acesso do fornecedor em homologação (empresa ainda sem portal liberado).
+  // Suprimentos: cuida só dos acessos de fornecedor (criar, editar as empresas, enviar o convite, desativar).
   if (chamador.perfil === 'suprimentos') {
-    const empresas = Array.isArray(corpo.empresas) ? corpo.empresas.map(String) : [];
-    if (corpo.acao !== 'criar' || corpo.perfil !== 'fornecedor' || empresas.length !== 1 || corpo.enviar === true) {
-      return erro(403, 'O Suprimentos só cria o acesso do fornecedor em homologação');
+    if (corpo.acao === 'criar') {
+      if (corpo.perfil !== 'fornecedor') return erro(403, 'O Suprimentos só cria acesso de fornecedor');
+    } else if (['editar', 'enviar', 'link', 'ativo'].includes(String(corpo.acao))) {
+      const alvo = String(corpo.usuario_id ?? '');
+      if (!UUID.test(alvo)) return erro(400, 'Acesso inválido');
+      const { data: u } = await servico.from('usuarios').select('perfil').eq('id', alvo).maybeSingle();
+      if (!u || u.perfil !== 'fornecedor') return erro(403, 'O Suprimentos só altera acesso de fornecedor');
+    } else {
+      return erro(403, 'Ação não permitida para o Suprimentos');
     }
-    const { data: emp } = await servico.from('empresas').select('id, homologacao, portal_liberado_em').in('id', empresas);
-    const ok = (emp ?? []).length === 1 && emp.every((x: { homologacao: string; portal_liberado_em: string | null }) =>
-      !x.portal_liberado_em && ['convidada', 'devolvida'].includes(x.homologacao));
-    if (!ok) return erro(403, 'O Suprimentos só cria o acesso do fornecedor em homologação');
   }
+
+  // Desativar ou reativar o acesso.
+  if (corpo.acao === 'ativo') return mudarAtivo(servico, chamador.id, corpo);
 
   const destinoBase = String(corpo.destino ?? '');
   if (!DESTINOS_ACEITOS.includes(destinoBase)) return erro(400, 'Endereço de retorno não autorizado');
@@ -378,6 +385,20 @@ async function editar(servico: Cliente, adminId: string, corpo: Record<string, u
   });
 
   return resposta(200, { usuario_id: usuarioId, nome, email, perfil, trocou_email: trocouEmail });
+}
+
+async function mudarAtivo(servico: Cliente, quemId: string, corpo: Record<string, unknown>) {
+  const usuarioId = String(corpo.usuario_id ?? '');
+  if (!UUID.test(usuarioId)) return erro(400, 'Acesso inválido');
+  if (usuarioId === quemId) return erro(400, 'Você não pode desativar o próprio acesso');
+  const ativo = corpo.ativo === true;
+  const { data: u } = await servico.from('usuarios').select('id, nome, ativo').eq('id', usuarioId).maybeSingle();
+  if (!u) return erro(404, 'Acesso não encontrado');
+  if (u.ativo === ativo) return resposta(200, { usuario_id: usuarioId, ativo });
+  const { error } = await servico.from('usuarios').update({ ativo }).eq('id', usuarioId);
+  if (error) return erro(400, `Não foi possível alterar o acesso: ${error.message}`);
+  await servico.from('eventos').insert({ tabela: 'usuarios', registro_id: usuarioId, acao: ativo ? 'acesso_reativado' : 'acesso_desativado', detalhe: {}, usuario_id: quemId });
+  return resposta(200, { usuario_id: usuarioId, ativo });
 }
 
 // Troca o e-mail de acesso do fornecedor: login no Supabase, cadastro do usuário, e-mail de acesso das empresas dele

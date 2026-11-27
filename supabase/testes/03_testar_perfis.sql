@@ -1068,6 +1068,17 @@ delete from envios_fila where empresa_id in (:'EH', :'ER');
 delete from usuarios_empresas where usuario_id = :FH;
 delete from empresas where id in (:'EH', :'ER');
 update empresas set codigo_bp = null where id = :E1;
+-- Acessos dos fornecedores: o Suprimentos vê a lista (só fornecedores); os outros perfis não.
+select teste.entrar(:S1);
+select teste.permitido('Suprimentos: lista os acessos dos fornecedores', $q$select acessos_fornecedores()$q$);
+select teste.igual('Suprimentos: a lista só traz fornecedores', $q$select 1 from jsonb_array_elements(acessos_fornecedores()) x where x->>'perfil' <> 'fornecedor'$q$, 0);
+select teste.contar(), case when (select count(*) from jsonb_array_elements(acessos_fornecedores())) = 0 then teste.falha('Suprimentos: lista os acessos dos fornecedores', 'lista vazia') end;
+select teste.entrar(:F1);
+select teste.bloqueado('Fornecedor não lista os acessos', $q$select acessos_fornecedores()$q$);
+select teste.entrar(:T1);
+select teste.bloqueado('TST não lista os acessos', $q$select acessos_fornecedores()$q$);
+select teste.sair();
+
 delete from mensagens where autor_id in (:S1, :FH);
 update homologacoes set convidada_por = null, decidida_por = null where convidada_por = :S1 or decidida_por = :S1;
 delete from usuarios where id in (:S1, :FH);

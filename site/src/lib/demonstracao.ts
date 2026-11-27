@@ -299,6 +299,12 @@ const RPCS: Record<string, (modo: ModoDemo, args: Record<string, unknown>) => un
   fornecedores_para_liberar: () => [],
   contadores_suprimentos: () => ({ homologacao: 1, pedidos: 0, contrato: 1 }),
   historico_configuracao_homologacao: () => [],
+  acessos_fornecedores: () => [
+    { id: 'd8000000-0000-4000-8000-000000000001', nome: 'Escritório Contábil Exemplo', email: 'contato@contabil.exemplo', perfil: 'fornecedor', ativo: true, criado_em: quando(-120),
+      empresas: [{ id: E1, razao_social: 'ELÉTRICA EXEMPLO LTDA' }, { id: E2, razao_social: 'PINTURAS MODELO LTDA' }], obras: [], ultimo_login: quando(-2), convite: null },
+    { id: 'd8000000-0000-4000-8000-000000000002', nome: 'Terraplenagem Amostra', email: 'contato@terraplenagem.exemplo', perfil: 'fornecedor', ativo: true, criado_em: quando(-60),
+      empresas: [{ id: E3, razao_social: 'TERRAPLENAGEM AMOSTRA LTDA' }], obras: [], ultimo_login: null, convite: null },
+  ],
   seg_resumo_obra: () => ({ metas: { alojamento: 90, canteiro: 90 }, alojamento: { ...blocoVazio, por_alojamento: [], alojamentos_ativos: 0 }, canteiro: blocoVazio, maquinas: { conformidade: null, dias: 0, nao_conformes: 0, mais_nc: [] }, acoes: [] }),
   seg_resumo_fornecedor: () => ({ meta: 90, periodo: blocoVazio, alojamentos: [], acoes: [] }),
 };
