@@ -1051,6 +1051,14 @@ select teste.igual('Receita: cadastro mostra a situação', format($q$select 1 f
 select teste.sair();
 select teste.igual('Receita: F.31 nasce com os dados da Receita', format($q$select 1 from homologacoes where empresa_id = %L and dados->>'ramo' = 'Construção de Edifícios' and dados->>'cidade' = 'Barretos' and dados->>'email' = 'receita@teste.com'$q$, :'ERF'), 1);
 select teste.igual('Receita: sem razão social, e-mail do contador nem campo vazio', format($q$select 1 from homologacoes where empresa_id = %L and not dados ? 'razao_social' and not dados ? 'email_empresa' and not dados ? 'numero'$q$, :'ERF'), 1);
+-- Funil da homologação
+select teste.entrar(:F1);
+select teste.igual('Funil: fornecedor não vê', $q$select jsonb_array_elements(funil_homologacao())$q$, 0);
+select teste.sair();
+select teste.entrar(:S1);
+select teste.igual('Funil: Suprimentos vê os fornecedores em homologação', $q$select jsonb_array_elements(funil_homologacao())$q$, (select count(*) from empresas where homologacao <> 'anterior'));
+select teste.igual('Funil: traz as datas e os eventos', format($q$select 1 from jsonb_array_elements(funil_homologacao()) x where x->>'empresa_id' = %L and x->>'convidada_em' is not null and jsonb_typeof(x->'eventos') = 'array'$q$, :'ERF'), 1);
+select teste.sair();
 -- Itens novos no formulário
 select teste.entrar(:F1);
 select teste.bloqueado('Itens: fornecedor não inclui pergunta', $q$select incluir_item_homologacao('Quantos funcionários?', 'numero', true)$q$);

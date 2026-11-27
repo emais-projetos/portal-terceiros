@@ -1,3 +1,4 @@
+import { FunilHomologacao } from './paginas/suprimentos/Funil';
 import { useEffect, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useSessao, type Perfil } from './lib/sessao';
@@ -54,6 +55,7 @@ export function App() {
       <Route path="/" element={<ComLogin><Inicio /></ComLogin>} />
       <Route path="/painel-obra" element={<SoPerfil perfil={['admin', 'tst', 'engenharia', 'suprimentos']}><PainelObra /></SoPerfil>} />
       <Route path="/homologacao" element={<SoPerfil perfil={['suprimentos', 'fornecedor']}><HomologacaoPorPerfil /></SoPerfil>} />
+      <Route path="/homologacao/funil" element={<SoPerfil perfil="suprimentos"><FunilHomologacao /></SoPerfil>} />
       <Route path="/fornecedores" element={<SoPerfil perfil="suprimentos"><Fornecedores /></SoPerfil>} />
       <Route path="/configuracao" element={<SoPerfil perfil="suprimentos"><Configuracao /></SoPerfil>} />
       <Route path="/fornecedores-acessos" element={<Navigate to="/fornecedores?aba=acessos" replace />} />

@@ -327,6 +327,30 @@ const RPCS: Record<string, (modo: ModoDemo, args: Record<string, unknown>) => un
   fornecedores_para_liberar: () => [],
   contadores_suprimentos: () => ({ homologacao: 1, pedidos: 0, contrato: 1 }),
   historico_configuracao_homologacao: () => [],
+  funil_homologacao: () => {
+    // Doze fornecedores fictícios espalhados pelas etapas.
+    const d = (n: number) => dias(n);
+    const ev = (acao: string, n: number, texto: string | null = null) => ({ acao, em: d(n), texto });
+    const base = (i: number, nome: string, situacao: string, convite: number, extra: Record<string, unknown> = {}) => ({
+      empresa_id: `00000000-0000-4000-8000-0000000009${String(i).padStart(2, '0')}`, razao_social: nome, situacao, tipos: ['mao_de_obra'], situacao_fornecedor: 'ativo',
+      convidada_em: d(convite), atualizado_em: d(convite), enviada_em: null, decidida_em: null, homologada_em: null, liberado_em: null,
+      primeiro_documento_em: null, eventos: [], documentos_devolvidos: [], ...extra,
+    });
+    return [
+      base(1, 'ALFA TERRAPLENAGEM LTDA', 'homologada', -120, { homologada_em: d(-95), liberado_em: d(-80), enviada_em: d(-100), eventos: [ev('homologacao_enviada', -100), ev('homologada', -95), ev('portal_liberado', -80)] }),
+      base(2, 'BETA PAVIMENTOS LTDA', 'homologada', -90, { homologada_em: d(-60), liberado_em: d(-52), eventos: [ev('homologacao_enviada', -82), ev('homologacao_devolvida', -78, 'CND estadual vencida'), ev('homologacao_enviada', -70), ev('homologada', -60), ev('portal_liberado', -52)], documentos_devolvidos: [{ documento: 'CND da Receita Estadual', motivo: 'Vencida', em: d(-78) }] }),
+      base(3, 'GAMA ELÉTRICA LTDA', 'homologada', -60, { homologada_em: d(-40), eventos: [ev('homologacao_enviada', -48), ev('homologada', -40)] }),
+      base(4, 'DELTA HIDRÁULICA LTDA', 'enviada', -30, { enviada_em: d(-12), primeiro_documento_em: d(-25), eventos: [ev('homologacao_enviada', -12)] }),
+      base(5, 'ÉPSILON PINTURAS LTDA', 'enviada', -20, { enviada_em: d(-3), primeiro_documento_em: d(-15), eventos: [ev('homologacao_enviada', -3)] }),
+      base(6, 'ZETA LOCAÇÕES LTDA', 'devolvida', -45, { tipos: ['locacao_com_operador'], decidida_em: d(-20), eventos: [ev('homologacao_enviada', -25), ev('homologacao_devolvida', -20, 'Faltou o laudo da máquina e a CRF do FGTS está vencida')], documentos_devolvidos: [{ documento: 'CRF: certidão de regularidade do FGTS', motivo: 'Vencida', em: d(-20) }, { documento: 'Documentos da máquina ou equipamento', motivo: 'Sem laudo', em: d(-20) }] }),
+      base(7, 'ETA SONDAGENS LTDA', 'convidada', -40, { tipos: ['servico_tecnico'] }),
+      base(8, 'TETA MATERIAIS LTDA', 'convidada', -6, { tipos: ['material'] }),
+      base(9, 'IOTA CERCAMENTOS LTDA', 'convidada', -35, { atualizado_em: d(-28), primeiro_documento_em: d(-30) }),
+      base(10, 'CAPA DRENAGEM LTDA', 'convidada', -10, { atualizado_em: d(-2), primeiro_documento_em: d(-8) }),
+      base(11, 'LAMBDA TOPOGRAFIA LTDA', 'reprovada', -70, { tipos: ['servico_tecnico'], decidida_em: d(-50), eventos: [ev('homologacao_enviada', -55), ev('homologacao_reprovada', -50, 'CNPJ com pendências na Receita')] }),
+      base(12, 'MI ALVENARIA LTDA', 'homologada', -50, { homologada_em: d(-18), eventos: [ev('homologacao_enviada', -40), ev('homologacao_devolvida', -35, 'CRF do FGTS vencida'), ev('homologacao_enviada', -25), ev('homologada', -18)], documentos_devolvidos: [{ documento: 'CRF: certidão de regularidade do FGTS', motivo: 'Vencida', em: d(-35) }] }),
+    ];
+  },
   lista_categorias_servico: () =>
     [...categoriasServico].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map((c) => ({ ...c, fornecedores: empresas.filter((e) => e.categorias.includes(c.codigo)).length })),
   lista_tipos_fornecedor: () =>

@@ -215,7 +215,16 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
         titulo: 'Suprimentos',
         itens: [
           { to: '/', rotulo: 'Situação das obras', icone: 'obras', end: true },
-          { to: '/homologacao', rotulo: 'Homologação', icone: 'homologacao', contador: sup?.homologacao || null },
+          {
+            to: '/homologacao',
+            rotulo: 'Homologação',
+            icone: 'homologacao',
+            contador: sup?.homologacao || null,
+            filhos: [
+              { to: '/homologacao', rotulo: 'Análise e parecer', ativo: (c) => c === '/homologacao', contador: sup?.homologacao || null },
+              { to: '/homologacao/funil', rotulo: 'Funil', ativo: (c) => c === '/homologacao/funil' },
+            ],
+          },
           {
             to: '/fornecedores',
             rotulo: 'Fornecedores',
