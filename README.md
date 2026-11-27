@@ -178,6 +178,16 @@ Para ligar para todos: rodar uma vez o nó "Marcar fila atual como cobrada" do f
 
 A função é escrita em `supabase/functions/cobrancas-automaticas/fonte.ts` e empacotada com as regras do site em `index.ts` por `empacotar.mjs` (precisa do esbuild). Mudou `site/src/lib/cobrancas.ts`: empacote e publique a função de novo.
 
+## Consulta do CNPJ na Receita (n8n)
+
+No Novo fornecedor (Suprimentos), ao completar o CNPJ, o portal consulta a Receita e preenche a razão social; no Editar cadastro, o botão Consultar na Receita mostra a situação e o que difere do cadastro.
+
+- O site chama a função `consultar-cnpj` (só Suprimentos e administrativo), que chama o fluxo "Portal de Terceiros - Consulta CNPJ na Receita" do n8n (`n8n/consulta-cnpj.json`, webhook `terceiros-cnpj-297df17259b7`, cabeçalho `x-chave-n8n`). O fluxo consulta a BrasilAPI e a CNPJ.ws (inscrição estadual; 3 consultas por minuto) e devolve os dados no formato do portal.
+- A última consulta de cada CNPJ fica em `consultas_receita` (a mesma consulta em menos de 10 minutos usa a guardada). O F.31 do fornecedor novo nasce com os dados da Receita dos últimos 7 dias (sem a razão social, que fica a do cadastro, e sem o e-mail, que costuma ser o do contador).
+- CNPJ não ativo na Receita: o cadastro só segue com a confirmação "Conferi a situação na Receita e quero cadastrar mesmo assim". CNPJ já cadastrado: o portal avisa e não deixa cadastrar de novo.
+- Fluxo desligado ou Receita fora do ar: o portal avisa e o cadastro segue manual.
+- Ao importar o fluxo de novo no n8n, confira o caminho do webhook (o n8n troca na importação) e a credencial CHAVE_N8N_PORTAL_TERCEIROS.
+
 ## Regras e e-mails (Acessos)
 
 - **Regras**: dias do lembrete, do prazo e da tolerância da medição; primeiro e segundo aviso de vencimento; dias úteis parados na integração; validade de cada documento (com motivo); envio automático; assinatura. Cada mudança vai para `parametros_historico` (ou `tipos_documento_historico`, na validade) e aparece no fim da aba.
