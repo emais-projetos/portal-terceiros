@@ -1007,6 +1007,35 @@ select teste.igual('Situação: reativado volta a valer', format($q$select 1 fro
 update empresas set ativa = false where id = :E1;
 select teste.igual('Situação: desativar pelo jeito antigo vira inativo', format($q$select 1 from empresas where id = %L and situacao_fornecedor = 'inativo'$q$, :E1), 1);
 update empresas set ativa = true where id = :E1;
+-- Painel da obra: o Suprimentos acompanha todas as obras (só leitura) e vê a medição dispensada.
+select teste.entrar(:S1);
+select teste.permitido('Painel: Suprimentos abre o painel de qualquer obra', format($q$select painel_obra(%L)$q$, :O1));
+select teste.igual('Painel: Suprimentos lista as obras', $q$select 1 from painel_obras()$q$, (select count(*) from obras where ativa));
+select teste.sair();
+select teste.igual('Painel: medição traz a dispensa', $q$select 1 where strpos(pg_get_functiondef('public.painel_obra(uuid)'::regprocedure), 'motivo_dispensa') > 0$q$, 1);
+-- Categorias de serviço
+select teste.entrar(:F1);
+select teste.bloqueado('Categorias: fornecedor não inclui categoria', $q$select salvar_categoria_servico(null, 'Demolição')$q$);
+select teste.bloqueado('Categorias: fornecedor não ajusta pelo Suprimentos', format($q$select definir_categorias_fornecedor(%L, array['pintura'])$q$, :E1));
+select teste.igual('Categorias: fornecedor lê a lista', $q$select 1 from categorias_servico where ativo$q$, 22);
+select teste.igual('Categorias: fornecedor não vê a configuração', $q$select jsonb_array_elements(lista_categorias_servico())$q$, 0);
+select teste.sair();
+select teste.entrar(:S1);
+select salvar_categoria_servico(null, 'Demolição') as "CN" \gset
+select teste.bloqueado('Categorias: nome repetido', $q$select salvar_categoria_servico(null, 'pintura')$q$);
+select teste.bloqueado('Categorias: nome curto', $q$select salvar_categoria_servico(null, 'ab')$q$);
+select salvar_categoria_servico(:'CN', 'Demolição e remoção');
+select teste.bloqueado('Categorias: categoria que não existe', format($q$select definir_categorias_fornecedor(%L, array['inexistente'])$q$, :E1));
+select definir_categorias_fornecedor(:E1, array[:'CN', 'pintura']);
+select teste.sair();
+select teste.igual('Categorias: gravadas na ordem da lista', format($q$select 1 from empresas where id = %L and categorias = array['pintura', %L]$q$, :E1, :'CN'), 1);
+select teste.entrar(:S1);
+select teste.igual('Categorias: contagem de fornecedores por categoria', format($q$select 1 from jsonb_array_elements(lista_categorias_servico()) x where x->>'codigo' = %L and (x->>'fornecedores')::int = 1 and x->>'nome' = 'Demolição e remoção'$q$, :'CN'), 1);
+select teste.igual('Categorias: remover tira do fornecedor', format($q$select remover_categoria_servico(%L)$q$, :'CN'), 1);
+select teste.igual('Categorias: histórico da configuração', $q$select 1 from jsonb_array_elements(historico_configuracao_homologacao()) x where x->>'acao' like 'categoria_servico_%'$q$, 3);
+select teste.sair();
+select teste.igual('Categorias: removida sai do fornecedor', format($q$select 1 from empresas where id = %L and categorias = '{pintura}'$q$, :E1), 1);
+update empresas set categorias = '{}' where id = :E1;
 -- Itens novos no formulário
 select teste.entrar(:F1);
 select teste.bloqueado('Itens: fornecedor não inclui pergunta', $q$select incluir_item_homologacao('Quantos funcionários?', 'numero', true)$q$);
@@ -1033,7 +1062,11 @@ select teste.sair();
 select teste.entrar(:FH);
 select teste.bloqueado('Homologação: arquivo fora da pasta', format($q$select enviar_documento_homologacao(%L, 'cnd_federal', current_date, '[{"caminho":"outra/h/1/a.pdf"}]')$q$, :'EH'));
 select teste.bloqueado('Homologação: data futura', format($q$select enviar_documento_homologacao(%L, 'cnd_federal', current_date + 1, '[{"caminho":"%s/h/1/a.pdf"}]')$q$, :'EH', :'EH'));
-select salvar_homologacao(:'EH', '{"razao_social":"FORNECEDOR HOMOLOGADO LTDA","ramo":"Pintura","endereco":"Rua A","numero":"1","bairro":"Centro","cep":"15000-000","cidade":"Rio Preto","estado":"SP","telefone":"17 3333-3333","contato":"Fulano","email_empresa":"contato@x.com","banco":"001","agencia":"1234","conta":"5678-9","referencias":[{"empresa":"Cliente A","telefone":"17 1111-1111"}],"email":"hackeado@x.com"}'::jsonb);
+select teste.bloqueado('Categorias: F.31 com categoria que não existe', format($q$select salvar_homologacao(%L, '{"categorias":["inexistente"]}'::jsonb)$q$, :'EH'));
+select salvar_homologacao(:'EH', '{"razao_social":"FORNECEDOR HOMOLOGADO LTDA","ramo":"Pintura","categorias":["pintura"],"endereco":"Rua A","numero":"1","bairro":"Centro","cep":"15000-000","cidade":"Rio Preto","estado":"SP","telefone":"17 3333-3333","contato":"Fulano","email_empresa":"contato@x.com","banco":"001","agencia":"1234","conta":"5678-9","referencias":[{"empresa":"Cliente A","telefone":"17 1111-1111"}],"email":"hackeado@x.com"}'::jsonb);
+select teste.sair();
+select teste.igual('Categorias: F.31 grava na empresa, fora dos dados', format($q$select 1 from empresas e join homologacoes h on h.empresa_id = e.id where e.id = %L and e.categorias = '{pintura}' and not h.dados ? 'categorias'$q$, :'EH'), 1);
+select teste.entrar(:FH);
 select count(enviar_documento_homologacao(:'EH', t.codigo, current_date - 2, jsonb_build_array(jsonb_build_object('caminho', :'EH' || '/h/' || t.codigo || '/a.pdf', 'nome', t.codigo || '.pdf', 'tamanho', 100, 'tipo', 'application/pdf'))))
   from homologacao_tipos t where t.obrigatorio and t.tipos_fornecedor && array['mao_de_obra'];
 select teste.sair();

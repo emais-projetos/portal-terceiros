@@ -12,11 +12,13 @@ import {
 import {
   lerResumoTipos, lerTiposFornecedor, nomeCurto, removerTipoFornecedor, salvarTipoFornecedor, type TipoFornecedor, type TipoFornecedorResumo,
 } from '../../lib/tiposFornecedor';
+import { lerResumoCategorias, removerCategoria, salvarCategoria, type CategoriaResumo } from '../../lib/categorias';
 import { ModelosEmail } from '../admin/RegrasEmails';
 
 const ABAS = [
   ['formulario', 'Formulário da homologação'],
   ['tipos', 'Tipos de fornecedor'],
+  ['categorias', 'Categorias de serviço'],
   ['emails', 'E-mails'],
 ] as const;
 type Aba = (typeof ABAS)[number][0];
@@ -28,7 +30,7 @@ export function Configuracao() {
   return (
     <Pagina
       titulo="Configuração"
-      apoio="O que o fornecedor precisa preencher e enviar na homologação, os tipos de fornecedor com os documentos de cada um e os textos dos e-mails da homologação."
+      apoio="O que o fornecedor precisa preencher e enviar na homologação, os tipos de fornecedor com os documentos de cada um, as categorias de serviço e os textos dos e-mails da homologação."
       abas={
         <nav className="abas abas-botoes" aria-label="Configuração">
           {ABAS.map(([a, nome]) => (
@@ -39,7 +41,7 @@ export function Configuracao() {
         </nav>
       }
     >
-      {aba === 'emails' ? <ModelosEmail /> : aba === 'tipos' ? <TiposFornecedorConfig /> : <FormularioHomologacao />}
+      {aba === 'emails' ? <ModelosEmail /> : aba === 'tipos' ? <TiposFornecedorConfig /> : aba === 'categorias' ? <CategoriasConfig /> : <FormularioHomologacao />}
     </Pagina>
   );
 }
@@ -349,6 +351,9 @@ function descreverMudanca(h: MudancaConfiguracao): string {
     return `tipo incluído (colaboradores na obra: ${simNao(d.colaboradores === true)}, mensal: ${simNao(d.mensal === true)}${d.copiou_de ? `, documentos de ${d.copiou_de}` : ''})`;
   }
   if (h.acao === 'tipo_fornecedor_removido') return 'tipo removido';
+  if (h.acao === 'categoria_servico_incluida') return 'categoria incluída';
+  if (h.acao === 'categoria_servico_alterada') return `categoria renomeada${d.nome_antes ? ` (antes "${d.nome_antes}")` : ''}`;
+  if (h.acao === 'categoria_servico_removida') return 'categoria removida';
   if (h.acao === 'tipo_fornecedor_alterado') {
     const p: string[] = [];
     if (d.nome_antes) p.push(`antes "${d.nome_antes}"`);
@@ -681,6 +686,146 @@ function EditarTipo({
         {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
         <div className="linha-botoes">
           <button className="botao" type="submit" disabled={nome.trim().length < 3 || enviando}>{enviando ? 'Salvando' : novo ? 'Incluir tipo' : 'Salvar'}</button>
+          <button className="botao botao-discreto" type="button" onClick={aoFechar}>Cancelar</button>
+        </div>
+      </form>
+    </Dialogo>
+  );
+}
+
+// ---------------------------------------------------------------- Categorias de serviço
+
+function CategoriasConfig() {
+  const [lista, setLista] = useState<CategoriaResumo[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const [editando, setEditando] = useState<CategoriaResumo | 'nova' | null>(null);
+  const [busca, setBusca] = useState('');
+
+  const carregar = useCallback(async () => {
+    try {
+      setLista(await lerResumoCategorias());
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  async function remover(c: CategoriaResumo) {
+    const aviso = c.fornecedores
+      ? ` Ela sai também ${c.fornecedores === 1 ? 'do fornecedor que estava' : `dos ${c.fornecedores} fornecedores que estavam`} com ela.`
+      : '';
+    if (!window.confirm(`Remover a categoria "${c.nome}"?${aviso}`)) return;
+    setErro(null);
+    setOk(null);
+    try {
+      await removerCategoria(c.codigo);
+      setOk(`Categoria "${c.nome}" removida.`);
+      await carregar();
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    }
+  }
+
+  if (!lista && !erro) return <Carregando />;
+  const t = busca.trim().toLowerCase();
+  const visiveis = (lista ?? []).filter((c) => !t || c.nome.toLowerCase().includes(t));
+
+  return (
+    <>
+      {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
+      {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
+      <div className="barra-lista">
+        <p className="apoio">
+          O fornecedor marca as categorias dos serviços que presta no F.31, e o Suprimentos ajusta no cadastro. Elas viram o filtro de categoria na lista de fornecedores.
+          Renomear vale para todos que já estão na categoria.
+        </p>
+        <button type="button" className="botao" onClick={() => setEditando('nova')}>Incluir categoria</button>
+      </div>
+      <div className="filtros">
+        <label className="campo campo-busca">
+          <span>Buscar</span>
+          <input type="search" value={busca} placeholder="Nome da categoria" onChange={(e) => setBusca(e.target.value)} />
+        </label>
+      </div>
+      <p className="dica">{visiveis.length} de {(lista ?? []).length} categorias.</p>
+      <div className="tabela-rolagem">
+        <table className="tabela tabela-lista">
+          <thead>
+            <tr>
+              <th scope="col">Categoria</th>
+              <th scope="col">Fornecedores</th>
+              <th scope="col"><span className="sr">Ações</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {visiveis.map((c) => (
+              <tr key={c.codigo}>
+                <th scope="row">{c.nome}</th>
+                <td>{c.fornecedores}</td>
+                <td className="acoes">
+                  <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => setEditando(c)}>Renomear</button>
+                  <button type="button" className="botao botao-discreto botao-pequeno" onClick={() => remover(c)}>Remover</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <EditarCategoria
+        categoria={editando}
+        aoFechar={() => setEditando(null)}
+        aoSalvar={async (msg) => {
+          setEditando(null);
+          setOk(msg);
+          await carregar();
+        }}
+      />
+    </>
+  );
+}
+
+function EditarCategoria({ categoria, aoFechar, aoSalvar }: { categoria: CategoriaResumo | 'nova' | null; aoFechar: () => void; aoSalvar: (msg: string) => Promise<void> }) {
+  const nova = categoria === 'nova';
+  const atual = categoria && categoria !== 'nova' ? categoria : null;
+  const [nome, setNome] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!categoria) return;
+    setNome(atual?.nome ?? '');
+    setErro(null);
+  }, [categoria]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function enviar(e: FormEvent) {
+    e.preventDefault();
+    setEnviando(true);
+    setErro(null);
+    try {
+      await salvarCategoria(atual?.codigo ?? null, nome.trim());
+      await aoSalvar(nova ? `Categoria "${nome.trim()}" incluída.` : `Categoria renomeada para "${nome.trim()}".`);
+    } catch (er) {
+      setErro(mensagemDeErro(er as Error));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Dialogo aberto={!!categoria} titulo={nova ? 'Incluir categoria de serviço' : 'Renomear categoria'} aoFechar={aoFechar}>
+      <form className="formulario" onSubmit={enviar} noValidate>
+        <label className="campo">
+          <span>Nome</span>
+          <input value={nome} maxLength={80} placeholder="Ex.: Impermeabilização" onChange={(e) => setNome(e.target.value)} />
+          {atual && atual.fornecedores > 0 && <small className="dica">Vale para {atual.fornecedores === 1 ? 'o fornecedor' : `os ${atual.fornecedores} fornecedores`} que já estão nela.</small>}
+        </label>
+        {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
+        <div className="linha-botoes">
+          <button className="botao" type="submit" disabled={nome.trim().length < 3 || enviando}>{enviando ? 'Salvando' : nova ? 'Incluir categoria' : 'Salvar'}</button>
           <button className="botao botao-discreto" type="button" onClick={aoFechar}>Cancelar</button>
         </div>
       </form>

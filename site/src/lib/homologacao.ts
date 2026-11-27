@@ -54,6 +54,7 @@ export type Referencia = { empresa: string; endereco: string; cidade: string; es
 
 // Campos do F.31 (Homologação de fornecedores, SGQ). Os marcados com * são obrigatórios para enviar.
 export type DadosF31 = {
+  categorias?: string[]; // só no envio: o banco guarda na empresa
   razao_social?: string;
   nome_fantasia?: string;
   ramo?: string;
@@ -144,7 +145,10 @@ export type MudancaConfiguracao = {
     | 'item_homologacao_removido'
     | 'tipo_fornecedor_incluido'
     | 'tipo_fornecedor_alterado'
-    | 'tipo_fornecedor_removido';
+    | 'tipo_fornecedor_removido'
+    | 'categoria_servico_incluida'
+    | 'categoria_servico_alterada'
+    | 'categoria_servico_removida';
   detalhe: {
     rotulo?: string;
     formato?: FormatoCampo | 'anexo';
@@ -173,6 +177,7 @@ export type MinhaHomologacao = {
   situacao: SituacaoHomologacao;
   liberado: boolean;
   tipos: string[];
+  categorias: string[];
   dados: DadosF31;
   motivo: string | null;
   enviada_em: string | null;
@@ -299,6 +304,7 @@ export type DetalheHomologacao = {
   situacao: SituacaoHomologacao;
   codigo_bp: string | null;
   tipos: string[];
+  categorias: string[];
   liberado_em: string | null;
   email: string | null;
   dados: DadosF31 | null;
@@ -519,6 +525,7 @@ export type FornecedorCadastro = {
   homologacao: SituacaoHomologacao;
   codigo_bp: string | null;
   tipos: string[];
+  categorias: string[];
   exige_colaboradores: boolean;
   exige_mensal: boolean;
   situacao: SituacaoFornecedor;

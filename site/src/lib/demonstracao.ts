@@ -64,7 +64,20 @@ const empresas = [
   { id: E2, razao_social: 'PINTURAS MODELO LTDA', cnpj: '22222222000182', obras: [O1], homologacao: 'anterior', codigo_bp: '100002', portal_liberado_em: quando(-300), tipos: ['mao_de_obra'] },
   { id: E3, razao_social: 'TERRAPLENAGEM AMOSTRA LTDA', cnpj: '33333333000173', obras: [O2], homologacao: 'anterior', codigo_bp: null, portal_liberado_em: quando(-150), tipos: ['locacao_com_operador'] },
   { id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', obras: [] as string[], homologacao: 'enviada', codigo_bp: null, portal_liberado_em: null, tipos: ['mao_de_obra'] },
-].map((e) => ({ ...e, exige_colaboradores: true, exige_mensal: true }));
+].map((e) => ({ ...e, exige_colaboradores: true, exige_mensal: true, categorias: e.id === E3 ? ['terraplenagem', 'locacao_maquinas'] : e.id === E2 ? ['pintura'] : e.id === E1 ? ['instalacoes_eletricas', 'rede_eletrica'] : ['instalacoes_hidraulicas'] }));
+
+// Categorias de serviço como na migração 068.
+const categoriasServico = [
+  'Terraplenagem', 'Pavimentação', 'Drenagem', 'Redes de água e esgoto', 'Rede elétrica e iluminação pública', 'Instalações elétricas',
+  'Instalações hidráulicas', 'Alvenaria e estrutura', 'Concreto, fôrmas e armação', 'Muros e cercamento', 'Pintura', 'Paisagismo',
+  'Sinalização viária', 'Topografia', 'Sondagem e geotecnia', 'Projetos de engenharia', 'Laudos e consultoria',
+  'Locação de máquinas e equipamentos', 'Transporte e frete', 'Materiais de construção', 'Limpeza e conservação', 'Segurança patrimonial e portaria',
+].map((nome, i) => ({
+  codigo: ['terraplenagem', 'pavimentacao', 'drenagem', 'agua_esgoto', 'rede_eletrica', 'instalacoes_eletricas', 'instalacoes_hidraulicas',
+    'alvenaria_estrutura', 'concreto_formas', 'muros_cercamento', 'pintura', 'paisagismo', 'sinalizacao', 'topografia', 'sondagem', 'projetos',
+    'laudos_consultoria', 'locacao_maquinas', 'transporte', 'materiais', 'limpeza', 'seguranca_portaria'][i],
+  nome, ordem: i + 1, ativo: true,
+}));
 
 // Tipos de fornecedor como na migração 065.
 const tiposFornecedor = ([
@@ -246,18 +259,18 @@ const docsHomologacao = [
   { id: 'd6000000-0000-4000-8000-000000000002', tipo: 'cartao_cnpj', data_emissao: dias(-10), vencimento: dias(170), status: 'em_analise', motivo: null, arquivos: [{ caminho: 'demo', nome: 'cartao_cnpj.pdf' }], enviado_em: quando(-6) },
   { id: 'd6000000-0000-4000-8000-000000000003', tipo: 'crf_fgts', data_emissao: dias(-40), vencimento: dias(-10), status: 'devolvido', motivo: 'Certidão vencida, envie a atual', arquivos: [{ caminho: 'demo', nome: 'crf.pdf' }], enviado_em: quando(-6) },
 ];
-const minhaHomologacao = [{ empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'devolvida', liberado: false, tipos: ['mao_de_obra'], dados: dadosHomologacao, motivo: 'Confira o CRF do FGTS.', enviada_em: dias(-6), documentos: docsHomologacao }];
+const minhaHomologacao = [{ empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'devolvida', liberado: false, tipos: ['mao_de_obra'], categorias: ['instalacoes_hidraulicas'], dados: dadosHomologacao, motivo: 'Confira o CRF do FGTS.', enviada_em: dias(-6), documentos: docsHomologacao }];
 const listaHomologacoes = [
   { empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'enviada', email: 'contato@hidraulica.exemplo', convidada_em: dias(-12), enviada_em: dias(-6), decidida_em: null, tipos: ['mao_de_obra'], liberado_em: null, codigo_bp: null, tem_acesso: true, contratos: 0, docs_em_analise: 1, docs_devolvidos: 1, obras_previstas: ['RESIDENCIAL EXEMPLO'] },
 ];
 const detalheHomologacao = {
-  empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'enviada', codigo_bp: null, tipos: ['mao_de_obra'], liberado_em: null, email: 'contato@hidraulica.exemplo',
+  empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'enviada', codigo_bp: null, tipos: ['mao_de_obra'], categorias: ['instalacoes_hidraulicas'], liberado_em: null, email: 'contato@hidraulica.exemplo',
   dados: dadosHomologacao, qualificacao: null, comentarios: null, responsavel: null, motivo: null, convidada_em: dias(-12), enviada_em: dias(-6), decidida_em: null,
   decidida_por: null, obras_previstas: [{ id: O1, nome: 'RESIDENCIAL EXEMPLO' }], documentos: docsHomologacao, contratos: [], obras_ativas: obras.map((o) => ({ id: o.id, nome: o.nome })),
 };
 const fornecedoresCadastro = empresasComObras.map((e) => ({
   empresa_id: e.id, razao_social: e.razao_social, cnpj: e.cnpj, ativa: true, homologacao: e.homologacao, codigo_bp: e.codigo_bp, liberado_em: e.portal_liberado_em,
-  tipos: e.tipos, exige_colaboradores: e.exige_colaboradores, exige_mensal: e.exige_mensal,
+  tipos: e.tipos, categorias: e.categorias, exige_colaboradores: e.exige_colaboradores, exige_mensal: e.exige_mensal,
   situacao: e.id === E3 ? 'bloqueado' : 'ativo', situacao_motivo: e.id === E3 ? 'Documento de seguro adulterado na medição' : null,
   situacao_em: e.id === E3 ? dias(-3) : null, situacao_por: e.id === E3 ? 'Suprimentos Exemplo' : null,
   email_acesso: e.email_acesso, emails_contato: null, dados: { cidade: 'São José do Rio Preto', estado: 'SP', contato: 'Responsável Exemplo', telefone: '(17) 0000-0000' },
@@ -290,6 +303,7 @@ const TABELAS: Record<string, (modo: ModoDemo) => Linha[]> = {
   parametros: () => referencia.parametros as unknown as Linha[],
   homologacao_tipos: () => referencia.homologacao_tipos as unknown as Linha[],
   tipos_fornecedor: () => tiposFornecedor,
+  categorias_servico: () => categoriasServico,
   homologacao_campos: () => referencia.homologacao_campos as unknown as Linha[],
   seg_modelos: () => referencia.seg_modelos as unknown as Linha[],
   funcoes: () => [...new Set(pessoas.map((p) => p.funcao))].map((nome, i) => ({ id: `d7000000-0000-4000-8000-0000000000${i}0`, nome })),
@@ -313,6 +327,8 @@ const RPCS: Record<string, (modo: ModoDemo, args: Record<string, unknown>) => un
   fornecedores_para_liberar: () => [],
   contadores_suprimentos: () => ({ homologacao: 1, pedidos: 0, contrato: 1 }),
   historico_configuracao_homologacao: () => [],
+  lista_categorias_servico: () =>
+    [...categoriasServico].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map((c) => ({ ...c, fornecedores: empresas.filter((e) => e.categorias.includes(c.codigo)).length })),
   lista_tipos_fornecedor: () =>
     tiposFornecedor.map((t) => {
       const docs = (referencia.homologacao_tipos as { ativo: boolean; obrigatorio: boolean; tipos_fornecedor?: string[] }[]).filter((d) => d.ativo && d.tipos_fornecedor?.includes(t.codigo));

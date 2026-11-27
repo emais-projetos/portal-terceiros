@@ -83,7 +83,7 @@ const TABELAS = [
   'medicoes_colaboradores', 'medicoes_itens', 'mensagens', 'modelos_documento', 'modelos_email', 'modelos_email_revisoes',
   'obras', 'parametros', 'parametros_historico', 'pedidos_obra', 'seg_alojamentos', 'seg_fichas_maquina',
   'seg_locadoras', 'seg_maquinas', 'seg_modelos', 'seg_modelos_revisoes', 'seg_nao_conformidades', 'seg_termos_alojamento', 'seg_vistorias',
-  'tipos_documento', 'tipos_documento_historico', 'tipos_fornecedor',
+  'tipos_documento', 'tipos_documento_historico', 'tipos_fornecedor', 'categorias_servico',
   'tipos_medicao', 'tst_obras', 'usuarios', 'usuarios_empresas', 'visualizacoes', 'v_alocacoes_resumo', 'v_documentos_atuais',
   'v_documentos_em_aberto', 'v_exigencias', 'v_medicoes', 'v_pendencias', 'v_rescisao',
 ];
@@ -209,6 +209,10 @@ const FUNCOES = {
   lista_tipos_fornecedor: '',
   definir_tipos_fornecedor: 'p_empresa uuid, p_tipos text[]',
   mudar_situacao_fornecedor: 'p_empresa uuid, p_situacao text, p_motivo text',
+  salvar_categoria_servico: 'p_codigo text, p_nome text',
+  remover_categoria_servico: 'p_codigo text',
+  lista_categorias_servico: '',
+  definir_categorias_fornecedor: 'p_empresa uuid, p_categorias text[]',
 };
 // Valores inofensivos: ids que não existem, datas antigas. Só serviriam para mostrar se a função roda sem login.
 function valor(tipo) {

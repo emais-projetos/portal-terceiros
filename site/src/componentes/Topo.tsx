@@ -233,6 +233,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
             filhos: [
               { to: '/configuracao', rotulo: 'Formulário da homologação', ativo: abaConfiguracao('formulario') },
               { to: '/configuracao?aba=tipos', rotulo: 'Tipos de fornecedor', ativo: abaConfiguracao('tipos') },
+              { to: '/configuracao?aba=categorias', rotulo: 'Categorias de serviço', ativo: abaConfiguracao('categorias') },
               { to: '/configuracao?aba=emails', rotulo: 'E-mails', ativo: abaConfiguracao('emails') },
             ],
           },

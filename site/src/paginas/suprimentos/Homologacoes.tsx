@@ -1,3 +1,4 @@
+import { lerCategorias, nomesDasCategorias, type CategoriaServico } from '../../lib/categorias';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Pagina, Mensagem } from '../../componentes/Pagina';
@@ -145,6 +146,7 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
   const [d, setD] = useState<DetalheHomologacao | null>(null);
   const [tipos, setTipos] = useState<TipoHomologacao[]>([]);
   const [campos, setCampos] = useState<CampoHomologacao[]>([]);
+  const [categoriasL, setCategoriasL] = useState<CategoriaServico[]>([]);
   const [cad, setCad] = useState<FornecedorCadastro | null>(null);
   const [editando, setEditando] = useState<FornecedorCadastro | null>(null);
   const [versaoConvite, setVersaoConvite] = useState(0);
@@ -166,6 +168,7 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
         lerDetalheHomologacao(empresaId), lerTiposHomologacao(true), lerCamposHomologacao(), lerFornecedoresCadastro(empresaId), lerAcessosPorEmpresa().catch(() => null),
       ]);
       setAcessos(a);
+      lerCategorias().then(setCategoriasL).catch(() => setCategoriasL([]));
       setD(x);
       setCad(f[0] ?? null);
       // Só os documentos do(s) tipo(s) do fornecedor; removido da configuração ou de outro tipo só aparece se ele já tinha enviado.
@@ -239,7 +242,7 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
           <button
             type="button"
             className="botao botao-secundario"
-            onClick={() => import('../../lib/pdfF31').then((m) => m.baixarF31(d, tipos, campos)).catch((e) => setErro(mensagemDeErro(e)))}
+            onClick={() => import('../../lib/pdfF31').then((m) => m.baixarF31(d, tipos, campos, nomesDasCategorias(d.categorias, categoriasL))).catch((e) => setErro(mensagemDeErro(e)))}
           >
             Baixar F.31 (PDF)
           </button>
@@ -305,6 +308,7 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
         <div className="grade-3">
           {valor('Razão social', d.razao_social)}
           {valor('Nome fantasia', dados.nome_fantasia)}
+          {valor('Categorias de serviço', nomesDasCategorias(d.categorias, categoriasL) || null)}
           {valor('Ramo de atividade', dados.ramo)}
           {valor('Endereço', [dados.endereco, dados.numero, dados.complemento].filter(Boolean).join(', '))}
           {valor('Bairro', dados.bairro)}

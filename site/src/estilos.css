@@ -3230,3 +3230,6 @@ button.celula:hover {
 .tabela-tipos-doc .col-tipo { text-align: center; white-space: normal; width: 5rem; min-width: 4.5rem; font-size: 0.8125rem; line-height: 1.25; }
 .tabela-tipos-doc td input[type='checkbox'] { width: 1.125rem; height: 1.125rem; }
 .tabela-tipos-doc .campo-validade input { max-width: 96px; }
+
+/* Lista de opções em colunas (categorias de serviço) */
+.opcoes-colunas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 16px; }

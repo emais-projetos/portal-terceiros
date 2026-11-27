@@ -32,7 +32,7 @@ async function logo(): Promise<{ url: string; w: number; h: number } | null> {
 
 const RESPOSTA: Record<string, string> = { sim: 'Sim', nao: 'Não', na: 'NA' };
 
-export async function baixarF31(d: DetalheHomologacao, tipos: TipoHomologacao[], campos: CampoHomologacao[] = []) {
+export async function baixarF31(d: DetalheHomologacao, tipos: TipoHomologacao[], campos: CampoHomologacao[] = [], categorias = '') {
   const [{ jsPDF }, { autoTable }, marca] = await Promise.all([import('jspdf'), import('jspdf-autotable'), logo()]);
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const m = 14;
@@ -74,6 +74,7 @@ export async function baixarF31(d: DetalheHomologacao, tipos: TipoHomologacao[],
     ['Razão social', dados.razao_social ?? d.razao_social],
     ['Nome fantasia', dados.nome_fantasia],
     ['CNPJ', formatarCnpj(d.cnpj)],
+    ['Categorias de serviço', categorias],
     ['Ramo de atividade', dados.ramo],
     ['Endereço', [dados.endereco, dados.numero, dados.complemento].filter(Boolean).join(', ')],
     ['Bairro', dados.bairro],

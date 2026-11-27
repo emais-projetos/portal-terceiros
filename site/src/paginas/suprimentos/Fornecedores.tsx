@@ -10,6 +10,7 @@ import {
   type FornecedorARegularizar, type FornecedorCadastro,
 } from '../../lib/homologacao';
 import { lerTiposFornecedor, nomesDosTipos, type TipoFornecedor } from '../../lib/tiposFornecedor';
+import { lerCategorias, nomesDasCategorias, type CategoriaServico } from '../../lib/categorias';
 import { EditarCadastro, NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
 import { DetalheFornecedor, SELO_HOMOLOGACAO } from './Homologacoes';
 
@@ -53,6 +54,8 @@ export function Fornecedores() {
   const [novo, setNovo] = useState(false);
   const [busca, setBusca] = useState('');
   const [tipoFiltro, setTipoFiltro] = useState('');
+  const [categoriaFiltro, setCategoriaFiltro] = useState('');
+  const [categoriasL, setCategoriasL] = useState<CategoriaServico[]>([]);
   const [tiposF, setTiposF] = useState<TipoFornecedor[]>([]);
   const [contrato, setContrato] = useState<PedidoContrato | null>(null);
   const [recusar, setRecusar] = useState<PedidoObra | null>(null);
@@ -61,6 +64,7 @@ export function Fornecedores() {
     try {
       const [e, r, p, a, tf] = await Promise.all([lerFornecedoresCadastro(), lerARegularizar(), lerPedidosObra(), lerAcessosPorEmpresa(), lerTiposFornecedor(true)]);
       setTiposF(tf);
+      lerCategorias(true).then(setCategoriasL).catch(() => setCategoriasL([]));
       setEmpresas(e);
       setAcessos(a);
       setRegularizar(r);
@@ -84,6 +88,7 @@ export function Fornecedores() {
       const nome = `${e.razao_social} ${e.dados.nome_fantasia ?? ''} ${e.dados.cidade ?? ''} ${acessos?.porEmpresa.get(e.empresa_id)?.email ?? ''}`.toLowerCase();
       if (termo && !nome.includes(termo) && !(digitos.length >= 3 && e.cnpj.includes(digitos))) return false;
       if (tipoFiltro && !(e.tipos?.length ? e.tipos : ['mao_de_obra']).includes(tipoFiltro)) return false;
+      if (categoriaFiltro && !(e.categorias ?? []).includes(categoriaFiltro)) return false;
       // Inativo só aparece no filtro dele; bloqueado aparece em todos.
       if (filtro === 'inativos') return e.situacao === 'inativo';
       if (e.situacao === 'inativo') return false;
@@ -99,7 +104,7 @@ export function Fornecedores() {
       if (filtro === 'nunca') return !!ac && ac.ativo && !ac.ultimo_login;
       return true;
     });
-  }, [empresas, busca, filtro, acessos, regPor, tipoFiltro]);
+  }, [empresas, busca, filtro, acessos, regPor, tipoFiltro, categoriaFiltro]);
 
   if (empresa) return <DetalheFornecedor empresaId={empresa} aoVoltar={() => setParams(aba === 'cadastro' ? {} : { aba })} />;
 
@@ -139,6 +144,13 @@ export function Fornecedores() {
               <select value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)}>
                 <option value="">Todos</option>
                 {tiposF.map((t) => <option key={t.codigo} value={t.codigo}>{t.nome}</option>)}
+              </select>
+            </label>
+            <label className="campo">
+              <span>Categoria</span>
+              <select value={categoriaFiltro} onChange={(e) => setCategoriaFiltro(e.target.value)}>
+                <option value="">Todas</option>
+                {categoriasL.map((c) => <option key={c.codigo} value={c.codigo}>{c.nome}</option>)}
               </select>
             </label>
             <div className="chips" role="group" aria-label="Filtrar fornecedores">
@@ -184,7 +196,7 @@ export function Fornecedores() {
                             {local ? ` · ${local}` : ''}
                             {e.subcontratada ? ' · subcontratada' : ''}
                           </small>
-                          <small className="sub">{[nomesDosTipos(e.tipos, tiposF), e.dados.ramo].filter(Boolean).join(' · ')}</small>
+                          <small className="sub">{[nomesDosTipos(e.tipos, tiposF), nomesDasCategorias(e.categorias, categoriasL) || e.dados.ramo].filter(Boolean).join(' · ')}</small>
                         </th>
                         <td className="quebra">
                           {e.dados.contato || <span className="sub">Sem contato</span>}

@@ -6,6 +6,7 @@ import { TermoLgpd } from '../../componentes/TermoLgpd';
 import { mensagemDeErro } from '../../lib/supabase';
 import { data, diasAte, hojeIso, somarDias, tamanhoArquivo } from '../../lib/formato';
 import { problemaNoArquivo } from '../../lib/fornecedor';
+import { lerCategorias, type CategoriaServico } from '../../lib/categorias';
 import {
   documentoAtual, lerCamposHomologacao, enviarDocumentoHomologacao, enviarHomologacao, formatarCnpj, lerMinhaHomologacao,
   lerTiposHomologacao, salvarHomologacao, abrirArquivoHomologacao, documentoSeAplica,
@@ -94,7 +95,8 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
   aoMudar: (msg: string) => Promise<void>;
   aoErro: (m: string) => void;
 }) {
-  const obrigatorios = campos.filter((c) => c.obrigatorio && c.campo !== 'referencias').map((c) => c.campo as keyof DadosF31);
+  const obrigatorios = campos.filter((c) => c.obrigatorio && c.campo !== 'referencias' && c.campo !== 'categorias').map((c) => c.campo as keyof DadosF31);
+  const campoCategorias = campos.find((c) => c.campo === 'categorias');
   const referenciaObrigatoria = campos.find((c) => c.campo === 'referencias')?.obrigatorio ?? true;
   const rotulo = (c: string) => campos.find((x) => x.campo === c)?.rotulo ?? c;
   const adicionais = campos.filter((c) => c.personalizado);
@@ -107,6 +109,8 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
     referencias: h.dados?.referencias?.length ? h.dados.referencias : [{ ...REFERENCIA_VAZIA }],
   }), [h]);
   const [dados, setDados] = useState<DadosF31>(inicial);
+  const [categorias, setCategorias] = useState<string[]>(h.categorias ?? []);
+  const [listaCategorias, setListaCategorias] = useState<CategoriaServico[]>([]);
   const [alterado, setAlterado] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -115,8 +119,13 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
 
   useEffect(() => {
     setDados(inicial);
+    setCategorias(h.categorias ?? []);
     setAlterado(false);
-  }, [inicial]);
+  }, [inicial, h]);
+
+  useEffect(() => {
+    lerCategorias().then(setListaCategorias).catch(() => setListaCategorias([]));
+  }, []);
 
   function mudar<K extends keyof DadosF31>(campo: K, valor: DadosF31[K]) {
     setDados((d) => ({ ...d, [campo]: valor }));
@@ -134,6 +143,7 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
 
   const camposFaltando = obrigatorios.filter((c) => !String(dados[c] ?? '').trim());
   const semReferencia = referenciaObrigatoria && !(dados.referencias ?? []).some((r) => r.empresa.trim());
+  const semCategoria = !!campoCategorias?.obrigatorio && categorias.length === 0;
   const docsFaltando = tipos.filter((t) => {
     if (!t.obrigatorio) return false;
     const d = documentoAtual(h.documentos, t.codigo);
@@ -148,7 +158,7 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
   };
 
   const formatosErrados = adicionais.filter(formatoErrado);
-  const pronto = camposFaltando.length === 0 && !semReferencia && docsFaltando.length === 0 && formatosErrados.length === 0;
+  const pronto = camposFaltando.length === 0 && !semReferencia && !semCategoria && docsFaltando.length === 0 && formatosErrados.length === 0;
 
   function limpar(d: DadosF31): DadosF31 {
     const refs = (d.referencias ?? []).filter((r) => Object.values(r).some((v) => String(v ?? '').trim()));
@@ -158,6 +168,7 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
       (saida as Record<string, unknown>)[k] = typeof v === 'string' ? v.trim() : v;
     }
     saida.referencias = refs;
+    if (campoCategorias) saida.categorias = categorias;
     return saida;
   }
 
@@ -229,6 +240,29 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
           {campo('inscricao_estadual', 'Inscrição estadual')}
           {campo('inscricao_municipal', 'Inscrição municipal')}
         </div>
+        {campoCategorias && (
+          <fieldset className="campo-grupo">
+            <legend>{campoCategorias.rotulo}{campoCategorias.obrigatorio ? ' *' : ''}</legend>
+            <p className="dica">Marque todos os serviços que a empresa presta. É por aqui que o Suprimentos encontra a empresa quando precisa do serviço.</p>
+            <div className="opcoes opcoes-colunas">
+              {listaCategorias.map((c) => (
+                <label key={c.codigo} className="opcao">
+                  <input
+                    type="checkbox"
+                    checked={categorias.includes(c.codigo)}
+                    disabled={!editavel}
+                    onChange={(e) => {
+                      setCategorias((l) => (e.target.checked ? [...l, c.codigo] : l.filter((x) => x !== c.codigo)));
+                      setAlterado(true);
+                    }}
+                  />
+                  <span>{c.nome}</span>
+                </label>
+              ))}
+            </div>
+            {semCategoria && tentouEnviar && <small className="campo-erro">Escolha pelo menos uma categoria.</small>}
+          </fieldset>
+        )}
         <h3 className="detalhe-subtitulo">Endereço</h3>
         <div className="grade-3">
           {campo('cep', 'CEP', { max: 9 })}
@@ -376,6 +410,7 @@ function FormularioHomologacao({ h, tipos, campos, aoMudar, aoErro }: {
               <p className="apoio">Para enviar, ainda falta:</p>
               <ul className="lista-simples">
                 {camposFaltando.length > 0 && <li>Preencher: {camposFaltando.map(rotulo).join(', ')}</li>}
+                {semCategoria && <li>Escolher as categorias de serviço</li>}
                 {semReferencia && <li>Informar pelo menos uma referência comercial</li>}
                 {formatosErrados.length > 0 && <li>Corrigir o formato: {formatosErrados.map((c) => c.rotulo).join(', ')}</li>}
                 {docsFaltando.map((t) => <li key={t.codigo}>Enviar {t.nome}{documentoAtual(h.documentos, t.codigo)?.status === 'devolvido' ? ' (devolvido, envie de novo)' : ''}</li>)}
