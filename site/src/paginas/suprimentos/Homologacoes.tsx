@@ -249,6 +249,14 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
       <p><button type="button" className="link-voltar botao-link" onClick={aoVoltar}>‹ Voltar</button></p>
       {erro && <Mensagem tipo="erro" aoFechar={() => setErro(null)}>{erro}</Mensagem>}
       {ok && <Mensagem tipo="ok" aoFechar={() => setOk(null)}>{ok}</Mensagem>}
+      {cad && cad.situacao && cad.situacao !== 'ativo' && (
+        <p className={`aviso ${cad.situacao === 'bloqueado' ? 'aviso-erro' : 'aviso-info'}`}>
+          <strong>Fornecedor {cad.situacao === 'bloqueado' ? 'bloqueado' : 'inativo'}</strong>
+          {cad.situacao_motivo ? `: ${cad.situacao_motivo}` : ''}
+          {cad.situacao_em ? ` (desde ${data(cad.situacao_em.slice(0, 10))}${cad.situacao_por ? `, por ${cad.situacao_por}` : ''})` : ''}.
+          {cad.situacao === 'bloqueado' ? ' Não recebe convite, homologação, portal, contrato nem obra nova.' : ''} Para mudar, use Editar cadastro.
+        </p>
+      )}
 
       <section className="bloco">
         <div className="barra-lista">

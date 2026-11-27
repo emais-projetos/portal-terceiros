@@ -27,6 +27,8 @@ export type ColaboradorObra = {
   bloqueado?: boolean;
   bloqueio_motivo?: string | null;
   mensal?: boolean; // falso: o tipo do fornecedor não entrega o mensal trabalhista
+  fornecedor_bloqueado?: boolean; // bloqueado pelo Suprimentos (só a Emais vê)
+  fornecedor_bloqueio_motivo?: string | null;
   pendencias: PendenciaDoc[];
   a_vencer: { documento: string; grupo?: 'empresa' | 'colaborador' | 'obra'; vencimento: string }[];
 };

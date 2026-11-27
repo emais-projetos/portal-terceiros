@@ -204,6 +204,7 @@ function painelObra(obraId: string) {
       return {
         alocacao_id: a.alocacao_id, colaborador: p.nome, funcao: p.funcao, empresa_id: p.empresa, empresa: a.empresa, status: p.status,
         data_integracao: a.data_integracao, vencimento_integracao: a.vencimento_integracao, liberado_em: a.validado_tst_em, bloqueado: false, bloqueio_motivo: null,
+        fornecedor_bloqueado: a.empresa_id === E3, fornecedor_bloqueio_motivo: a.empresa_id === E3 ? 'Documento de seguro adulterado na medição' : null,
         pendencias: pend.filter((x) => ['nao_enviado', 'devolvido', 'vencido', 'em_analise'].includes(x.situacao))
           .map((x) => ({ documento: x.documento, grupo: x.grupo, situacao: x.situacao, vencimento: x.vencimento })),
         a_vencer: pend.filter((x) => x.situacao === 'a_vencer').map((x) => ({ documento: x.documento, grupo: x.grupo, vencimento: x.vencimento! })),
@@ -257,6 +258,8 @@ const detalheHomologacao = {
 const fornecedoresCadastro = empresasComObras.map((e) => ({
   empresa_id: e.id, razao_social: e.razao_social, cnpj: e.cnpj, ativa: true, homologacao: e.homologacao, codigo_bp: e.codigo_bp, liberado_em: e.portal_liberado_em,
   tipos: e.tipos, exige_colaboradores: e.exige_colaboradores, exige_mensal: e.exige_mensal,
+  situacao: e.id === E3 ? 'bloqueado' : 'ativo', situacao_motivo: e.id === E3 ? 'Documento de seguro adulterado na medição' : null,
+  situacao_em: e.id === E3 ? dias(-3) : null, situacao_por: e.id === E3 ? 'Suprimentos Exemplo' : null,
   email_acesso: e.email_acesso, emails_contato: null, dados: { cidade: 'São José do Rio Preto', estado: 'SP', contato: 'Responsável Exemplo', telefone: '(17) 0000-0000' },
   subcontratada: false, obras: e.obras.map(nomeObra), contratos_ativos: e.codigo_bp ? 1 : 0, proximo_termino: e.codigo_bp ? dias(90) : null,
   documentos: docsEmpresa.filter((d) => d.empresa_id === e.id).map((d) => ({ nome: nomeTipo(d.tipo_codigo), situacao: d.situacao, vencimento: d.vencimento, impeditivo: true })),

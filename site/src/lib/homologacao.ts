@@ -521,6 +521,11 @@ export type FornecedorCadastro = {
   tipos: string[];
   exige_colaboradores: boolean;
   exige_mensal: boolean;
+  situacao: SituacaoFornecedor;
+  situacao_motivo: string | null;
+  situacao_em: string | null;
+  situacao_por: string | null;
+  historico_situacao?: { em: string; de: SituacaoFornecedor; para: SituacaoFornecedor; motivo: string | null; quem: string | null }[] | null;
   liberado_em: string | null;
   email_acesso: string | null;
   emails_contato: string | null;
@@ -533,6 +538,16 @@ export type FornecedorCadastro = {
   certidoes: { nome: string; vencimento: string }[];
   colaboradores: { em_obra: number; liberados: number; com_vencido: number; com_vencendo: number };
 };
+
+// Situação do fornecedor com a Emais (diferente da homologação): ativo, inativo ou bloqueado.
+export type SituacaoFornecedor = 'ativo' | 'inativo' | 'bloqueado';
+export const NOMES_SITUACAO_FORNECEDOR: Record<SituacaoFornecedor, string> = { ativo: 'Ativo', inativo: 'Inativo', bloqueado: 'Bloqueado' };
+export const SELO_SITUACAO_FORNECEDOR: Record<SituacaoFornecedor, string> = { ativo: 'selo-ok', inativo: 'selo-encerrado', bloqueado: 'selo-bloqueado' };
+
+export async function mudarSituacaoFornecedor(empresaId: string, situacao: SituacaoFornecedor, motivo: string) {
+  const { error } = await supabase.rpc('mudar_situacao_fornecedor', { p_empresa: empresaId, p_situacao: situacao, p_motivo: motivo || null });
+  if (error) throw error;
+}
 
 export async function lerFornecedoresCadastro(empresaId?: string): Promise<FornecedorCadastro[]> {
   const { data, error } = await supabase.rpc('fornecedores_cadastro', empresaId ? { p_empresa: empresaId } : {});

@@ -8,7 +8,8 @@ import { cnpjValido, hojeIso, somarDias, soDigitos, tamanhoArquivo } from '../..
 import {
   cadastrarFornecedor, registrarContrato, lerObrasAtivas, formatarCnpj, salvarCadastroFornecedor, trocarEmailAcesso,
   criarAcessoFornecedor, lerConvite, marcarEnviadoOutlook, reenviarConvite, lerAcessosPorEmpresa, tirarEmpresaDoAcesso, vincularEmpresaAoAcesso,
-  type ContratoFornecedor, type ConviteFila, type DadosF31, type FornecedorCadastro, type ObraSimples,
+  lerFornecedoresCadastro, mudarSituacaoFornecedor, NOMES_SITUACAO_FORNECEDOR, SELO_SITUACAO_FORNECEDOR,
+  type ContratoFornecedor, type ConviteFila, type DadosF31, type FornecedorCadastro, type ObraSimples, type SituacaoFornecedor,
 } from '../../lib/homologacao';
 import { definirTiposFornecedor, lerTiposFornecedor, type TipoFornecedor } from '../../lib/tiposFornecedor';
 
@@ -409,6 +410,7 @@ export function EditarCadastro({ fornecedor, acesso: acessoAtual = null, acessos
         <form className="formulario formulario-largo" onSubmit={enviar} noValidate>
           <p className="apoio">Tudo o que for salvo aqui aparece na hora para o administrativo, para o fornecedor e nos e-mails do portal.</p>
           <AcessoDaEmpresa fornecedor={fornecedor} acesso={acessoAtual} acessos={acessos} aoMudar={aoSalvar} />
+          <SituacaoDoFornecedor fornecedor={fornecedor} aoMudar={aoSalvar} />
           <div className="grade-2">
             <label className="campo">
               <span>Razão social</span>
@@ -458,6 +460,133 @@ export function EditarCadastro({ fornecedor, acesso: acessoAtual = null, acessos
         </form>
       )}
     </Dialogo>
+  );
+}
+
+const EFEITO_SITUACAO: Record<SituacaoFornecedor, string> = {
+  ativo: 'Trabalha com a Emais normalmente.',
+  inativo: 'Não trabalha mais com a Emais: sai da lista de fornecedores e das cobranças. O histórico continua guardado.',
+  bloqueado:
+    'Não recebe convite da homologação, não é homologado e não ganha portal, contrato nem obra nova. A engenharia e o TST veem o aviso no painel da obra; o fornecedor não vê o motivo.',
+};
+
+// Situação do fornecedor com a Emais, dentro do cadastro: ativo, inativo ou bloqueado, sempre com motivo.
+function SituacaoDoFornecedor({ fornecedor, aoMudar }: { fornecedor: FornecedorCadastro; aoMudar: (msg: string) => void }) {
+  const atual: SituacaoFornecedor = fornecedor.situacao ?? (fornecedor.ativa ? 'ativo' : 'inativo');
+  const [nova, setNova] = useState<SituacaoFornecedor | null>(null);
+  const [motivo, setMotivo] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [historico, setHistorico] = useState(fornecedor.historico_situacao ?? null);
+
+  useEffect(() => {
+    setNova(null);
+    setMotivo('');
+    setErro(null);
+    setHistorico(fornecedor.historico_situacao ?? null);
+    // A lista não traz o histórico; busca só deste fornecedor.
+    if (!fornecedor.historico_situacao) {
+      lerFornecedoresCadastro(fornecedor.empresa_id)
+        .then((l) => setHistorico(l[0]?.historico_situacao ?? []))
+        .catch(() => setHistorico([]));
+    }
+  }, [fornecedor]);
+
+  const precisaMotivo = nova !== null && nova !== 'ativo';
+  const pronto = nova !== null && (!precisaMotivo || motivo.trim().length >= 5);
+  const emObra = fornecedor.colaboradores.em_obra;
+
+  async function confirmar() {
+    if (!nova || !pronto) return;
+    setOcupado(true);
+    setErro(null);
+    try {
+      await mudarSituacaoFornecedor(fornecedor.empresa_id, nova, motivo.trim());
+      aoMudar(`${fornecedor.razao_social}: ${nova === 'ativo' ? (atual === 'bloqueado' ? 'desbloqueado' : 'reativado') : nova}.`);
+    } catch (e) {
+      setErro(mensagemDeErro(e as Error));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  const opcoes: { para: SituacaoFornecedor; rotulo: string }[] = (
+    [
+      { para: 'ativo', rotulo: atual === 'bloqueado' ? 'Desbloquear' : 'Reativar' },
+      { para: 'inativo', rotulo: 'Inativar' },
+      { para: 'bloqueado', rotulo: 'Bloquear' },
+    ] as { para: SituacaoFornecedor; rotulo: string }[]
+  ).filter((o) => o.para !== atual);
+
+  return (
+    <fieldset className="campo-grupo">
+      <legend>Situação do fornecedor</legend>
+      <p>
+        <span className={`selo ${SELO_SITUACAO_FORNECEDOR[atual]}`}>{NOMES_SITUACAO_FORNECEDOR[atual]}</span>
+        {fornecedor.situacao_em && (
+          <small className="sub">
+            Desde {dataBr(fornecedor.situacao_em.slice(0, 10))}{fornecedor.situacao_por ? `, por ${fornecedor.situacao_por}` : ''}
+          </small>
+        )}
+        {fornecedor.situacao_motivo && <small className="sub">Motivo: {fornecedor.situacao_motivo}</small>}
+      </p>
+      <p className="dica">{EFEITO_SITUACAO[atual]}</p>
+      {nova === null ? (
+        <div className="linha-botoes">
+          {opcoes.map((o) => (
+            <button
+              key={o.para}
+              type="button"
+              className={`botao ${o.para === 'bloqueado' ? 'botao-perigo' : 'botao-secundario'} botao-pequeno`}
+              onClick={() => setNova(o.para)}
+            >
+              {o.rotulo}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="formulario">
+          <p className={`aviso ${nova === 'bloqueado' ? 'aviso-alerta' : 'aviso-info'}`}>
+            {EFEITO_SITUACAO[nova]}
+            {nova !== 'ativo' && emObra > 0 ? ` Hoje ele tem ${emObra === 1 ? '1 colaborador' : `${emObra} colaboradores`} em obra; eles continuam como estão até a obra encerrar.` : ''}
+          </p>
+          <label className="campo">
+            <span>Motivo{precisaMotivo ? '' : ' (opcional)'}</span>
+            <textarea
+              rows={2}
+              maxLength={500}
+              value={motivo}
+              placeholder={nova === 'bloqueado' ? 'Ex.: documento adulterado na medição de outubro' : nova === 'inativo' ? 'Ex.: contrato encerrado, sem obra prevista' : ''}
+              onChange={(e) => setMotivo(e.target.value)}
+            />
+            {precisaMotivo && motivo.trim().length < 5 && <small className="dica">Pelo menos 5 letras. Fica no histórico do fornecedor.</small>}
+          </label>
+          {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
+          <div className="linha-botoes">
+            <button type="button" className={`botao${nova === 'bloqueado' ? ' botao-perigo' : ''}`} disabled={!pronto || ocupado} onClick={confirmar}>
+              {ocupado ? 'Salvando' : opcoes.find((o) => o.para === nova)?.rotulo}
+            </button>
+            <button type="button" className="botao botao-discreto" onClick={() => setNova(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {!!historico?.length && (
+        <details className="detalhe-dobravel">
+          <summary>Histórico da situação ({historico.length})</summary>
+          <ul className="lista-simples">
+            {historico.map((h, i) => (
+              <li key={i}>
+                <span>
+                  {NOMES_SITUACAO_FORNECEDOR[h.de]} para <strong>{NOMES_SITUACAO_FORNECEDOR[h.para]}</strong>
+                  {h.motivo ? `: ${h.motivo}` : ''}
+                  <small className="sub">{dataBr(h.em.slice(0, 10))}{h.quem ? ` por ${h.quem}` : ''}</small>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </fieldset>
   );
 }
 

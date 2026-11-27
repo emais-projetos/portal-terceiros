@@ -272,10 +272,12 @@ export function farolDaEmpresa(empresaId: string, empresa: string, colabs: Colab
   const semMensal = colabs.length > 0 && colabs.every((c) => c.mensal === false);
   const temLiberado = colabs.some((c) => c.status === 'liberado' && c.mensal !== false);
   const m = medicao(medicoes, temLiberado, hoje, semMensal);
-  const geral = pior(d.frente.cor, i.frente.cor, m.frente.cor);
+  const bloqueio = colabs.find((c) => c.fornecedor_bloqueado);
+  const geral = bloqueio ? 'vermelho' : pior(d.frente.cor, i.frente.cor, m.frente.cor);
 
   // Manchete: primeiro o que bloqueia, depois o que está pendente.
   const partes: string[] = [];
+  if (bloqueio) partes.push(`Fornecedor bloqueado pelo Suprimentos${bloqueio.fornecedor_bloqueio_motivo ? ` (${bloqueio.fornecedor_bloqueio_motivo})` : ''}: sem contrato nem obra nova`);
   if (m.frente.cor === 'vermelho') partes.push(m.retidas.length ? `Pagamento retido (${listaMeses([...m.retidas].sort())})` : 'Pagamento retido');
   if (d.bloqueados) partes.push(`${plural(d.bloqueados, 'colaborador bloqueado', 'colaboradores bloqueados')}`);
   if (d.comFalta) partes.push(`${plural(d.comFalta, 'liberado', 'liberados')} com documento faltando`);

@@ -227,7 +227,7 @@ async function lerBase(competencias, regras) {
     lerTudo2(
       (i, f) => supabase.from("v_pendencias").select(CAMPOS_PEND).in("situacao", ["a_vencer", "vencido", "nao_enviado", "devolvido"]).eq("impeditivo", true).order("alocacao_id").order("tipo_codigo").range(i, f)
     ),
-    lerTudo2((i, f) => supabase.from("empresas").select("id, razao_social, email_contato, email_acesso, exige_mensal").order("id").range(i, f)),
+    lerTudo2((i, f) => supabase.from("empresas").select("id, razao_social, email_contato, email_acesso, exige_mensal, ativa").order("id").range(i, f)),
     lerTudo2((i, f) => supabase.from("obras").select("id, nome, emails_engenharia, situacao").order("id").range(i, f)),
     lerTudo2(
       (i, f) => supabase.from("cobrancas").select("tipo, referencia").order("id").range(i, f)
@@ -242,8 +242,9 @@ async function lerBase(competencias, regras) {
     lerModelos()
   ]);
   const encerradas = new Set(obras.filter((o) => o.situacao === "encerrada").map((o) => o.id));
-  const medicoesValidas = medicoes.filter((m) => !(m.obra_id && encerradas.has(m.obra_id)));
-  const alocacoesValidas = alocacoes.filter((a) => !encerradas.has(a.obra_id));
+  const inativas = new Set(empresas.filter((e) => e.ativa === false).map((e) => e.id));
+  const medicoesValidas = medicoes.filter((m) => !(m.obra_id && encerradas.has(m.obra_id)) && !inativas.has(m.empresa_id));
+  const alocacoesValidas = alocacoes.filter((a) => !encerradas.has(a.obra_id) && !inativas.has(a.empresa_id));
   const ids = medicoesValidas.filter((m) => competencias.includes(m.competencia) && m.status !== "aprovada").map((m) => m.id);
   const itens = [];
   for (let i = 0; i < ids.length; i += 150) {

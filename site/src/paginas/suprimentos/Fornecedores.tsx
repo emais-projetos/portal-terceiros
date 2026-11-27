@@ -6,7 +6,7 @@ import { mensagemDeErro } from '../../lib/supabase';
 import { data, diasAte } from '../../lib/formato';
 import { lerPedidosObra, responderPedidoObra, type PedidoObra } from '../../lib/ajuda';
 import {
-  NOMES_SITUACAO_HOMOLOGACAO, formatarCnpj, lerARegularizar, lerFornecedoresCadastro, resumoDocsFornecedor, lerAcessosPorEmpresa,
+  NOMES_SITUACAO_HOMOLOGACAO, NOMES_SITUACAO_FORNECEDOR, SELO_SITUACAO_FORNECEDOR, formatarCnpj, lerARegularizar, lerFornecedoresCadastro, resumoDocsFornecedor, lerAcessosPorEmpresa,
   type FornecedorARegularizar, type FornecedorCadastro,
 } from '../../lib/homologacao';
 import { lerTiposFornecedor, nomesDosTipos, type TipoFornecedor } from '../../lib/tiposFornecedor';
@@ -28,6 +28,8 @@ const FILTROS = [
   ['regularizar', 'A regularizar'],
   ['sem_acesso', 'Sem acesso ao portal'],
   ['nunca', 'Nunca entrou'],
+  ['bloqueados', 'Bloqueados'],
+  ['inativos', 'Inativos'],
 ] as const;
 type Filtro = (typeof FILTROS)[number][0];
 
@@ -82,6 +84,10 @@ export function Fornecedores() {
       const nome = `${e.razao_social} ${e.dados.nome_fantasia ?? ''} ${e.dados.cidade ?? ''} ${acessos?.porEmpresa.get(e.empresa_id)?.email ?? ''}`.toLowerCase();
       if (termo && !nome.includes(termo) && !(digitos.length >= 3 && e.cnpj.includes(digitos))) return false;
       if (tipoFiltro && !(e.tipos?.length ? e.tipos : ['mao_de_obra']).includes(tipoFiltro)) return false;
+      // Inativo só aparece no filtro dele; bloqueado aparece em todos.
+      if (filtro === 'inativos') return e.situacao === 'inativo';
+      if (e.situacao === 'inativo') return false;
+      if (filtro === 'bloqueados') return e.situacao === 'bloqueado';
       const r = resumoDocsFornecedor(e);
       if (filtro === 'vencido') return r.vencidos.length > 0 || r.certidoesVencidas.length > 0 || e.colaboradores.com_vencido > 0;
       if (filtro === 'vencendo') return r.vencendo.length > 0 || e.colaboradores.com_vencendo > 0 || (e.certidoes.length > r.certidoesVencidas.length);
@@ -144,7 +150,7 @@ export function Fornecedores() {
               ))}
             </div>
           </div>
-          <p className="dica">{filtradas.length} de {(empresas ?? []).length} fornecedores. Documentos e colaboradores contam só quem tem colaborador em obra.</p>
+          <p className="dica">{filtradas.length} de {(empresas ?? []).filter((e) => e.situacao !== 'inativo').length} fornecedores ativos. Documentos e colaboradores contam só quem tem colaborador em obra.</p>
           {filtradas.length === 0 ? (
             <p className="vazio">Nenhum fornecedor encontrado.</p>
           ) : (
@@ -170,6 +176,9 @@ export function Fornecedores() {
                       <tr key={e.empresa_id} className="linha-clicavel" onClick={() => abrir(e.empresa_id)}>
                         <th scope="row">
                           {e.razao_social}
+                          {e.situacao && e.situacao !== 'ativo' && (
+                            <> <span className={`selo ${SELO_SITUACAO_FORNECEDOR[e.situacao]}`} title={e.situacao_motivo ?? undefined}>{NOMES_SITUACAO_FORNECEDOR[e.situacao]}</span></>
+                          )}
                           <small className="sub">
                             {formatarCnpj(e.cnpj)}
                             {local ? ` · ${local}` : ''}

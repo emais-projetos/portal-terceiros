@@ -172,7 +172,7 @@ function limitarItens(linhas: string[], oQue: string): string[] {
 
 // ---------------------------------------------------------------- Leitura
 
-type Empresa = { id: string; razao_social: string; email_contato: string | null; email_acesso: string | null; exige_mensal?: boolean };
+type Empresa = { id: string; razao_social: string; email_contato: string | null; email_acesso: string | null; exige_mensal?: boolean; ativa?: boolean };
 type Obra = { id: string; nome: string; emails_engenharia: string | null; situacao?: string };
 type ItemMed = { medicao_id: string; tipo_codigo: string; status: string; motivo_devolucao: string | null };
 type PendDoc = {
@@ -235,7 +235,7 @@ async function lerBase(competencias: string[], regras: Regras): Promise<Base> {
         .order('tipo_codigo')
         .range(i, f) as unknown as PromiseLike<{ data: PendDoc[] | null; error: unknown }>,
     ),
-    lerTudo<Empresa>((i, f) => supabase.from('empresas').select('id, razao_social, email_contato, email_acesso, exige_mensal').order('id').range(i, f) as unknown as PromiseLike<{ data: Empresa[] | null; error: unknown }>),
+    lerTudo<Empresa>((i, f) => supabase.from('empresas').select('id, razao_social, email_contato, email_acesso, exige_mensal, ativa').order('id').range(i, f) as unknown as PromiseLike<{ data: Empresa[] | null; error: unknown }>),
     lerTudo<Obra>((i, f) => supabase.from('obras').select('id, nome, emails_engenharia, situacao').order('id').range(i, f) as unknown as PromiseLike<{ data: Obra[] | null; error: unknown }>),
     lerTudo<{ tipo: string; referencia: string }>((i, f) =>
       supabase.from('cobrancas').select('tipo, referencia').order('id').range(i, f) as unknown as PromiseLike<{ data: { tipo: string; referencia: string }[] | null; error: unknown }>,
@@ -251,8 +251,10 @@ async function lerBase(competencias: string[], regras: Regras): Promise<Base> {
   ]);
   // Obra encerrada sai das cobranças (medição, retenção e documentos).
   const encerradas = new Set(obras.filter((o) => o.situacao === 'encerrada').map((o) => o.id));
-  const medicoesValidas = medicoes.filter((m) => !(m.obra_id && encerradas.has(m.obra_id)));
-  const alocacoesValidas = alocacoes.filter((a) => !encerradas.has(a.obra_id));
+  // Fornecedor inativo (não trabalha mais com a Emais) também sai.
+  const inativas = new Set(empresas.filter((e) => e.ativa === false).map((e) => e.id));
+  const medicoesValidas = medicoes.filter((m) => !(m.obra_id && encerradas.has(m.obra_id)) && !inativas.has(m.empresa_id));
+  const alocacoesValidas = alocacoes.filter((a) => !encerradas.has(a.obra_id) && !inativas.has(a.empresa_id));
   const ids = medicoesValidas.filter((m) => competencias.includes(m.competencia) && m.status !== 'aprovada').map((m) => m.id);
   const itens: ItemMed[] = [];
   for (let i = 0; i < ids.length; i += 150) {

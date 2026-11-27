@@ -208,6 +208,7 @@ const FUNCOES = {
   remover_tipo_fornecedor: 'p_codigo text',
   lista_tipos_fornecedor: '',
   definir_tipos_fornecedor: 'p_empresa uuid, p_tipos text[]',
+  mudar_situacao_fornecedor: 'p_empresa uuid, p_situacao text, p_motivo text',
 };
 // Valores inofensivos: ids que não existem, datas antigas. Só serviriam para mostrar se a função roda sem login.
 function valor(tipo) {
