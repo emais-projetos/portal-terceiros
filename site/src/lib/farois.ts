@@ -206,7 +206,7 @@ function integracao(colabs: ColaboradorObra[]) {
   return { frente: { cor: (pendentes ? 'amarelo' : 'verde') as Cor, itens: itens.length ? itens : ['Integração em dia.'] }, tarefas, pendentes };
 }
 
-function medicao(medicoes: MedicaoObra[], temLiberado: boolean, hoje: string) {
+function medicao(medicoes: MedicaoObra[], temLiberado: boolean, hoje: string, semMensal = false) {
   const atual = competenciaAtual(hoje);
   const retidasMap = new Map<string, MedicaoObra>();
   medicoes.filter((m) => m.retida).forEach((m) => {
@@ -216,6 +216,7 @@ function medicao(medicoes: MedicaoObra[], temLiberado: boolean, hoje: string) {
   });
   const retidas = [...retidasMap.values()].sort((a, b) => b.competencia.localeCompare(a.competencia));
   const doAtual = medicoes.filter((m) => m.competencia === atual).sort((a) => (a.origem === 'portal' ? -1 : 1))[0] ?? null;
+  if (semMensal && !medicoes.length) return { frente: { cor: 'cinza' as Cor, itens: ['Mensal trabalhista não se aplica ao tipo deste fornecedor.'] }, tarefas: [] as Tarefa[], retidas: [] as string[] };
   if (!temLiberado && !medicoes.length) return { frente: { cor: 'cinza' as Cor, itens: ['Sem medição: ninguém liberado na obra.'] }, tarefas: [] as Tarefa[], retidas: [] as string[] };
 
   const itens: string[] = [];
@@ -268,8 +269,9 @@ function medicao(medicoes: MedicaoObra[], temLiberado: boolean, hoje: string) {
 export function farolDaEmpresa(empresaId: string, empresa: string, colabs: ColaboradorObra[], medicoes: MedicaoObra[], hoje = hojeIso()): FarolEmpresa {
   const d = documentos(colabs);
   const i = integracao(colabs);
-  const temLiberado = colabs.some((c) => c.status === 'liberado');
-  const m = medicao(medicoes, temLiberado, hoje);
+  const semMensal = colabs.length > 0 && colabs.every((c) => c.mensal === false);
+  const temLiberado = colabs.some((c) => c.status === 'liberado' && c.mensal !== false);
+  const m = medicao(medicoes, temLiberado, hoje, semMensal);
   const geral = pior(d.frente.cor, i.frente.cor, m.frente.cor);
 
   // Manchete: primeiro o que bloqueia, depois o que está pendente.

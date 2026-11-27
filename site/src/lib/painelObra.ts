@@ -26,6 +26,7 @@ export type ColaboradorObra = {
   liberado_em: string | null;
   bloqueado?: boolean;
   bloqueio_motivo?: string | null;
+  mensal?: boolean; // falso: o tipo do fornecedor não entrega o mensal trabalhista
   pendencias: PendenciaDoc[];
   a_vencer: { documento: string; grupo?: 'empresa' | 'colaborador' | 'obra'; vencimento: string }[];
 };

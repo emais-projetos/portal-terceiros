@@ -227,7 +227,7 @@ async function lerBase(competencias, regras) {
     lerTudo2(
       (i, f) => supabase.from("v_pendencias").select(CAMPOS_PEND).in("situacao", ["a_vencer", "vencido", "nao_enviado", "devolvido"]).eq("impeditivo", true).order("alocacao_id").order("tipo_codigo").range(i, f)
     ),
-    lerTudo2((i, f) => supabase.from("empresas").select("id, razao_social, email_contato, email_acesso").order("id").range(i, f)),
+    lerTudo2((i, f) => supabase.from("empresas").select("id, razao_social, email_contato, email_acesso, exige_mensal").order("id").range(i, f)),
     lerTudo2((i, f) => supabase.from("obras").select("id, nome, emails_engenharia, situacao").order("id").range(i, f)),
     lerTudo2(
       (i, f) => supabase.from("cobrancas").select("tipo, referencia").order("id").range(i, f)
@@ -288,7 +288,8 @@ function esperadas(base, competencia) {
   const lista = doMes.map((m) => ({ empresa_id: m.empresa_id, empresa: m.empresa, obra_id: m.obra_id, obra: m.obra ?? "", medicao: m }));
   const tem = new Set(doMes.map((m) => `${m.empresa_id}|${m.obra_id ?? ""}`));
   const vistos = /* @__PURE__ */ new Set();
-  base.alocacoes.filter((a) => a.status === "liberado").forEach((a) => {
+  const semMensal = new Set(base.empresas.filter((e) => e.exige_mensal === false).map((e) => e.id));
+  base.alocacoes.filter((a) => a.status === "liberado" && !semMensal.has(a.empresa_id)).forEach((a) => {
     const k = `${a.empresa_id}|${a.obra_id}`;
     if (tem.has(k) || vistos.has(k)) return;
     vistos.add(k);

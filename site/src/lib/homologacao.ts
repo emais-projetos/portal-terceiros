@@ -26,7 +26,14 @@ export type TipoHomologacao = {
   observacao: string | null;
   personalizado: boolean;
   ativo: boolean;
+  tipos_fornecedor: string[];
 };
+
+// O documento é pedido a quem tem pelo menos um destes tipos.
+export function documentoSeAplica(t: Pick<TipoHomologacao, 'tipos_fornecedor'>, tiposEmpresa: string[] | null | undefined): boolean {
+  const da = tiposEmpresa?.length ? tiposEmpresa : ['mao_de_obra'];
+  return (t.tipos_fornecedor ?? []).some((x) => da.includes(x));
+}
 
 export type ArquivoHomologacao = { caminho: string; nome?: string; tamanho?: number; tipo?: string };
 
@@ -96,8 +103,10 @@ export function respostaAdicional(dados: DadosF31 | null | undefined, c: CampoHo
   return v;
 }
 
-export async function incluirItem(pergunta: string, formato: FormatoCampo | 'anexo', obrigatorio: boolean, validadeDias: number | null) {
-  const { error } = await supabase.rpc('incluir_item_homologacao', { p_pergunta: pergunta, p_formato: formato, p_obrigatorio: obrigatorio, p_validade_dias: validadeDias });
+export async function incluirItem(pergunta: string, formato: FormatoCampo | 'anexo', obrigatorio: boolean, validadeDias: number | null, tipos: string[] | null = null) {
+  const { error } = await supabase.rpc('incluir_item_homologacao', {
+    p_pergunta: pergunta, p_formato: formato, p_obrigatorio: obrigatorio, p_validade_dias: validadeDias, p_tipos: formato === 'anexo' ? tipos : null,
+  });
   tiposCache = null;
   if (error) throw error;
 }
@@ -119,8 +128,8 @@ export async function configurarCampo(campo: string, obrigatorio: boolean) {
   if (error) throw error;
 }
 
-export async function configurarDocumento(codigo: string, obrigatorio: boolean, validadeDias: number | null) {
-  const { error } = await supabase.rpc('configurar_documento_homologacao', { p_codigo: codigo, p_obrigatorio: obrigatorio, p_validade_dias: validadeDias });
+export async function configurarDocumento(codigo: string, obrigatorio: boolean, validadeDias: number | null, tipos: string[] | null = null) {
+  const { error } = await supabase.rpc('configurar_documento_homologacao', { p_codigo: codigo, p_obrigatorio: obrigatorio, p_validade_dias: validadeDias, p_tipos: tipos });
   tiposCache = null;
   if (error) throw error;
 }
@@ -128,13 +137,26 @@ export async function configurarDocumento(codigo: string, obrigatorio: boolean, 
 export type MudancaConfiguracao = {
   em: string;
   quem: string | null;
-  acao: 'campo_homologacao_alterado' | 'documento_homologacao_alterado' | 'item_homologacao_incluido' | 'item_homologacao_removido';
+  acao:
+    | 'campo_homologacao_alterado'
+    | 'documento_homologacao_alterado'
+    | 'item_homologacao_incluido'
+    | 'item_homologacao_removido'
+    | 'tipo_fornecedor_incluido'
+    | 'tipo_fornecedor_alterado'
+    | 'tipo_fornecedor_removido';
   detalhe: {
     rotulo?: string;
     formato?: FormatoCampo | 'anexo';
     nome?: string;
     obrigatorio?: boolean | { de: boolean; para: boolean };
     validade_dias?: number | null | { de: number | null; para: number | null };
+    tipos?: string[] | { entrou: string[]; saiu: string[] } | null;
+    nome_antes?: string | null;
+    descricao_mudou?: boolean;
+    colaboradores?: boolean | { de: boolean; para: boolean };
+    mensal?: boolean | { de: boolean; para: boolean };
+    copiou_de?: string | null;
   };
 };
 
@@ -150,6 +172,7 @@ export type MinhaHomologacao = {
   cnpj: string;
   situacao: SituacaoHomologacao;
   liberado: boolean;
+  tipos: string[];
   dados: DadosF31;
   motivo: string | null;
   enviada_em: string | null;
@@ -241,6 +264,7 @@ export type ItemHomologacao = {
   convidada_em: string;
   enviada_em: string | null;
   decidida_em: string | null;
+  tipos: string[];
   liberado_em: string | null;
   codigo_bp: string | null;
   tem_acesso: boolean;
@@ -274,6 +298,7 @@ export type DetalheHomologacao = {
   cnpj: string;
   situacao: SituacaoHomologacao;
   codigo_bp: string | null;
+  tipos: string[];
   liberado_em: string | null;
   email: string | null;
   dados: DadosF31 | null;
@@ -314,9 +339,17 @@ export async function tirarEmpresaDoAcesso(acesso: Acesso, empresaId: string) {
   return editarAcesso({ usuario_id: acesso.id, nome: acesso.nome, email: acesso.email, empresas: acesso.empresas.map((e) => e.id).filter((id) => id !== empresaId), obras: [] });
 }
 
-export async function cadastrarFornecedor(dados: { razao: string; cnpj: string; email: string; contato: string; obras: string[]; acessoExistente?: Acesso | null }): Promise<{ empresaId: string; aviso: string | null }> {
+export async function cadastrarFornecedor(dados: {
+  razao: string;
+  cnpj: string;
+  email: string;
+  contato: string;
+  obras: string[];
+  tipos: string[];
+  acessoExistente?: Acesso | null;
+}): Promise<{ empresaId: string; aviso: string | null }> {
   const { data, error } = await supabase.rpc('cadastrar_fornecedor_homologacao', {
-    p_razao: dados.razao, p_cnpj: dados.cnpj, p_email: dados.email, p_contato: dados.contato || null, p_obras: dados.obras,
+    p_razao: dados.razao, p_cnpj: dados.cnpj, p_email: dados.email, p_contato: dados.contato || null, p_obras: dados.obras, p_tipos: dados.tipos,
   });
   if (error) throw error;
   const empresaId = data as string;
@@ -485,6 +518,9 @@ export type FornecedorCadastro = {
   ativa: boolean;
   homologacao: SituacaoHomologacao;
   codigo_bp: string | null;
+  tipos: string[];
+  exige_colaboradores: boolean;
+  exige_mensal: boolean;
   liberado_em: string | null;
   email_acesso: string | null;
   emails_contato: string | null;

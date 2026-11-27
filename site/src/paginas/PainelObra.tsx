@@ -167,7 +167,8 @@ function Conteudo({ painel }: { painel: Painel }) {
   // Medição do mês: uma linha por empresa com colaborador liberado ou com medição no mês.
   const linhasMedicao = useMemo(() => {
     const doMes = new Map<string, MedicaoObra>(painel.medicoes.filter((m) => m.competencia === mes).map((m) => [m.empresa_id, m]));
-    const comLiberado = new Set(liberados.map((c) => c.empresa_id));
+    // Quem não entrega o mensal trabalhista pelo tipo de fornecedor só aparece se tiver medição no mês.
+    const comLiberado = new Set(liberados.filter((c) => c.mensal !== false).map((c) => c.empresa_id));
     return empresas
       .filter((e) => doMes.has(e.id) || (comLiberado.has(e.id) && mes >= INICIO_MEDICAO_PORTAL))
       .map((e) => ({ empresa: e, medicao: doMes.get(e.id) ?? null, pagamento: pagamentoDe(doMes.get(e.id) ?? null, mes) }))

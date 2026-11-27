@@ -60,11 +60,20 @@ const E2 = 'd1000000-0000-4000-8000-000000000002';
 const E3 = 'd1000000-0000-4000-8000-000000000003';
 const E4 = 'd1000000-0000-4000-8000-000000000004';
 const empresas = [
-  { id: E1, razao_social: 'ELÉTRICA EXEMPLO LTDA', cnpj: '11111111000191', obras: [O1, O2], homologacao: 'homologada', codigo_bp: '100001', portal_liberado_em: quando(-200) },
-  { id: E2, razao_social: 'PINTURAS MODELO LTDA', cnpj: '22222222000182', obras: [O1], homologacao: 'anterior', codigo_bp: '100002', portal_liberado_em: quando(-300) },
-  { id: E3, razao_social: 'TERRAPLENAGEM AMOSTRA LTDA', cnpj: '33333333000173', obras: [O2], homologacao: 'anterior', codigo_bp: null, portal_liberado_em: quando(-150) },
-  { id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', obras: [] as string[], homologacao: 'enviada', codigo_bp: null, portal_liberado_em: null },
-];
+  { id: E1, razao_social: 'ELÉTRICA EXEMPLO LTDA', cnpj: '11111111000191', obras: [O1, O2], homologacao: 'homologada', codigo_bp: '100001', portal_liberado_em: quando(-200), tipos: ['mao_de_obra'] },
+  { id: E2, razao_social: 'PINTURAS MODELO LTDA', cnpj: '22222222000182', obras: [O1], homologacao: 'anterior', codigo_bp: '100002', portal_liberado_em: quando(-300), tipos: ['mao_de_obra'] },
+  { id: E3, razao_social: 'TERRAPLENAGEM AMOSTRA LTDA', cnpj: '33333333000173', obras: [O2], homologacao: 'anterior', codigo_bp: null, portal_liberado_em: quando(-150), tipos: ['locacao_com_operador'] },
+  { id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', obras: [] as string[], homologacao: 'enviada', codigo_bp: null, portal_liberado_em: null, tipos: ['mao_de_obra'] },
+].map((e) => ({ ...e, exige_colaboradores: true, exige_mensal: true }));
+
+// Tipos de fornecedor como na migração 065.
+const tiposFornecedor = ([
+  ['mao_de_obra', 'Mão de obra na obra', 'Empreiteiro ou prestador com equipe trabalhando na obra.', true, true],
+  ['locacao_com_operador', 'Locação de equipamento com operador', 'Máquina ou equipamento que vem com operador. Só os operadores entram no portal.', true, true],
+  ['servico_tecnico', 'Serviço técnico', 'Projeto, laudo, sondagem, topografia, consultoria. Cadastra quem vai à obra.', true, false],
+  ['locacao_sem_operador', 'Locação sem operador', 'Equipamento, andaime, container ou ferramenta sem operador da empresa.', false, false],
+  ['material', 'Material', 'Fornecimento de material ou produto, sem equipe na obra.', false, false],
+] as [string, string, string, boolean, boolean][]).map(([codigo, nome, descricao, colaboradores, mensal], i) => ({ codigo, nome, descricao, colaboradores, mensal, ordem: i + 1, personalizado: false, ativo: true }));
 const empresa = (id: string) => empresas.find((e) => e.id === id)!;
 
 type SitDoc = 'vigente' | 'a_vencer' | 'vencido' | 'nao_enviado' | 'devolvido' | 'em_analise';
@@ -236,17 +245,18 @@ const docsHomologacao = [
   { id: 'd6000000-0000-4000-8000-000000000002', tipo: 'cartao_cnpj', data_emissao: dias(-10), vencimento: dias(170), status: 'em_analise', motivo: null, arquivos: [{ caminho: 'demo', nome: 'cartao_cnpj.pdf' }], enviado_em: quando(-6) },
   { id: 'd6000000-0000-4000-8000-000000000003', tipo: 'crf_fgts', data_emissao: dias(-40), vencimento: dias(-10), status: 'devolvido', motivo: 'Certidão vencida, envie a atual', arquivos: [{ caminho: 'demo', nome: 'crf.pdf' }], enviado_em: quando(-6) },
 ];
-const minhaHomologacao = [{ empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'devolvida', liberado: false, dados: dadosHomologacao, motivo: 'Confira o CRF do FGTS.', enviada_em: dias(-6), documentos: docsHomologacao }];
+const minhaHomologacao = [{ empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'devolvida', liberado: false, tipos: ['mao_de_obra'], dados: dadosHomologacao, motivo: 'Confira o CRF do FGTS.', enviada_em: dias(-6), documentos: docsHomologacao }];
 const listaHomologacoes = [
-  { empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'enviada', email: 'contato@hidraulica.exemplo', convidada_em: dias(-12), enviada_em: dias(-6), decidida_em: null, liberado_em: null, codigo_bp: null, tem_acesso: true, contratos: 0, docs_em_analise: 1, docs_devolvidos: 1, obras_previstas: ['RESIDENCIAL EXEMPLO'] },
+  { empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'enviada', email: 'contato@hidraulica.exemplo', convidada_em: dias(-12), enviada_em: dias(-6), decidida_em: null, tipos: ['mao_de_obra'], liberado_em: null, codigo_bp: null, tem_acesso: true, contratos: 0, docs_em_analise: 1, docs_devolvidos: 1, obras_previstas: ['RESIDENCIAL EXEMPLO'] },
 ];
 const detalheHomologacao = {
-  empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'enviada', codigo_bp: null, liberado_em: null, email: 'contato@hidraulica.exemplo',
+  empresa_id: E4, razao_social: 'HIDRÁULICA NOVA LTDA', cnpj: '44444444000164', situacao: 'enviada', codigo_bp: null, tipos: ['mao_de_obra'], liberado_em: null, email: 'contato@hidraulica.exemplo',
   dados: dadosHomologacao, qualificacao: null, comentarios: null, responsavel: null, motivo: null, convidada_em: dias(-12), enviada_em: dias(-6), decidida_em: null,
   decidida_por: null, obras_previstas: [{ id: O1, nome: 'RESIDENCIAL EXEMPLO' }], documentos: docsHomologacao, contratos: [], obras_ativas: obras.map((o) => ({ id: o.id, nome: o.nome })),
 };
 const fornecedoresCadastro = empresasComObras.map((e) => ({
   empresa_id: e.id, razao_social: e.razao_social, cnpj: e.cnpj, ativa: true, homologacao: e.homologacao, codigo_bp: e.codigo_bp, liberado_em: e.portal_liberado_em,
+  tipos: e.tipos, exige_colaboradores: e.exige_colaboradores, exige_mensal: e.exige_mensal,
   email_acesso: e.email_acesso, emails_contato: null, dados: { cidade: 'São José do Rio Preto', estado: 'SP', contato: 'Responsável Exemplo', telefone: '(17) 0000-0000' },
   subcontratada: false, obras: e.obras.map(nomeObra), contratos_ativos: e.codigo_bp ? 1 : 0, proximo_termino: e.codigo_bp ? dias(90) : null,
   documentos: docsEmpresa.filter((d) => d.empresa_id === e.id).map((d) => ({ nome: nomeTipo(d.tipo_codigo), situacao: d.situacao, vencimento: d.vencimento, impeditivo: true })),
@@ -276,6 +286,7 @@ const TABELAS: Record<string, (modo: ModoDemo) => Linha[]> = {
   tipos_medicao: () => referencia.tipos_medicao as unknown as Linha[],
   parametros: () => referencia.parametros as unknown as Linha[],
   homologacao_tipos: () => referencia.homologacao_tipos as unknown as Linha[],
+  tipos_fornecedor: () => tiposFornecedor,
   homologacao_campos: () => referencia.homologacao_campos as unknown as Linha[],
   seg_modelos: () => referencia.seg_modelos as unknown as Linha[],
   funcoes: () => [...new Set(pessoas.map((p) => p.funcao))].map((nome, i) => ({ id: `d7000000-0000-4000-8000-0000000000${i}0`, nome })),
@@ -299,6 +310,11 @@ const RPCS: Record<string, (modo: ModoDemo, args: Record<string, unknown>) => un
   fornecedores_para_liberar: () => [],
   contadores_suprimentos: () => ({ homologacao: 1, pedidos: 0, contrato: 1 }),
   historico_configuracao_homologacao: () => [],
+  lista_tipos_fornecedor: () =>
+    tiposFornecedor.map((t) => {
+      const docs = (referencia.homologacao_tipos as { ativo: boolean; obrigatorio: boolean; tipos_fornecedor?: string[] }[]).filter((d) => d.ativo && d.tipos_fornecedor?.includes(t.codigo));
+      return { ...t, fornecedores: empresas.filter((e) => e.tipos.includes(t.codigo)).length, documentos: docs.length, obrigatorios: docs.filter((d) => d.obrigatorio).length };
+    }),
   acessos_fornecedores: () => [
     { id: 'd8000000-0000-4000-8000-000000000001', nome: 'Escritório Contábil Exemplo', email: 'contato@contabil.exemplo', perfil: 'fornecedor', ativo: true, criado_em: quando(-120),
       empresas: [{ id: E1, razao_social: 'ELÉTRICA EXEMPLO LTDA' }, { id: E2, razao_social: 'PINTURAS MODELO LTDA' }], obras: [], ultimo_login: quando(-2), convite: null },

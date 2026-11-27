@@ -9,6 +9,7 @@ import {
   NOMES_SITUACAO_HOMOLOGACAO, formatarCnpj, lerARegularizar, lerFornecedoresCadastro, resumoDocsFornecedor, lerAcessosPorEmpresa,
   type FornecedorARegularizar, type FornecedorCadastro,
 } from '../../lib/homologacao';
+import { lerTiposFornecedor, nomesDosTipos, type TipoFornecedor } from '../../lib/tiposFornecedor';
 import { EditarCadastro, NovoFornecedor, PedirMotivo, RegistrarContrato, type PedidoContrato } from './Dialogos';
 import { DetalheFornecedor, SELO_HOMOLOGACAO } from './Homologacoes';
 
@@ -49,12 +50,15 @@ export function Fornecedores() {
   const [ok, setOk] = useState<string | null>(null);
   const [novo, setNovo] = useState(false);
   const [busca, setBusca] = useState('');
+  const [tipoFiltro, setTipoFiltro] = useState('');
+  const [tiposF, setTiposF] = useState<TipoFornecedor[]>([]);
   const [contrato, setContrato] = useState<PedidoContrato | null>(null);
   const [recusar, setRecusar] = useState<PedidoObra | null>(null);
 
   const carregar = useCallback(async () => {
     try {
-      const [e, r, p, a] = await Promise.all([lerFornecedoresCadastro(), lerARegularizar(), lerPedidosObra(), lerAcessosPorEmpresa()]);
+      const [e, r, p, a, tf] = await Promise.all([lerFornecedoresCadastro(), lerARegularizar(), lerPedidosObra(), lerAcessosPorEmpresa(), lerTiposFornecedor(true)]);
+      setTiposF(tf);
       setEmpresas(e);
       setAcessos(a);
       setRegularizar(r);
@@ -77,6 +81,7 @@ export function Fornecedores() {
     return (empresas ?? []).filter((e) => {
       const nome = `${e.razao_social} ${e.dados.nome_fantasia ?? ''} ${e.dados.cidade ?? ''} ${acessos?.porEmpresa.get(e.empresa_id)?.email ?? ''}`.toLowerCase();
       if (termo && !nome.includes(termo) && !(digitos.length >= 3 && e.cnpj.includes(digitos))) return false;
+      if (tipoFiltro && !(e.tipos?.length ? e.tipos : ['mao_de_obra']).includes(tipoFiltro)) return false;
       const r = resumoDocsFornecedor(e);
       if (filtro === 'vencido') return r.vencidos.length > 0 || r.certidoesVencidas.length > 0 || e.colaboradores.com_vencido > 0;
       if (filtro === 'vencendo') return r.vencendo.length > 0 || e.colaboradores.com_vencendo > 0 || (e.certidoes.length > r.certidoesVencidas.length);
@@ -88,7 +93,7 @@ export function Fornecedores() {
       if (filtro === 'nunca') return !!ac && ac.ativo && !ac.ultimo_login;
       return true;
     });
-  }, [empresas, busca, filtro, acessos, regPor]);
+  }, [empresas, busca, filtro, acessos, regPor, tipoFiltro]);
 
   if (empresa) return <DetalheFornecedor empresaId={empresa} aoVoltar={() => setParams(aba === 'cadastro' ? {} : { aba })} />;
 
@@ -122,6 +127,13 @@ export function Fornecedores() {
             <label className="campo campo-busca">
               <span>Buscar</span>
               <input type="search" value={busca} placeholder="Nome, cidade, CNPJ ou e-mail de login" onChange={(e) => setBusca(e.target.value)} />
+            </label>
+            <label className="campo">
+              <span>Tipo</span>
+              <select value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)}>
+                <option value="">Todos</option>
+                {tiposF.map((t) => <option key={t.codigo} value={t.codigo}>{t.nome}</option>)}
+              </select>
             </label>
             <div className="chips" role="group" aria-label="Filtrar fornecedores">
               {FILTROS.map(([f, nome]) => (
@@ -163,7 +175,7 @@ export function Fornecedores() {
                             {local ? ` · ${local}` : ''}
                             {e.subcontratada ? ' · subcontratada' : ''}
                           </small>
-                          {e.dados.ramo && <small className="sub">{e.dados.ramo}</small>}
+                          <small className="sub">{[nomesDosTipos(e.tipos, tiposF), e.dados.ramo].filter(Boolean).join(' · ')}</small>
                         </th>
                         <td className="quebra">
                           {e.dados.contato || <span className="sub">Sem contato</span>}
@@ -225,7 +237,7 @@ export function Fornecedores() {
                         </td>
                         <td>
                           {e.colaboradores.em_obra === 0 ? (
-                            <span className="sub">Nenhum em obra</span>
+                            <span className="sub">{e.exige_colaboradores === false ? 'Não se aplica' : 'Nenhum em obra'}</span>
                           ) : (
                             <>
                               {e.colaboradores.em_obra} em obra

@@ -172,7 +172,7 @@ function limitarItens(linhas: string[], oQue: string): string[] {
 
 // ---------------------------------------------------------------- Leitura
 
-type Empresa = { id: string; razao_social: string; email_contato: string | null; email_acesso: string | null };
+type Empresa = { id: string; razao_social: string; email_contato: string | null; email_acesso: string | null; exige_mensal?: boolean };
 type Obra = { id: string; nome: string; emails_engenharia: string | null; situacao?: string };
 type ItemMed = { medicao_id: string; tipo_codigo: string; status: string; motivo_devolucao: string | null };
 type PendDoc = {
@@ -235,7 +235,7 @@ async function lerBase(competencias: string[], regras: Regras): Promise<Base> {
         .order('tipo_codigo')
         .range(i, f) as unknown as PromiseLike<{ data: PendDoc[] | null; error: unknown }>,
     ),
-    lerTudo<Empresa>((i, f) => supabase.from('empresas').select('id, razao_social, email_contato, email_acesso').order('id').range(i, f) as unknown as PromiseLike<{ data: Empresa[] | null; error: unknown }>),
+    lerTudo<Empresa>((i, f) => supabase.from('empresas').select('id, razao_social, email_contato, email_acesso, exige_mensal').order('id').range(i, f) as unknown as PromiseLike<{ data: Empresa[] | null; error: unknown }>),
     lerTudo<Obra>((i, f) => supabase.from('obras').select('id, nome, emails_engenharia, situacao').order('id').range(i, f) as unknown as PromiseLike<{ data: Obra[] | null; error: unknown }>),
     lerTudo<{ tipo: string; referencia: string }>((i, f) =>
       supabase.from('cobrancas').select('tipo, referencia').order('id').range(i, f) as unknown as PromiseLike<{ data: { tipo: string; referencia: string }[] | null; error: unknown }>,
@@ -308,8 +308,10 @@ function esperadas(base: Base, competencia: string): Esperada[] {
   const lista: Esperada[] = doMes.map((m) => ({ empresa_id: m.empresa_id, empresa: m.empresa, obra_id: m.obra_id, obra: m.obra ?? '', medicao: m }));
   const tem = new Set(doMes.map((m) => `${m.empresa_id}|${m.obra_id ?? ''}`));
   const vistos = new Set<string>();
+  // Quem não entrega o mensal trabalhista pelo tipo (serviço técnico, locação sem operador, material) só entra se já tiver medição aberta.
+  const semMensal = new Set(base.empresas.filter((e) => e.exige_mensal === false).map((e) => e.id));
   base.alocacoes
-    .filter((a) => a.status === 'liberado')
+    .filter((a) => a.status === 'liberado' && !semMensal.has(a.empresa_id))
     .forEach((a) => {
       const k = `${a.empresa_id}|${a.obra_id}`;
       if (tem.has(k) || vistos.has(k)) return;

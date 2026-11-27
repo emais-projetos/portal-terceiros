@@ -27,6 +27,8 @@ type ValorSessao = {
   // Fornecedor: 'fechado' enquanto nenhuma empresa dele tem o portal liberado (só vê a Homologação);
   // 'aberto' com o portal liberado e homologação feita pelo portal (vê também a aba Homologação, para renovar certidões).
   homologacao: 'nenhuma' | 'fechado' | 'aberto';
+  // Fornecedor: o que os tipos das empresas liberadas pedem (material e locação sem operador não têm colaboradores nem mensal).
+  exige: { colaboradores: boolean; mensal: boolean };
   // "Ver como" (só o acesso master): demonstração com dados fictícios ou a sessão de outro usuário, só leitura.
   master: boolean;
   demo: ModoDemo | null;
@@ -54,6 +56,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   const [situacao, setSituacao] = useState<Situacao>('carregando');
   const [recuperandoSenha, setRecuperandoSenha] = useState(false);
   const [homologacao, setHomologacao] = useState<ValorSessao['homologacao']>('nenhuma');
+  const [exige, setExige] = useState<ValorSessao['exige']>({ colaboradores: true, mensal: true });
   const [versaoHomologacao, setVersaoHomologacao] = useState(0);
   const [real, setReal] = useState<Usuario | null>(null);
 
@@ -116,11 +119,16 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
         // e a Homologação aparece como mais um item. Só fica preso na Homologação quem não tem nenhuma empresa liberada.
         Promise.all([
           supabase.rpc('minha_homologacao'),
-          supabase.from('empresas').select('id', { count: 'exact', head: true }).not('portal_liberado_em', 'is', null),
-        ]).then(([{ data: h }, { count }]) => {
+          supabase.from('empresas').select('id, exige_colaboradores, exige_mensal').not('portal_liberado_em', 'is', null),
+        ]).then(([{ data: h }, { data: liberadas }]) => {
           if (cancelado) return;
           const lista = (h ?? []) as { liberado: boolean; situacao: string }[];
-          const temLiberada = (count ?? 0) > 0 || lista.some((x) => x.liberado);
+          const emp = (liberadas ?? []) as { exige_colaboradores?: boolean; exige_mensal?: boolean }[];
+          const temLiberada = emp.length > 0 || lista.some((x) => x.liberado);
+          setExige({
+            colaboradores: emp.length === 0 || emp.some((e) => e.exige_colaboradores !== false),
+            mensal: emp.length === 0 || emp.some((e) => e.exige_mensal !== false),
+          });
           setHomologacao(
             lista.length === 0 ? 'nenhuma'
               : !temLiberada ? 'fechado'
@@ -142,6 +150,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
     usuario,
     recuperandoSenha,
     homologacao,
+    exige,
     master: !!real?.master && !lerModoDemo(),
     demo: real?.master ? lerModoDemo() : null,
     verComo: (() => {

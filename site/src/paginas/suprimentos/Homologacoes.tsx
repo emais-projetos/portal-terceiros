@@ -7,7 +7,7 @@ import { data, diasAte } from '../../lib/formato';
 import { useSessao } from '../../lib/sessao';
 import {
   ITENS_QUALIFICACAO, NOMES_SITUACAO_HOMOLOGACAO, abrirArquivoHomologacao, analisarDocumentoHomologacao, devolverHomologacao, documentoAtual,
-  encerrarContrato, formatarCnpj, homologarFornecedor, lerDetalheHomologacao, lerListaHomologacoes, lerTiposHomologacao, reenviarConvite, lerCamposHomologacao, respostaAdicional, lerFornecedoresCadastro, resumoDocsFornecedor, lerAcessosPorEmpresa,
+  encerrarContrato, formatarCnpj, homologarFornecedor, lerDetalheHomologacao, lerListaHomologacoes, lerTiposHomologacao, documentoSeAplica, reenviarConvite, lerCamposHomologacao, respostaAdicional, lerFornecedoresCadastro, resumoDocsFornecedor, lerAcessosPorEmpresa,
   reprovarHomologacao,
   type CampoHomologacao, type DetalheHomologacao, type FornecedorCadastro, type DocumentoHomologacao, type ItemHomologacao, type RespostaQualificacao, type SituacaoHomologacao, type TipoHomologacao,
 } from '../../lib/homologacao';
@@ -168,8 +168,8 @@ export function DetalheFornecedor({ empresaId, aoVoltar }: { empresaId: string; 
       setAcessos(a);
       setD(x);
       setCad(f[0] ?? null);
-      // Documento removido da configuração só aparece se este fornecedor já tinha enviado.
-      setTipos(t.filter((tp) => tp.ativo || x.documentos.some((doc) => doc.tipo === tp.codigo)));
+      // Só os documentos do(s) tipo(s) do fornecedor; removido da configuração ou de outro tipo só aparece se ele já tinha enviado.
+      setTipos(t.filter((tp) => (tp.ativo && documentoSeAplica(tp, x.tipos)) || x.documentos.some((doc) => doc.tipo === tp.codigo)));
       setCampos(c);
       setQualificacao(x.qualificacao ?? {});
       setComentarios(x.comentarios ?? '');

@@ -8,7 +8,7 @@ import { data, diasAte, hojeIso, somarDias, tamanhoArquivo } from '../../lib/for
 import { problemaNoArquivo } from '../../lib/fornecedor';
 import {
   documentoAtual, lerCamposHomologacao, enviarDocumentoHomologacao, enviarHomologacao, formatarCnpj, lerMinhaHomologacao,
-  lerTiposHomologacao, salvarHomologacao, abrirArquivoHomologacao,
+  lerTiposHomologacao, salvarHomologacao, abrirArquivoHomologacao, documentoSeAplica,
   type CampoHomologacao, type DadosF31, type DocumentoHomologacao, type MinhaHomologacao, type Referencia, type TipoHomologacao,
 } from '../../lib/homologacao';
 
@@ -69,7 +69,7 @@ export function Homologacao() {
           <FormularioHomologacao
             key={atual.empresa_id}
             h={atual}
-            tipos={tipos.filter((t) => t.ativo)}
+            tipos={tipos.filter((t) => t.ativo && documentoSeAplica(t, atual.tipos))}
             campos={campos.filter((c) => c.ativo)}
             aoMudar={async (msg) => {
               setErro(null);

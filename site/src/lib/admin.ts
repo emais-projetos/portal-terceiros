@@ -484,6 +484,13 @@ export async function lerAlocacoes(): Promise<AlocacaoResumo[]> {
   );
 }
 
+// Empresas que não entregam o mensal trabalhista (pelo tipo de fornecedor): ficam fora da cobrança da medição.
+export async function lerEmpresasSemMensal(): Promise<Set<string>> {
+  const { data, error } = await supabase.from('empresas').select('id').eq('exige_mensal', false);
+  if (error) throw error;
+  return new Set((data ?? []).map((e) => e.id as string));
+}
+
 export async function lerIdsComPendenciaCadastro(): Promise<Set<string>> {
   const { data, error } = await supabase.from('colaboradores').select('id').not('pendencia_cadastro', 'is', null);
   if (error) throw error;

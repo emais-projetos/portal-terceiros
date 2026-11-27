@@ -128,7 +128,12 @@ const abaConfiguracao = (aba: string) => (caminho: string, busca: string) =>
 const abaFornecedores = (aba: string) => (caminho: string, busca: string) =>
   caminho === '/fornecedores' && (new URLSearchParams(busca).get('aba') ?? 'cadastro') === aba;
 
-type ExtrasMenu = { homologacao?: 'nenhuma' | 'fechado' | 'aberto'; sup?: ContadoresSuprimentos | null; master?: boolean };
+type ExtrasMenu = {
+  homologacao?: 'nenhuma' | 'fechado' | 'aberto';
+  sup?: ContadoresSuprimentos | null;
+  master?: boolean;
+  exige?: { colaboradores: boolean; mensal: boolean };
+};
 
 function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, atendimento: number | null = null, ncs: number | null = null, exportar: number | null = null, extras: ExtrasMenu = {}): Grupo[] {
   // Segurança da obra: para o fornecedor, itens a regularizar; para o TST e o administrativo, respostas a avaliar.
@@ -227,6 +232,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
             icone: 'acessos',
             filhos: [
               { to: '/configuracao', rotulo: 'Formulário da homologação', ativo: abaConfiguracao('formulario') },
+              { to: '/configuracao?aba=tipos', rotulo: 'Tipos de fornecedor', ativo: abaConfiguracao('tipos') },
               { to: '/configuracao?aba=emails', rotulo: 'E-mails', ativo: abaConfiguracao('emails') },
             ],
           },
@@ -243,10 +249,10 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
         itens: [
           { to: '/', rotulo: 'Obras', icone: 'obras', end: true },
           { to: '/pendencias', rotulo: 'O que falta', icone: 'pendencias' },
-          { to: '/meus-colaboradores', rotulo: 'Colaboradores', icone: 'colaboradores' },
+          ...(extras.exige?.colaboradores === false ? [] : [{ to: '/meus-colaboradores', rotulo: 'Colaboradores', icone: 'colaboradores' }]),
           { to: '/documentos-empresa', rotulo: 'Documentos da empresa', icone: 'documentos' },
-          { to: '/medicao', rotulo: 'Mensal trabalhista', icone: 'medicao' },
-          { to: '/alojamentos', rotulo: 'Alojamentos', icone: 'seguranca', contador: ncs },
+          ...(extras.exige?.mensal === false ? [] : [{ to: '/medicao', rotulo: 'Mensal trabalhista', icone: 'medicao' }]),
+          ...(extras.exige?.colaboradores === false ? [] : [{ to: '/alojamentos', rotulo: 'Alojamentos', icone: 'seguranca', contador: ncs }]),
           ...(extras.homologacao === 'aberto' ? [{ to: '/homologacao', rotulo: 'Homologação', icone: 'homologacao' }] : []),
         ],
       },
@@ -285,7 +291,7 @@ const iniciais = (nome: string) =>
     .toUpperCase();
 
 export function Topo() {
-  const { usuario, sair, homologacao, master } = useSessao();
+  const { usuario, sair, homologacao, master, exige } = useSessao();
   const [sup, setSup] = useState<ContadoresSuprimentos | null>(null);
   const ehAdmin = usuario?.perfil === 'admin';
   const ehTst = usuario?.perfil === 'tst';
@@ -366,7 +372,7 @@ export function Topo() {
     }
   }
 
-  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento, ncs, exportar, { homologacao, sup, master });
+  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento, ncs, exportar, { homologacao, sup, master, exige });
   const estaAtivo = (i: Item) => (i.ativo ? i.ativo(pathname, search) : undefined);
 
   return (

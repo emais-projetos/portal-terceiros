@@ -3222,3 +3222,11 @@ button.celula:hover {
 .cartao-botao:hover { border-color: var(--petroleo); box-shadow: 0 2px 8px rgb(0 0 0 / 0.08); }
 @media (max-width: 900px) { .cartoes-demo { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .cartoes-demo { grid-template-columns: 1fr; } }
+
+/* Configuração: documentos por tipo de fornecedor */
+.tabela-tipos-doc th,
+.tabela-tipos-doc td { padding: 8px 8px; }
+.tabela-tipos-doc tbody th { white-space: normal; min-width: 200px; }
+.tabela-tipos-doc .col-tipo { text-align: center; white-space: normal; width: 5rem; min-width: 4.5rem; font-size: 0.8125rem; line-height: 1.25; }
+.tabela-tipos-doc td input[type='checkbox'] { width: 1.125rem; height: 1.125rem; }
+.tabela-tipos-doc .campo-validade input { max-width: 96px; }

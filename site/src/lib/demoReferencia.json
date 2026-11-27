@@ -843,7 +843,14 @@
 "tipo_portal": null,
 "observacao": null,
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador",
+"servico_tecnico",
+"locacao_sem_operador",
+"material"
+]
 },
 {
 "codigo": "cartao_cnpj",
@@ -854,7 +861,14 @@
 "tipo_portal": "cartao_cnpj",
 "observacao": null,
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador",
+"servico_tecnico",
+"locacao_sem_operador",
+"material"
+]
 },
 {
 "codigo": "certidao_junta",
@@ -865,7 +879,14 @@
 "tipo_portal": null,
 "observacao": null,
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador",
+"servico_tecnico",
+"locacao_sem_operador",
+"material"
+]
 },
 {
 "codigo": "cnd_federal",
@@ -876,7 +897,14 @@
 "tipo_portal": null,
 "observacao": null,
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador",
+"servico_tecnico",
+"locacao_sem_operador",
+"material"
+]
 },
 {
 "codigo": "crf_fgts",
@@ -887,7 +915,14 @@
 "tipo_portal": null,
 "observacao": null,
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador",
+"servico_tecnico",
+"locacao_sem_operador",
+"material"
+]
 },
 {
 "codigo": "inscricao_estadual",
@@ -898,7 +933,14 @@
 "tipo_portal": null,
 "observacao": "Isento: envie a declaração ou o cartão CNPJ.",
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador",
+"servico_tecnico",
+"locacao_sem_operador",
+"material"
+]
 },
 {
 "codigo": "cnd_estadual",
@@ -909,7 +951,14 @@
 "tipo_portal": null,
 "observacao": null,
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador",
+"servico_tecnico",
+"locacao_sem_operador",
+"material"
+]
 },
 {
 "codigo": "certidao_jf",
@@ -920,7 +969,14 @@
 "tipo_portal": null,
 "observacao": null,
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador",
+"servico_tecnico",
+"locacao_sem_operador",
+"material"
+]
 },
 {
 "codigo": "alvara",
@@ -931,7 +987,14 @@
 "tipo_portal": null,
 "observacao": null,
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador",
+"servico_tecnico",
+"locacao_sem_operador",
+"material"
+]
 },
 {
 "codigo": "conta_bancaria",
@@ -942,7 +1005,14 @@
 "tipo_portal": null,
 "observacao": "Folha de cheque em branco, cabeçalho de extrato ou cartão.",
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador",
+"servico_tecnico",
+"locacao_sem_operador",
+"material"
+]
 },
 {
 "codigo": "pgr",
@@ -953,7 +1023,11 @@
 "tipo_portal": "pgr",
 "observacao": null,
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador"
+]
 },
 {
 "codigo": "pcmso",
@@ -964,7 +1038,11 @@
 "tipo_portal": "pcmso",
 "observacao": null,
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador"
+]
 },
 {
 "codigo": "inscricao_municipal",
@@ -975,7 +1053,14 @@
 "tipo_portal": null,
 "observacao": "Se houver.",
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador",
+"servico_tecnico",
+"locacao_sem_operador",
+"material"
+]
 },
 {
 "codigo": "orgao_regulador",
@@ -986,7 +1071,53 @@
 "tipo_portal": null,
 "observacao": "Se houver.",
 "personalizado": false,
-"ativo": true
+"ativo": true,
+"tipos_fornecedor": [
+"mao_de_obra",
+"locacao_com_operador"
+]
+},
+{
+"codigo": "documentos_maquina",
+"nome": "Documentos da máquina ou equipamento",
+"ordem": 15,
+"obrigatorio": true,
+"validade_dias": 365,
+"tipo_portal": null,
+"observacao": "Nota fiscal ou contrato de locação, plano de manutenção e laudo ou certificado de inspeção.",
+"personalizado": false,
+"ativo": true,
+"tipos_fornecedor": [
+"locacao_com_operador"
+]
+},
+{
+"codigo": "art_conselho",
+"nome": "ART/RRT ou registro no conselho de classe",
+"ordem": 16,
+"obrigatorio": true,
+"validade_dias": 365,
+"tipo_portal": null,
+"observacao": "Registro da empresa ou do responsável técnico no CREA, CAU ou outro conselho.",
+"personalizado": false,
+"ativo": true,
+"tipos_fornecedor": [
+"servico_tecnico"
+]
+},
+{
+"codigo": "certificado_produto",
+"nome": "Certificado ou ficha técnica do produto",
+"ordem": 17,
+"obrigatorio": false,
+"validade_dias": null,
+"tipo_portal": null,
+"observacao": "Se houver: certificado do Inmetro, laudo de ensaio ou ficha técnica.",
+"personalizado": false,
+"ativo": true,
+"tipos_fornecedor": [
+"material"
+]
 }
 ],
 "homologacao_campos": [

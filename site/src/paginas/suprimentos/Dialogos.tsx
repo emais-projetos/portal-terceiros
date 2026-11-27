@@ -10,6 +10,7 @@ import {
   criarAcessoFornecedor, lerConvite, marcarEnviadoOutlook, reenviarConvite, lerAcessosPorEmpresa, tirarEmpresaDoAcesso, vincularEmpresaAoAcesso,
   type ContratoFornecedor, type ConviteFila, type DadosF31, type FornecedorCadastro, type ObraSimples,
 } from '../../lib/homologacao';
+import { definirTiposFornecedor, lerTiposFornecedor, type TipoFornecedor } from '../../lib/tiposFornecedor';
 
 // Janelas do Suprimentos: cadastrar fornecedor novo (manda o convite da homologação) e registrar o contrato assinado.
 
@@ -39,8 +40,49 @@ function EscolherObras({ obras, marcadas, aoMudar }: { obras: ObraSimples[]; mar
   );
 }
 
+function useTiposFornecedor(aberto: boolean) {
+  const [tipos, setTipos] = useState<TipoFornecedor[]>([]);
+  useEffect(() => {
+    if (aberto) lerTiposFornecedor().then(setTipos).catch(() => setTipos([]));
+  }, [aberto]);
+  return tipos;
+}
+
+function oQueOTipoPede(t: TipoFornecedor): string {
+  if (!t.colaboradores) return 'Só documentos da empresa';
+  return t.mensal ? 'Colaboradores, integração e mensal trabalhista' : 'Colaboradores e integração, sem mensal trabalhista';
+}
+
+// Tipo(s) do fornecedor: pode marcar mais de um; vale o que qualquer um pedir.
+export function EscolherTipos({ tipos, marcados, aoMudar }: { tipos: TipoFornecedor[]; marcados: string[]; aoMudar: (l: string[]) => void }) {
+  return (
+    <fieldset className="campo-grupo">
+      <legend>Tipo de fornecedor</legend>
+      <div className="opcoes opcoes-empilhadas">
+        {tipos.map((t) => (
+          <label key={t.codigo} className="opcao">
+            <input
+              type="checkbox"
+              checked={marcados.includes(t.codigo)}
+              onChange={(e) => aoMudar(e.target.checked ? [...marcados, t.codigo] : marcados.filter((x) => x !== t.codigo))}
+            />
+            <span>
+              {t.nome}
+              <small className="sub">{oQueOTipoPede(t)}{t.descricao ? `. ${t.descricao}` : ''}</small>
+            </span>
+          </label>
+        ))}
+      </div>
+      {marcados.length === 0 && <small className="campo-erro">Escolha pelo menos um tipo.</small>}
+      {marcados.length > 1 && <small className="dica">Com mais de um tipo, o fornecedor envia os documentos de todos e faz o que qualquer um deles pedir.</small>}
+    </fieldset>
+  );
+}
+
 export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: boolean; aoFechar: () => void; aoCadastrar: (msg: string, empresaId: string) => void }) {
   const obras = useObras(aberto);
+  const tiposF = useTiposFornecedor(aberto);
+  const [tipos, setTipos] = useState<string[]>(['mao_de_obra']);
   const [razao, setRazao] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [email, setEmail] = useState('');
@@ -60,12 +102,13 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
     setEmail('');
     setContato('');
     setMarcadas([]);
+    setTipos(['mao_de_obra']);
     setErro(null);
   }, [aberto]);
 
   const cnpjOk = cnpjValido(cnpj);
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const pronto = razao.trim().length >= 3 && cnpjOk && emailOk;
+  const pronto = razao.trim().length >= 3 && cnpjOk && emailOk && tipos.length > 0;
   const existente = emailOk ? acessos.find((a) => a.email.toLowerCase() === email.trim().toLowerCase()) ?? null : null;
 
   async function enviar(e: FormEvent) {
@@ -74,7 +117,7 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
     setEnviando(true);
     setErro(null);
     try {
-      const r = await cadastrarFornecedor({ razao: razao.trim(), cnpj: soDigitos(cnpj), email: email.trim().toLowerCase(), contato: contato.trim(), obras: marcadas, acessoExistente: existente });
+      const r = await cadastrarFornecedor({ razao: razao.trim(), cnpj: soDigitos(cnpj), email: email.trim().toLowerCase(), contato: contato.trim(), obras: marcadas, tipos, acessoExistente: existente });
       setFeito({
         empresaId: r.empresaId,
         msg: r.aviso ?? (existente
@@ -130,6 +173,7 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
             <input value={contato} maxLength={200} onChange={(e) => setContato(e.target.value)} />
           </label>
         </div>
+        <EscolherTipos tipos={tiposF} marcados={tipos} aoMudar={setTipos} />
         <div className="campo">
           <span>Obras previstas</span>
           <small className="dica">Só para referência. A obra é liberada de fato quando o contrato for registrado.</small>
@@ -317,6 +361,8 @@ const GRUPOS_CADASTRO: { titulo: string; campos: [keyof DadosF31, string, { max?
 export function EditarCadastro({ fornecedor, acesso: acessoAtual = null, acessos = [], aoFechar, aoSalvar }: {
   fornecedor: FornecedorCadastro | null; acesso?: Acesso | null; acessos?: Acesso[]; aoFechar: () => void; aoSalvar: (msg: string) => void;
 }) {
+  const tiposF = useTiposFornecedor(!!fornecedor);
+  const [tipos, setTipos] = useState<string[]>([]);
   const [razao, setRazao] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [emails, setEmails] = useState('');
@@ -330,11 +376,14 @@ export function EditarCadastro({ fornecedor, acesso: acessoAtual = null, acessos
     setCnpj(formatarCnpj(fornecedor.cnpj));
     setEmails(fornecedor.emails_contato ?? '');
     setDados({ ...fornecedor.dados });
+    setTipos(fornecedor.tipos?.length ? fornecedor.tipos : ['mao_de_obra']);
     setErro(null);
   }, [fornecedor]);
 
   const cnpjOk = cnpjValido(cnpj) || soDigitos(cnpj) === fornecedor?.cnpj;
-  const pronto = razao.trim().length >= 3 && cnpjOk;
+  const pronto = razao.trim().length >= 3 && cnpjOk && tipos.length > 0;
+  const tiposAntes = fornecedor?.tipos?.length ? fornecedor.tipos : ['mao_de_obra'];
+  const tiposMudaram = tipos.length !== tiposAntes.length || tipos.some((t) => !tiposAntes.includes(t));
 
   async function enviar(e: FormEvent) {
     e.preventDefault();
@@ -344,6 +393,7 @@ export function EditarCadastro({ fornecedor, acesso: acessoAtual = null, acessos
     try {
       const saida: Partial<DadosF31> = {};
       for (const g of GRUPOS_CADASTRO) for (const [c] of g.campos) (saida as Record<string, string>)[c] = String(dados[c] ?? '').trim();
+      if (tiposMudaram) await definirTiposFornecedor(fornecedor.empresa_id, tipos);
       await salvarCadastroFornecedor(fornecedor.empresa_id, razao.trim(), soDigitos(cnpj), emails, saida);
       aoSalvar('Cadastro atualizado.');
     } catch (er) {
@@ -375,6 +425,12 @@ export function EditarCadastro({ fornecedor, acesso: acessoAtual = null, acessos
               <small className="dica">Recebem os avisos junto com o e-mail de acesso. Separe por ponto e vírgula, até 10.</small>
             </label>
           </div>
+          <EscolherTipos tipos={tiposF} marcados={tipos} aoMudar={setTipos} />
+          {tiposMudaram && (
+            <p className="aviso aviso-info">
+              Ao salvar, o fornecedor passa a ver os documentos da homologação do(s) tipo(s) marcado(s), e a cobrança do mensal trabalhista segue o tipo novo.
+            </p>
+          )}
           {GRUPOS_CADASTRO.map((g) => (
             <fieldset key={g.titulo} className="campo-grupo">
               <legend>{g.titulo}</legend>

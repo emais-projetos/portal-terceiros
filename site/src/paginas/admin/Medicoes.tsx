@@ -11,7 +11,7 @@ import { formatarCnpj } from '../../lib/consultas';
 import { data, hojeIso, tamanhoArquivo } from '../../lib/formato';
 import { prazoDe } from '../../lib/regras';
 import { AVISO_PORTAL, assinatura as linhasAssinatura, guardarDestinatariosObra, lerAssinatura, lerDestinatariosObra, mesBarra, nomeLegivel, type Assinatura } from '../../lib/cobrancas';
-import { copiarTexto, lerAlocacoes, linkOutlook, type AlocacaoResumo } from '../../lib/admin';
+import { copiarTexto, lerAlocacoes, lerEmpresasSemMensal, linkOutlook, type AlocacaoResumo } from '../../lib/admin';
 import {
   CHAVES_CONFERENCIA, abrirArquivoMedicao, arquivosAtuais, avaliarItem, baixarArquivoMedicao, baixarMedicao, competenciaPadrao,
   concluirConferencia, conferirColaborador, lerMedicao, lerMedicoes, lerTiposMedicao, lerTodasMedicoes, mesCurto, mesPorExtenso, nomeArquivoMedicao,
@@ -95,8 +95,8 @@ function Painel({ competencia, aoMudarMes }: { competencia: string; aoMudarMes: 
   }, [competencia]);
 
   useEffect(() => {
-    lerAlocacoes()
-      .then(setAlocacoes)
+    Promise.all([lerAlocacoes(), lerEmpresasSemMensal()])
+      .then(([l, semMensal]) => setAlocacoes(l.filter((a) => !semMensal.has(a.empresa_id))))
       .catch((e) => setErro(mensagemDeErro(e)));
   }, []);
 
