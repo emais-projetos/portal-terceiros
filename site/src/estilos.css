@@ -3194,3 +3194,31 @@ button.celula:hover {
   color: #4a5966;
   font-style: italic;
 }
+
+/* Ver como (acesso master) */
+.faixa-ver-como {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 16px;
+  border-radius: 999px;
+  background: var(--tinta);
+  color: #fff;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+  font-size: 0.9rem;
+}
+.faixa-ver-como .botao { background: #fff; color: var(--tinta); border-color: #fff; white-space: nowrap; }
+@media (max-width: 640px) {
+  .faixa-ver-como { border-radius: 12px; flex-wrap: wrap; justify-content: center; text-align: center; bottom: 76px; }
+}
+.cartoes-demo { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.cartao-botao { text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.cartao-botao:hover { border-color: var(--petroleo); box-shadow: 0 2px 8px rgb(0 0 0 / 0.08); }
+@media (max-width: 900px) { .cartoes-demo { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .cartoes-demo { grid-template-columns: 1fr; } }

@@ -84,7 +84,7 @@ const TABELAS = [
   'obras', 'parametros', 'parametros_historico', 'pedidos_obra', 'seg_alojamentos', 'seg_fichas_maquina',
   'seg_locadoras', 'seg_maquinas', 'seg_modelos', 'seg_modelos_revisoes', 'seg_nao_conformidades', 'seg_termos_alojamento', 'seg_vistorias',
   'tipos_documento', 'tipos_documento_historico',
-  'tipos_medicao', 'tst_obras', 'usuarios', 'usuarios_empresas', 'v_alocacoes_resumo', 'v_documentos_atuais',
+  'tipos_medicao', 'tst_obras', 'usuarios', 'usuarios_empresas', 'visualizacoes', 'v_alocacoes_resumo', 'v_documentos_atuais',
   'v_documentos_em_aberto', 'v_exigencias', 'v_medicoes', 'v_pendencias', 'v_rescisao',
 ];
 {

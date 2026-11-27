@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { desligarDemo, lerModoDemo, usuarioDemo, type ModoDemo } from './demonstracao';
+import { lerVerComo, type VerComoSalvo } from './verComo';
 
 export type Perfil = 'admin' | 'tst' | 'engenharia' | 'fornecedor' | 'suprimentos';
 
@@ -10,6 +12,7 @@ export type Usuario = {
   email: string;
   perfil: Perfil;
   ativo: boolean;
+  master?: boolean;
 };
 
 // carregando: ainda lendo a sessão; fora: sem login; sem_cadastro: tem login mas não está em public.usuarios;
@@ -24,6 +27,10 @@ type ValorSessao = {
   // Fornecedor: 'fechado' enquanto nenhuma empresa dele tem o portal liberado (só vê a Homologação);
   // 'aberto' com o portal liberado e homologação feita pelo portal (vê também a aba Homologação, para renovar certidões).
   homologacao: 'nenhuma' | 'fechado' | 'aberto';
+  // "Ver como" (só o acesso master): demonstração com dados fictícios ou a sessão de outro usuário, só leitura.
+  master: boolean;
+  demo: ModoDemo | null;
+  verComo: VerComoSalvo | null;
   atualizarHomologacao: () => void;
   iniciarRecuperacao: () => void;
   concluirRecuperacao: () => void;
@@ -48,6 +55,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   const [recuperandoSenha, setRecuperandoSenha] = useState(false);
   const [homologacao, setHomologacao] = useState<ValorSessao['homologacao']>('nenhuma');
   const [versaoHomologacao, setVersaoHomologacao] = useState(0);
+  const [real, setReal] = useState<Usuario | null>(null);
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((evento, novaSessao) => {
@@ -67,6 +75,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!sessaoLida) return;
     if (!uid) {
+      setReal(null);
       setUsuario(null);
       setSituacao('fora');
       return;
@@ -75,7 +84,7 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
     setSituacao('carregando');
     supabase
       .from('usuarios')
-      .select('id, nome, email, perfil, ativo')
+      .select('id, nome, email, perfil, ativo, master')
       .eq('id', uid)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -85,6 +94,17 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
           setSituacao('sem_cadastro');
           return;
         }
+        // Demonstração: só para o master; as telas passam a ser as do perfil escolhido, com dados fictícios.
+        const modo = lerModoDemo();
+        if (modo && !(data.master && data.ativo)) desligarDemo();
+        if (modo && data.master && data.ativo) {
+          setReal(data as Usuario);
+          setUsuario(usuarioDemo(modo) as unknown as Usuario);
+          setHomologacao(modo === 'homologacao' ? 'fechado' : 'nenhuma');
+          setSituacao('ok');
+          return;
+        }
+        setReal(data as Usuario);
         if (data.perfil !== 'fornecedor' || !data.ativo) {
           setHomologacao('nenhuma');
           setUsuario(data as Usuario);
@@ -111,11 +131,29 @@ export function ProvedorSessao({ children }: { children: ReactNode }) {
     usuario,
     recuperandoSenha,
     homologacao,
+    master: !!real?.master && !lerModoDemo(),
+    demo: real?.master ? lerModoDemo() : null,
+    verComo: (() => {
+      const v = lerVerComo();
+      return v && usuario && v.alvo.id === usuario.id ? v : null;
+    })(),
     atualizarHomologacao: () => setVersaoHomologacao((v) => v + 1),
     // Primeiro acesso por código: a sessão que chega com o código vai direto para a criação da senha.
     iniciarRecuperacao: () => setRecuperandoSenha(true),
     concluirRecuperacao: () => setRecuperandoSenha(false),
     sair: async () => {
+      // Dentro do "Ver como", sair é voltar para o próprio acesso.
+      if (lerModoDemo() && real?.master) {
+        desligarDemo();
+        window.location.assign(import.meta.env.BASE_URL + 'ver-como');
+        return;
+      }
+      const v = lerVerComo();
+      if (v && usuario && v.alvo.id === usuario.id) {
+        const { voltarDoVerComo } = await import('./verComo');
+        await voltarDoVerComo();
+        return;
+      }
       await supabase.auth.signOut();
       setRecuperandoSenha(false);
     },

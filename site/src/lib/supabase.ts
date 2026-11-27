@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { fetchComDemo } from './demonstracao';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const chave = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
@@ -9,6 +10,8 @@ if (!url || !chave) {
 
 export const supabase = createClient(url, chave, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+  // No modo demonstração do "Ver como", as consultas são respondidas no navegador com dados fictícios.
+  global: { fetch: fetchComDemo },
 });
 
 // Endereço base do site (ex.: https://emais-projetos.github.io/portal-terceiros/), usado nos links enviados por e-mail.

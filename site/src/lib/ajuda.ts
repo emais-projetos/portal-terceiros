@@ -1,3 +1,4 @@
+import { lerModoDemo } from './demonstracao';
 import { supabase } from './supabase';
 
 // Ajuda (chat com a Emais), número do contrato de cada obra e pedido de acesso a outra obra.
@@ -51,6 +52,7 @@ export async function marcarLida(conversaId?: string) {
 
 // Avisa a cada mensagem nova (as regras do banco já limitam o que cada um recebe).
 export function acompanharMensagens(aoChegar: (m: Mensagem) => void, conversaId?: string) {
+  if (lerModoDemo()) return () => undefined; // demonstração: sem mensagens de verdade
   const canal = supabase
     .channel(`mensagens-${conversaId ?? 'todas'}-${Math.random().toString(36).slice(2)}`)
     .on(

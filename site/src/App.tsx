@@ -33,6 +33,7 @@ import { Homologacao } from './paginas/fornecedor/Homologacao';
 import { Homologacoes } from './paginas/suprimentos/Homologacoes';
 import { Fornecedores } from './paginas/suprimentos/Fornecedores';
 import { Configuracao } from './paginas/suprimentos/Configuracao';
+import { VerComo } from './paginas/admin/VerComo';
 
 export function App() {
   const { recuperandoSenha, sessao } = useSessao();
@@ -70,6 +71,7 @@ export function App() {
       <Route path="/cobrancas" element={<SoAdmin><Cobrancas /></SoAdmin>} />
       <Route path="/indicadores" element={<SoAdmin><Indicadores /></SoAdmin>} />
       <Route path="/acessos" element={<SoAdmin><Acessos /></SoAdmin>} />
+      <Route path="/ver-como" element={<SoMaster><VerComo /></SoMaster>} />
       <Route path="/atendimento" element={<SoAdmin><Atendimento /></SoAdmin>} />
       <Route path="/pendencias" element={<SoPerfil perfil="fornecedor"><OQueFalta /></SoPerfil>} />
       <Route path="/meus-colaboradores" element={<SoPerfil perfil="fornecedor"><MeusColaboradores /></SoPerfil>} />
@@ -110,6 +112,12 @@ function HomologacaoPorPerfil() {
 function MedicaoPorPerfil() {
   const { usuario } = useSessao();
   return usuario?.perfil === 'admin' ? <Medicoes /> : <MedicaoFornecedor />;
+}
+
+// "Ver como": só o administrativo master, fora de uma visualização ou demonstração.
+function SoMaster({ children }: { children: ReactNode }) {
+  const { master } = useSessao();
+  return <SoPerfil perfil="admin">{master ? children : <Navigate to="/" replace />}</SoPerfil>;
 }
 
 function SoAdmin({ children }: { children: ReactNode }) {

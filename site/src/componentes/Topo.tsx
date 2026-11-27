@@ -91,6 +91,12 @@ const ICONES: Record<string, ReactNode> = {
   abrir: <path d="m13 17 5-5-5-5M6 17l5-5-5-5" />,
   menu: <path d="M3 6h18M3 12h18M3 18h18" />,
   fechar: <path d="M6 6l12 12M18 6 6 18" />,
+  olho: (
+    <>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
 };
 
 function Icone({ nome, tamanho = 20 }: { nome: string; tamanho?: number }) {
@@ -122,7 +128,7 @@ const abaConfiguracao = (aba: string) => (caminho: string, busca: string) =>
 const abaFornecedores = (aba: string) => (caminho: string, busca: string) =>
   caminho.startsWith('/fornecedores') && (new URLSearchParams(busca).get('aba') ?? 'cadastro') === aba;
 
-type ExtrasMenu = { homologacao?: 'nenhuma' | 'fechado' | 'aberto'; sup?: ContadoresSuprimentos | null };
+type ExtrasMenu = { homologacao?: 'nenhuma' | 'fechado' | 'aberto'; sup?: ContadoresSuprimentos | null; master?: boolean };
 
 function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobrancas: number | null, atendimento: number | null = null, ncs: number | null = null, exportar: number | null = null, extras: ExtrasMenu = {}): Grupo[] {
   // Segurança da obra: para o fornecedor, itens a regularizar; para o TST e o administrativo, respostas a avaliar.
@@ -170,6 +176,7 @@ function gruposDoMenu(perfil: Perfil | undefined, naFila: number | null, cobranc
               { to: '/acessos?aba=exportar', rotulo: 'Exportar', ativo: abaAcessos('exportar'), contador: exportar },
             ],
           },
+          ...(extras.master ? [{ to: '/ver-como', rotulo: 'Ver como', icone: 'olho' }] : []),
         ],
       },
     ];
@@ -279,7 +286,7 @@ const iniciais = (nome: string) =>
     .toUpperCase();
 
 export function Topo() {
-  const { usuario, sair, homologacao } = useSessao();
+  const { usuario, sair, homologacao, master } = useSessao();
   const [sup, setSup] = useState<ContadoresSuprimentos | null>(null);
   const ehAdmin = usuario?.perfil === 'admin';
   const ehTst = usuario?.perfil === 'tst';
@@ -360,7 +367,7 @@ export function Topo() {
     }
   }
 
-  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento, ncs, exportar, { homologacao, sup });
+  const grupos = gruposDoMenu(usuario?.perfil, naFila, cobrancas, atendimento, ncs, exportar, { homologacao, sup, master });
   const estaAtivo = (i: Item) => (i.ativo ? i.ativo(pathname, search) : undefined);
 
   return (

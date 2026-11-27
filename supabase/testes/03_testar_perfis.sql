@@ -1286,6 +1286,34 @@ select teste.igual('Obra encerrada some do TST', $q$select 1 from painel_obras()
 select teste.sair();
 
 -- ============================================================================================
+-- "Ver como": a sessão aberta pelo master é somente leitura, para qualquer perfil.
+-- ============================================================================================
+select teste.sair();
+insert into visualizacoes (sessao_id, master_id, alvo_id) values
+  ('99000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001'),
+  ('99000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001');
+-- Controle: fora do "Ver como" o TST grava normalmente.
+select teste.entrar(:T1);
+select teste.permitido('Ver como (controle): TST grava fora da visualização', $q$insert into seg_locadoras (nome) values ('LOCADORA VER COMO')$q$);
+select teste.permitido('Ver como (controle): TST usa a função fora da visualização', $q$select salvar_dia_ficha('a4000000-0000-0000-0000-000000000001', 2, '{"statuses":["ok","ok"],"operador":"Fulano","fotos":[]}')$q$);
+select set_config('request.jwt.claims', json_build_object('sub', 'b0000000-0000-0000-0000-000000000001', 'role', 'authenticated', 'session_id', '99000000-0000-0000-0000-000000000001')::text, false);
+select teste.permitido('Ver como: TST consulta', $q$select painel_obra('10000000-0000-0000-0000-000000000001')$q$);
+select teste.bloqueado('Ver como: TST não grava tabela', $q$insert into seg_locadoras (nome) values ('LOCADORA VER COMO')$q$);
+select teste.bloqueado('Ver como: TST não grava arquivo', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'vistoria/a3000000-0000-0000-0000-000000000003/0/vc.jpg')$q$);
+select teste.bloqueado('Ver como: TST não usa função que grava', $q$select salvar_dia_ficha('a4000000-0000-0000-0000-000000000001', 2, '{"statuses":["ok","ok"],"operador":"Fulano","fotos":[]}')$q$);
+select teste.igual('Ver como: TST não vê as visualizações', $q$select 1 from visualizacoes$q$, 0);
+select teste.entrar(:F1);
+select set_config('request.jwt.claims', json_build_object('sub', 'c0000000-0000-0000-0000-000000000001', 'role', 'authenticated', 'session_id', '99000000-0000-0000-0000-000000000002')::text, false);
+select teste.bloqueado('Ver como: fornecedor não envia arquivo', $q$insert into storage.objects (bucket_id, name) values ('seguranca', 'nc/$q$ || teste.id('NC1') || $q$/vc.jpg')$q$);
+select teste.bloqueado('Ver como: fornecedor não altera colaborador', $q$update colaboradores set nome = nome where empresa_id = '20000000-0000-0000-0000-000000000001'$q$);
+select teste.igual('Ver como: fornecedor continua vendo os seus', $q$select 1 from colaboradores where empresa_id = '20000000-0000-0000-0000-000000000001' limit 1$q$, 1);
+-- Master: ninguém se promove pela tela, nem o admin.
+select teste.entrar(:A);
+select teste.bloqueado('Master só pelo banco', $q$update usuarios set master = true where id = 'a0000000-0000-0000-0000-000000000001'$q$);
+select teste.igual('Master vê as visualizações que abriu', $q$select 1 from visualizacoes$q$, 2);
+select teste.sair();
+
+-- ============================================================================================
 -- Resultado
 -- ============================================================================================
 \o

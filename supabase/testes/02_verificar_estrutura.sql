@@ -74,5 +74,12 @@ problemas(regra, objeto) as (
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.prokind = 'f' and p.prorettype <> 'trigger'::regtype
     and p.proname not in (select nome from funcoes_revisadas)
+
+  -- 9. Toda tabela precisa da trava do "Ver como" (a sessão de visualização não grava nada).
+  union all
+  select 'Tabela sem a trava do Ver como (rode select app.travar_visualizacao_em_tudo())', c.relname::text
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind in ('r', 'p') and c.relname <> 'visualizacoes'
+    and not exists (select 1 from pg_trigger g where g.tgrelid = c.oid and g.tgname = 'zz_bloquear_visualizacao')
 )
 select regra || ': ' || objeto from problemas order by 1;

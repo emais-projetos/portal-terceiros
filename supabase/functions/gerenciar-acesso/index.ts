@@ -59,6 +59,19 @@ Deno.serve(async (req) => {
   if (!chamador || !chamador.ativo || !['admin', 'suprimentos'].includes(chamador.perfil)) {
     return erro(403, 'Apenas o administrativo cria e libera acessos');
   }
+  // Sessão aberta pelo "Ver como" é somente leitura (aqui a gravação usa a chave de serviço, então a trava é conferida à mão).
+  const sessaoId = (() => {
+    try {
+      const p = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      return JSON.parse(atob(p + '='.repeat((4 - (p.length % 4)) % 4))).session_id as string | undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+  if (sessaoId && /^[0-9a-f-]{36}$/i.test(sessaoId)) {
+    const { data: vis } = await servico.from('visualizacoes').select('id').eq('sessao_id', sessaoId).maybeSingle();
+    if (vis) return erro(403, 'Modo visualização: nada é gravado');
+  }
 
   let corpo: Record<string, unknown>;
   try {
