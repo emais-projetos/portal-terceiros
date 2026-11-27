@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Dialogo } from '../../componentes/Dialogo';
-import { linkOutlook } from '../../lib/admin';
+import { copiarTexto, linkOutlook } from '../../lib/admin';
 import { data as dataBr } from '../../lib/formato';
 import { mensagemDeErro } from '../../lib/supabase';
 import { cnpjValido, hojeIso, somarDias, soDigitos, tamanhoArquivo } from '../../lib/formato';
@@ -430,24 +430,36 @@ export function EditarCadastro({ fornecedor, aoFechar, aoSalvar }: { fornecedor:
   );
 }
 
-// Convite da homologação: mostra se já saiu e permite mandar pelo Outlook do Suprimentos.
+// Convite da homologação: mostra se já saiu e permite mandar pelo e-mail do Suprimentos.
+// O texto abre na tela com botões de copiar (o "Abrir no Outlook" depende da versão do Outlook instalada).
 export function ConviteOutlook({ empresaId, versao = 0 }: { empresaId: string; versao?: number }) {
   const [convite, setConvite] = useState<ConviteFila | null>(null);
   const [aberto, setAberto] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState<string | null>(null);
 
   useEffect(() => {
     setAberto(false);
+    setCopiado(null);
     lerConvite(empresaId).then(setConvite).catch(() => setConvite(null));
   }, [empresaId, versao]);
+
+  async function copiar(texto: string, qual: string) {
+    try {
+      await copiarTexto(texto);
+      setCopiado(qual);
+    } catch {
+      setCopiado('falhou');
+    }
+  }
 
   if (!convite) return null;
   if (convite.situacao_envio === 'enviado') {
     return (
       <p className="dica">
         Convite enviado em {dataBr(convite.enviado_em ?? convite.criado_em)}
-        {convite.envio_para?.startsWith('Outlook') ? ' pelo Outlook' : ` para ${convite.para ?? ''}`}.
+        {convite.envio_para?.startsWith('Outlook') ? ' à mão, pelo e-mail do Suprimentos' : ` para ${convite.para ?? ''}`}.
       </p>
     );
   }
@@ -455,12 +467,36 @@ export function ConviteOutlook({ empresaId, versao = 0 }: { empresaId: string; v
   return (
     <div className="caixa">
       <p className="dica">
-        Convite na fila do envio automático para <strong>{convite.para}</strong>. Se preferir, mande pelo seu Outlook: o assunto e o texto já vão preenchidos.
+        Convite na fila do envio automático para <strong>{convite.para}</strong>. Se preferir, mande pelo seu e-mail: abra o texto, copie e cole numa mensagem nova.
       </p>
+      {!aberto && (
+        <div className="linha-botoes">
+          <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => setAberto(true)}>
+            Ver o texto do convite
+          </button>
+        </div>
+      )}
+      {aberto && (
+        <>
+          <div className="previa-email">
+            <p><span className="sub">Para</span> {convite.para}</p>
+            <p><span className="sub">Assunto</span> {convite.assunto}</p>
+            <pre>{convite.corpo}</pre>
+          </div>
+          <div className="linha-botoes">
+            <button type="button" className="botao botao-pequeno" onClick={() => copiar(convite.corpo, 'texto')}>Copiar texto</button>
+            <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => copiar(convite.assunto, 'assunto')}>Copiar assunto</button>
+            <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => copiar(convite.para ?? '', 'e-mail')}>Copiar e-mail</button>
+            <a className="botao botao-discreto botao-pequeno" href={linkOutlook(convite.para, convite.assunto, convite.corpo)}>Abrir no Outlook</a>
+          </div>
+          {copiado === 'falhou' ? (
+            <p className="aviso aviso-erro" role="alert">O navegador não deixou copiar. Selecione o texto acima e copie com Ctrl+C.</p>
+          ) : copiado ? (
+            <p className="aviso aviso-ok" role="status">{copiado === 'texto' ? 'Texto' : copiado === 'assunto' ? 'Assunto' : 'E-mail'} copiado.</p>
+          ) : null}
+        </>
+      )}
       <div className="linha-botoes">
-        <a className="botao botao-secundario botao-pequeno" href={linkOutlook(convite.para, convite.assunto, convite.corpo)} onClick={() => setAberto(true)}>
-          Abrir no Outlook
-        </a>
         {aberto && (
           <button
             type="button"
@@ -479,11 +515,11 @@ export function ConviteOutlook({ empresaId, versao = 0 }: { empresaId: string; v
               }
             }}
           >
-            Já mandei pelo Outlook
+            Já mandei pelo meu e-mail
           </button>
         )}
       </div>
-      {aberto && <small className="dica">Depois de enviar, clique em "Já mandei pelo Outlook" para o envio automático não mandar de novo.</small>}
+      {aberto && <small className="dica">Depois de enviar, clique em "Já mandei pelo meu e-mail" para o envio automático não mandar de novo.</small>}
       {erro && <p className="aviso aviso-erro" role="alert">{erro}</p>}
     </div>
   );
