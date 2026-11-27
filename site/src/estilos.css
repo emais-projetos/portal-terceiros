@@ -3233,3 +3233,7 @@ button.celula:hover {
 
 /* Lista de opções em colunas (categorias de serviço) */
 .opcoes-colunas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 16px; }
+
+/* Resultado da consulta na Receita */
+.cartao-receita p { margin: 0 0 4px; }
+.cartao-receita .sub { display: block; }

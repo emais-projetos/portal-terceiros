@@ -1,0 +1,204 @@
+{
+  "name": "Portal de Terceiros - Consulta CNPJ na Receita",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Consulta de CNPJ na Receita\nA função consultar-cnpj do Supabase chama este webhook quando o Suprimentos digita um CNPJ no Novo fornecedor ou clica em Consultar na Receita no cadastro.\n\n- A chamada só entra com o cabeçalho x-chave-n8n (credencial CHAVE_N8N_PORTAL_TERCEIROS, a mesma dos outros fluxos).\n- Consulta a BrasilAPI e a CNPJ.ws (inscrição estadual; 3 consultas por minuto) e devolve os dados no formato do portal.\n- Este fluxo precisa ficar ativo; desligado, o portal avisa que a Receita não respondeu e o cadastro segue manual.\n- Os nomes dos sócios não são trazidos, só a quantidade.",
+        "height": 340,
+        "width": 460
+      },
+      "name": "Leia antes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "terceiros-cnpj-297df17259b7",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Pedido do portal",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "terceiros-cnpj-297df17259b7",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ExpxXIP7kOba4dcy",
+          "name": "CHAVE_N8N_PORTAL_TERCEIROS"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deixa só os números e confere os dígitos verificadores do CNPJ.\nconst entrada = $input.first().json;\nconst bruto = String(entrada.body?.cnpj ?? entrada.cnpj ?? '');\nconst cnpj = bruto.replace(/\\D/g, '');\nif (!cnpj) throw new Error('CNPJ não informado.');\nif (cnpj.length !== 14 || /^(\\d)\\1{13}$/.test(cnpj)) throw new Error(`CNPJ \"${bruto}\" não tem 14 números válidos.`);\nconst dv = (base) => {\n  const pesos = base.length === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];\n  const soma = base.split('').reduce((s, n, i) => s + Number(n) * pesos[i], 0);\n  const r = soma % 11;\n  return r < 2 ? 0 : 11 - r;\n};\nconst d1 = dv(cnpj.slice(0, 12));\nconst d2 = dv(cnpj.slice(0, 12) + d1);\nif (`${d1}${d2}` !== cnpj.slice(12)) throw new Error(`CNPJ \"${bruto}\" tem dígito verificador errado.`);\nconst formatado = cnpj.replace(/^(\\d{2})(\\d{3})(\\d{3})(\\d{4})(\\d{2})$/, '$1.$2.$3/$4-$5');\nreturn [{ json: { cnpj, cnpj_formatado: formatado } }];\n"
+      },
+      "name": "Conferir CNPJ",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://brasilapi.com.br/api/cnpj/v1/' + $json.cnpj }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "name": "Receita (BrasilAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://publica.cnpj.ws/cnpj/' + $('Conferir CNPJ').first().json.cnpj }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "name": "Receita (CNPJ.ws)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Junta as duas consultas no formato que o portal usaria: o que preenche no cadastro, o aviso de situação e o que diverge entre as fontes.\nconst { cnpj, cnpj_formatado } = $('Conferir CNPJ').first().json;\nconst ba = $('Receita (BrasilAPI)').first().json;\nconst ws = $('Receita (CNPJ.ws)').first().json;\n\nconst ok = (r) => r && r.statusCode >= 200 && r.statusCode < 300 && r.body && typeof r.body === 'object';\nconst b = ok(ba) ? ba.body : null;\nconst w = ok(ws) ? ws.body : null;\nconst e = w?.estabelecimento ?? null;\n\nconst limpar = (v) => (v === null || v === undefined ? '' : String(v).replace(/\\s+/g, ' ').trim());\nconst titulo = (v) => limpar(v).toLowerCase().replace(/(^|\\s|\\/|-)(\\S)/g, (m, a, c) => a + c.toUpperCase()).replace(/\\b(De|Da|Do|Das|Dos|E|Em|Por|Para)\\b/g, (x) => x.toLowerCase());\nconst data = (v) => { const s = limpar(v).slice(0, 10); return /^\\d{4}-\\d{2}-\\d{2}$/.test(s) ? s.split('-').reverse().join('/') : s; };\nconst cep = (v) => limpar(v).replace(/\\D/g, '').replace(/^(\\d{5})(\\d{3})$/, '$1-$2');\nconst fone = (ddd, n) => { const t = (limpar(ddd) + limpar(n)).replace(/\\D/g, ''); return t.length >= 10 ? t.replace(/^(\\d{2})(\\d{4,5})(\\d{4})$/, '($1) $2-$3') : ''; };\nconst cnae = (cod, desc) => { const c = limpar(cod).replace(/\\D/g, ''); const f = c.length === 7 ? c.replace(/^(\\d{4})(\\d)(\\d{2})$/, '$1-$2/$3') : c; return [f, limpar(desc)].filter(Boolean).join(' '); };\n\n// Situação na Receita (ATIVA, BAIXADA, SUSPENSA, INAPTA, NULA).\nconst situacao = limpar(b?.descricao_situacao_cadastral ?? e?.situacao_cadastral).toUpperCase();\nconst situacaoDesde = data(b?.data_situacao_cadastral ?? e?.data_situacao_cadastral);\nconst motivo = limpar(b?.descricao_motivo_situacao_cadastral ?? e?.motivo_situacao_cadastral?.descricao);\n\n// Inscrição estadual (só a CNPJ.ws traz): a ativa do estado da empresa.\nconst uf = limpar(b?.uf ?? e?.estado?.sigla).toUpperCase();\nconst ies = Array.isArray(e?.inscricoes_estaduais) ? e.inscricoes_estaduais : [];\nconst ie = ies.find((x) => x.ativo && (x.estado?.sigla ?? '').toUpperCase() === uf) ?? ies.find((x) => x.ativo) ?? null;\n\nconst tipoLog = limpar(b?.descricao_tipo_de_logradouro ?? e?.tipo_logradouro);\nconst logradouro = limpar(b?.logradouro ?? e?.logradouro);\n\n// Campos do F.31 que o portal preencheria (o fornecedor confere e completa).\nconst preenche = {\n  razao_social: limpar(b?.razao_social ?? w?.razao_social).toUpperCase(),\n  nome_fantasia: limpar(b?.nome_fantasia ?? e?.nome_fantasia),\n  ramo: titulo(b?.cnae_fiscal_descricao ?? e?.atividade_principal?.descricao),\n  cep: cep(b?.cep ?? e?.cep),\n  endereco: titulo([tipoLog, logradouro].filter(Boolean).join(' ')),\n  numero: limpar(b?.numero ?? e?.numero),\n  complemento: titulo(b?.complemento ?? e?.complemento),\n  bairro: titulo(b?.bairro ?? e?.bairro),\n  cidade: titulo(e?.cidade?.nome ?? b?.municipio),\n  estado: uf,\n  telefone: fone(b?.ddd_telefone_1?.slice?.(0, 2), b?.ddd_telefone_1?.slice?.(2)) || fone(e?.ddd1, e?.telefone1),\n  email_empresa: limpar(b?.email ?? e?.email).toLowerCase(),\n  inscricao_estadual: limpar(ie?.inscricao_estadual),\n};\n\nconst aviso = !situacao\n  ? 'Não foi possível ler a situação na Receita. Confira o CNPJ manualmente.'\n  : situacao === 'ATIVA'\n    ? ''\n    : `CNPJ ${situacao} na Receita${situacaoDesde ? ` desde ${situacaoDesde}` : ''}${motivo ? ` (${titulo(motivo)})` : ''}.`;\n\nconst secundarios = Array.isArray(b?.cnaes_secundarios)\n  ? b.cnaes_secundarios.filter((x) => x.codigo).map((x) => cnae(x.codigo, x.descricao))\n  : Array.isArray(e?.atividades_secundarias) ? e.atividades_secundarias.map((x) => cnae(x.subclasse ?? x.id, x.descricao)) : [];\n\n// Onde as duas fontes dizem coisas diferentes (ajuda a escolher a fonte).\nconst comparar = (nome, x, y) => {\n  const norm = (v) => limpar(v).normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toUpperCase();\n  const a = norm(x); const c = norm(y);\n  return a && c && a !== c ? { campo: nome, brasilapi: limpar(x), cnpj_ws: limpar(y) } : null;\n};\nconst divergencias = b && w ? [\n  comparar('razão social', b.razao_social, w.razao_social),\n  comparar('situação', b.descricao_situacao_cadastral, e?.situacao_cadastral),\n  comparar('CEP', limpar(b.cep).replace(/\\D/g, ''), limpar(e?.cep).replace(/\\D/g, '')),\n  comparar('número', b.numero, e?.numero),\n  comparar('cidade', b.municipio, e?.cidade?.nome),\n].filter(Boolean) : [];\n\nreturn [{\n  json: {\n    cnpj: cnpj_formatado,\n    consulta: {\n      brasilapi: ba?.statusCode ? `${ba.statusCode}${b ? ' ok' : ' sem dados'}` : 'sem resposta',\n      cnpj_ws: ws?.statusCode ? `${ws.statusCode}${w ? ' ok' : ' sem dados'}` : 'sem resposta',\n    },\n    situacao_receita: situacao || '(não informada)',\n    situacao_desde: situacaoDesde,\n    aviso_para_o_suprimentos: aviso || 'Nenhum: CNPJ ativo.',\n    preenche_no_portal: preenche,\n    campos_vazios: Object.entries(preenche).filter(([, v]) => !v).map(([k]) => k),\n    so_para_consulta: {\n      abertura: data(b?.data_inicio_atividade ?? e?.data_inicio_atividade),\n      natureza_juridica: limpar(b?.natureza_juridica ?? w?.natureza_juridica?.descricao),\n      porte: limpar(b?.porte ?? b?.descricao_porte ?? w?.porte?.descricao),\n      capital_social: b?.capital_social ?? w?.capital_social ?? null,\n      simples: b ? (b.opcao_pelo_simples ? 'Sim' : 'Não') : limpar(w?.simples?.simples),\n      mei: b ? (b.opcao_pelo_mei ? 'Sim' : 'Não') : limpar(w?.simples?.mei),\n      cnae_principal: cnae(b?.cnae_fiscal ?? e?.atividade_principal?.subclasse, b?.cnae_fiscal_descricao ?? e?.atividade_principal?.descricao),\n      cnaes_secundarios: secundarios,\n      quantidade_de_socios: Array.isArray(b?.qsa) ? b.qsa.length : Array.isArray(w?.socios) ? w.socios.length : null,\n    },\n    divergencias_entre_fontes: divergencias,\n  },\n}];\n"
+      },
+      "name": "Como sairia no portal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {}
+      },
+      "name": "Responder ao portal",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Pedido do portal": {
+      "main": [
+        [
+          {
+            "node": "Conferir CNPJ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conferir CNPJ": {
+      "main": [
+        [
+          {
+            "node": "Receita (BrasilAPI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receita (BrasilAPI)": {
+      "main": [
+        [
+          {
+            "node": "Receita (CNPJ.ws)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receita (CNPJ.ws)": {
+      "main": [
+        [
+          {
+            "node": "Como sairia no portal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Como sairia no portal": {
+      "main": [
+        [
+          {
+            "node": "Responder ao portal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

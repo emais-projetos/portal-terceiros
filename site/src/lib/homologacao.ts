@@ -532,6 +532,7 @@ export type FornecedorCadastro = {
   situacao_motivo: string | null;
   situacao_em: string | null;
   situacao_por: string | null;
+  receita?: import('./receita').ReceitaGuardada | null;
   historico_situacao?: { em: string; de: SituacaoFornecedor; para: SituacaoFornecedor; motivo: string | null; quem: string | null }[] | null;
   liberado_em: string | null;
   email_acesso: string | null;

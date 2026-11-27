@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Dialogo } from '../../componentes/Dialogo';
 import { copiarTexto, enviarAcesso, gerarLinkAcesso, linkOutlook, mudarAtivoAcesso, type Acesso, type LinkAcesso } from '../../lib/admin';
 import { EnvioDoLink } from '../admin/Acessos';
@@ -13,6 +13,8 @@ import {
 } from '../../lib/homologacao';
 import { definirTiposFornecedor, lerTiposFornecedor, type TipoFornecedor } from '../../lib/tiposFornecedor';
 import { definirCategoriasFornecedor, lerCategorias, type CategoriaServico } from '../../lib/categorias';
+import { consultarReceita, receitaAtiva, ROTULOS_RECEITA, type CamposReceita, type ConsultaReceita } from '../../lib/receita';
+import { CartaoReceita } from '../../componentes/CartaoReceita';
 
 // Janelas do Suprimentos: cadastrar fornecedor novo (manda o convite da homologação) e registrar o contrato assinado.
 
@@ -94,6 +96,40 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
   const [erro, setErro] = useState<string | null>(null);
   const [feito, setFeito] = useState<{ empresaId: string; msg: string } | null>(null);
   const [acessos, setAcessos] = useState<Acesso[]>([]);
+  const [receita, setReceita] = useState<ConsultaReceita | null>(null);
+  const [consultando, setConsultando] = useState(false);
+  const [erroReceita, setErroReceita] = useState<string | null>(null);
+  const [confirmaSituacao, setConfirmaSituacao] = useState(false);
+  const razaoDaReceita = useRef('');
+
+  // CNPJ completo: consulta a Receita e preenche a razão social (se estiver vazia ou ainda for a da consulta anterior).
+  const digitos = soDigitos(cnpj);
+  useEffect(() => {
+    setReceita(null);
+    setErroReceita(null);
+    setConfirmaSituacao(false);
+    if (!aberto || !cnpjValido(digitos)) return;
+    let cancelado = false;
+    const t = window.setTimeout(() => {
+      setConsultando(true);
+      consultarReceita(digitos)
+        .then((c) => {
+          if (cancelado) return;
+          setReceita(c);
+          const nome = c.resultado.preenche_no_portal?.razao_social ?? '';
+          if (nome) {
+            setRazao((atual) => (!atual.trim() || atual === razaoDaReceita.current ? nome : atual));
+            razaoDaReceita.current = nome;
+          }
+        })
+        .catch((e) => !cancelado && setErroReceita((e as Error).message))
+        .finally(() => !cancelado && setConsultando(false));
+    }, 400);
+    return () => {
+      cancelado = true;
+      window.clearTimeout(t);
+    };
+  }, [digitos, aberto]);
 
   useEffect(() => {
     if (!aberto) return;
@@ -110,7 +146,8 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
 
   const cnpjOk = cnpjValido(cnpj);
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const pronto = razao.trim().length >= 3 && cnpjOk && emailOk && tipos.length > 0;
+  const situacaoRuim = !!receita && !receitaAtiva(receita.resultado.situacao_receita);
+  const pronto = razao.trim().length >= 3 && cnpjOk && emailOk && tipos.length > 0 && !receita?.ja_cadastrado && (!situacaoRuim || confirmaSituacao);
   const existente = emailOk ? acessos.find((a) => a.email.toLowerCase() === email.trim().toLowerCase()) ?? null : null;
 
   async function enviar(e: FormEvent) {
@@ -151,14 +188,36 @@ export function NovoFornecedor({ aberto, aoFechar, aoCadastrar }: { aberto: bool
         </p>
         <div className="grade-2">
           <label className="campo">
-            <span>Razão social</span>
-            <input value={razao} maxLength={200} onChange={(e) => setRazao(e.target.value)} />
-          </label>
-          <label className="campo">
             <span>CNPJ</span>
             <input value={cnpj} inputMode="numeric" maxLength={18} aria-invalid={!!cnpj && !cnpjOk} onChange={(e) => setCnpj(e.target.value)} onBlur={() => cnpjOk && setCnpj(formatarCnpj(cnpj))} />
             {!!cnpj && !cnpjOk && <small className="campo-erro">CNPJ inválido.</small>}
+            {consultando ? (
+              <small className="dica">Consultando a Receita...</small>
+            ) : (
+              !receita && !erroReceita && <small className="dica">Com o CNPJ completo, o portal consulta a Receita e preenche os dados.</small>
+            )}
           </label>
+          <label className="campo">
+            <span>Razão social</span>
+            <input value={razao} maxLength={200} onChange={(e) => setRazao(e.target.value)} />
+          </label>
+        </div>
+        {erroReceita && <p className="aviso aviso-alerta">{erroReceita}</p>}
+        {receita?.ja_cadastrado && (
+          <p className="aviso aviso-erro" role="alert">Este CNPJ já está no portal: {receita.ja_cadastrado.razao_social}. Procure por ele na lista de fornecedores.</p>
+        )}
+        {receita && !receita.ja_cadastrado && (
+          <>
+            <CartaoReceita consulta={receita} nota="Endereço, ramo e os demais dados da Receita já entram no F.31; o fornecedor só confere e completa." />
+            {situacaoRuim && (
+              <label className="opcao">
+                <input type="checkbox" checked={confirmaSituacao} onChange={(e) => setConfirmaSituacao(e.target.checked)} />
+                <span>Conferi a situação na Receita e quero cadastrar mesmo assim</span>
+              </label>
+            )}
+          </>
+        )}
+        <div className="grade-2">
           <label className="campo">
             <span>E-mail do fornecedor</span>
             <input type="email" value={email} maxLength={200} aria-invalid={!!email && !emailOk} onChange={(e) => setEmail(e.target.value)} />
@@ -352,6 +411,96 @@ export function PedirMotivo({ aberto, titulo, apoio, botao, minimo = 3, rotulo =
   );
 }
 
+// Consulta na Receita dentro do cadastro: mostra a situação e o que difere do cadastro; "Usar" leva o dado para o formulário
+// (só grava ao salvar o cadastro).
+function ReceitaNoCadastro({
+  fornecedor,
+  razao,
+  dados,
+  aoUsar,
+}: {
+  fornecedor: FornecedorCadastro;
+  razao: string;
+  dados: Partial<DadosF31>;
+  aoUsar: (campo: keyof CamposReceita, valor: string) => void;
+}) {
+  const [consulta, setConsulta] = useState<ConsultaReceita | null>(null);
+  const [consultando, setConsultando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const guardada = fornecedor.receita ?? null;
+
+  useEffect(() => {
+    setConsulta(null);
+    setErro(null);
+  }, [fornecedor]);
+
+  async function consultar() {
+    setConsultando(true);
+    setErro(null);
+    try {
+      setConsulta(await consultarReceita(fornecedor.cnpj));
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setConsultando(false);
+    }
+  }
+
+  const norm = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\W+/g, '').toUpperCase();
+  const campos = (Object.keys(ROTULOS_RECEITA) as (keyof CamposReceita)[]).filter((c) => c !== 'email_empresa');
+  const diferencas = consulta
+    ? campos
+        .map((c) => ({ c, receita: String(consulta.resultado.preenche_no_portal?.[c] ?? '').trim(), atual: String(c === 'razao_social' ? razao : (dados as Record<string, string>)[c] ?? '').trim() }))
+        .filter((x) => x.receita && norm(x.receita) !== norm(x.atual))
+    : [];
+  const vazios = diferencas.filter((x) => !x.atual);
+
+  return (
+    <fieldset className="campo-grupo">
+      <legend>Receita Federal</legend>
+      {consulta ? (
+        <CartaoReceita consulta={consulta} />
+      ) : guardada ? (
+        <p className={receitaAtiva(guardada.situacao) ? 'dica' : 'aviso aviso-erro'}>
+          Última consulta em {dataBr(guardada.consultada_em.slice(0, 10))}: {guardada.situacao ?? 'situação não informada'}
+          {guardada.situacao_desde ? ` desde ${guardada.situacao_desde}` : ''}.
+        </p>
+      ) : (
+        <p className="dica">Ainda não consultado. A consulta mostra a situação do CNPJ e o que está diferente do cadastro.</p>
+      )}
+      {erro && <p className="aviso aviso-alerta">{erro}</p>}
+      {consulta && (diferencas.length === 0 ? (
+        <p className="dica">O cadastro está igual ao da Receita.</p>
+      ) : (
+        <>
+          <ul className="lista-simples">
+            {diferencas.map((x) => (
+              <li key={x.c}>
+                <span>
+                  <strong>{ROTULOS_RECEITA[x.c]}:</strong> Receita "{x.receita}"
+                  <small className="sub">No cadastro: {x.atual || 'vazio'}</small>
+                </span>
+                <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => aoUsar(x.c, x.receita)}>Usar</button>
+              </li>
+            ))}
+          </ul>
+          {vazios.length > 1 && (
+            <button type="button" className="botao botao-secundario botao-pequeno" onClick={() => vazios.forEach((x) => aoUsar(x.c, x.receita))}>
+              Preencher os {vazios.length} campos vazios
+            </button>
+          )}
+          <p className="dica">O que você usar só fica gravado quando salvar o cadastro.</p>
+        </>
+      ))}
+      <div className="linha-botoes">
+        <button type="button" className="botao botao-secundario botao-pequeno" disabled={consultando} onClick={consultar}>
+          {consultando ? 'Consultando' : consulta ? 'Consultar de novo' : 'Consultar na Receita'}
+        </button>
+      </div>
+    </fieldset>
+  );
+}
+
 // Campos que o Suprimentos edita no cadastro. CNPJ e e-mail de acesso ficam com o administrativo (Acessos).
 const GRUPOS_CADASTRO: { titulo: string; campos: [keyof DadosF31, string, { max?: number; tipo?: string; dica?: string }?][] }[] = [
   { titulo: 'Dados da empresa', campos: [['nome_fantasia', 'Nome fantasia'], ['ramo', 'Ramo de atividade'], ['praca', 'Praça de atuação'], ['inscricao_estadual', 'Inscrição estadual'], ['inscricao_municipal', 'Inscrição municipal']] },
@@ -435,6 +584,12 @@ export function EditarCadastro({ fornecedor, acesso: acessoAtual = null, acessos
               <small className="dica">Recebem os avisos junto com o e-mail de acesso. Separe por ponto e vírgula, até 10.</small>
             </label>
           </div>
+          <ReceitaNoCadastro
+            fornecedor={fornecedor}
+            razao={razao}
+            dados={dados}
+            aoUsar={(campo, valor) => (campo === 'razao_social' ? setRazao(valor) : setDados((d) => ({ ...d, [campo]: valor })))}
+          />
           <EscolherTipos tipos={tiposF} marcados={tipos} aoMudar={setTipos} />
           <fieldset className="campo-grupo">
             <legend>Categorias de serviço</legend>

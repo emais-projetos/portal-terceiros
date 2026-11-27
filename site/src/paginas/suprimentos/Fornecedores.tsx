@@ -188,6 +188,9 @@ export function Fornecedores() {
                       <tr key={e.empresa_id} className="linha-clicavel" onClick={() => abrir(e.empresa_id)}>
                         <th scope="row">
                           {e.razao_social}
+                          {e.receita?.situacao && e.receita.situacao !== 'ATIVA' && (
+                            <> <span className="selo selo-bloqueado" title={e.receita.aviso ?? undefined}>Receita: {e.receita.situacao}</span></>
+                          )}
                           {e.situacao && e.situacao !== 'ativo' && (
                             <> <span className={`selo ${SELO_SITUACAO_FORNECEDOR[e.situacao]}`} title={e.situacao_motivo ?? undefined}>{NOMES_SITUACAO_FORNECEDOR[e.situacao]}</span></>
                           )}

@@ -1036,6 +1036,21 @@ select teste.igual('Categorias: histórico da configuração', $q$select 1 from 
 select teste.sair();
 select teste.igual('Categorias: removida sai do fornecedor', format($q$select 1 from empresas where id = %L and categorias = '{pintura}'$q$, :E1), 1);
 update empresas set categorias = '{}' where id = :E1;
+-- Consulta na Receita (a função consultar-cnpj grava com a chave de serviço)
+insert into consultas_receita (cnpj, situacao, resultado) values ('77111222000133', 'ATIVA',
+  '{"aviso_para_o_suprimentos":"Nenhum: CNPJ ativo.","situacao_desde":"03/11/2005","so_para_consulta":{"abertura":"03/11/2005","cnae_principal":"4120-4/00 CONSTRUÇÃO DE EDIFÍCIOS"},
+    "preenche_no_portal":{"razao_social":"OUTRO NOME LTDA","ramo":"Construção de Edifícios","cidade":"Barretos","estado":"SP","numero":"","email_empresa":"contador@x.com"}}');
+select teste.entrar(:F1);
+select teste.igual('Receita: fornecedor não lê as consultas', $q$select 1 from consultas_receita$q$, 0);
+select teste.sair();
+select teste.entrar(:S1);
+select teste.igual('Receita: Suprimentos lê as consultas', $q$select 1 from consultas_receita where cnpj = '77111222000133'$q$, 1);
+select teste.bloqueado('Receita: Suprimentos não grava consulta direto', $q$insert into consultas_receita (cnpj, resultado) values ('11222333000181', '{}')$q$);
+select cadastrar_fornecedor_homologacao('Receita Teste Ltda', '77.111.222/0001-33', 'receita@teste.com', null, null) as "ERF" \gset
+select teste.igual('Receita: cadastro mostra a situação', format($q$select 1 from jsonb_array_elements(fornecedores_cadastro(%L)) x where x->'receita'->>'situacao' = 'ATIVA'$q$, :'ERF'), 1);
+select teste.sair();
+select teste.igual('Receita: F.31 nasce com os dados da Receita', format($q$select 1 from homologacoes where empresa_id = %L and dados->>'ramo' = 'Construção de Edifícios' and dados->>'cidade' = 'Barretos' and dados->>'email' = 'receita@teste.com'$q$, :'ERF'), 1);
+select teste.igual('Receita: sem razão social, e-mail do contador nem campo vazio', format($q$select 1 from homologacoes where empresa_id = %L and not dados ? 'razao_social' and not dados ? 'email_empresa' and not dados ? 'numero'$q$, :'ERF'), 1);
 -- Itens novos no formulário
 select teste.entrar(:F1);
 select teste.bloqueado('Itens: fornecedor não inclui pergunta', $q$select incluir_item_homologacao('Quantos funcionários?', 'numero', true)$q$);

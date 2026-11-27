@@ -390,6 +390,31 @@ export async function fetchComDemo(entrada: RequestInfo | URL, init?: RequestIni
   const cab = new Headers(init?.headers ?? (entrada instanceof Request ? entrada.headers : undefined));
   const caminho = url.pathname;
 
+  // Consulta na Receita: resposta fictícia (CNPJ terminado em 91 aparece como baixado).
+  if (caminho.endsWith('/functions/v1/consultar-cnpj')) {
+    let cnpj = '';
+    try {
+      cnpj = String(JSON.parse(typeof init?.body === 'string' ? init.body : '{}').cnpj ?? '');
+    } catch { /* corpo inválido */ }
+    const baixada = cnpj.endsWith('91');
+    return json(200, {
+      consultada_em: new Date().toISOString(), cache: false,
+      ja_cadastrado: empresas.find((e) => e.cnpj === cnpj) ? { empresa_id: empresas.find((e) => e.cnpj === cnpj)!.id, razao_social: empresas.find((e) => e.cnpj === cnpj)!.razao_social } : null,
+      resultado: {
+        cnpj, consulta: { brasilapi: '200 ok', cnpj_ws: '200 ok' },
+        situacao_receita: baixada ? 'BAIXADA' : 'ATIVA', situacao_desde: baixada ? '10/02/2021' : '03/11/2015',
+        aviso_para_o_suprimentos: baixada ? 'CNPJ BAIXADA na Receita desde 10/02/2021 (Extinção por Encerramento Liquidação Voluntária).' : 'Nenhum: CNPJ ativo.',
+        preenche_no_portal: {
+          razao_social: 'CONSTRUTORA DEMONSTRAÇÃO LTDA', nome_fantasia: 'Construtora Demo', ramo: 'Construção de Edifícios', cep: '14780-000',
+          endereco: 'Avenida das Indústrias', numero: '1200', complemento: '', bairro: 'Distrito Industrial', cidade: 'Barretos', estado: 'SP',
+          telefone: '(17) 3322-0000', email_empresa: '', inscricao_estadual: '123456789110',
+        },
+        campos_vazios: ['complemento', 'email_empresa'],
+        so_para_consulta: { abertura: '03/11/2015', natureza_juridica: 'Sociedade Empresária Limitada', porte: 'DEMAIS', simples: 'Não', mei: 'Não', cnae_principal: '4120-4/00 Construção de edifícios', cnaes_secundarios: [], quantidade_de_socios: 2 },
+        divergencias_entre_fontes: [],
+      },
+    });
+  }
   if (caminho.includes('/storage/v1/') || caminho.includes('/functions/v1/')) return recusa();
   const rpc = caminho.match(/\/rest\/v1\/rpc\/([a-z0-9_]+)/)?.[1];
   if (rpc) {
